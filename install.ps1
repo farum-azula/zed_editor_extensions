@@ -159,10 +159,10 @@ foreach ($manifest in Get-ChildItem -Path (Join-Path $root '*/extension.toml')) 
     $dir = $manifest.Directory.FullName
     $id = Get-TomlValue $manifest.FullName 'id'
     $dest = Join-Path $installed $id
-    # A link left behind by a moved or deleted clone. `Test-Path` does not tell one from a live link;
-    # `Directory.Exists` follows it.
+    # A link left behind by a moved or deleted clone. Neither `Test-Path` nor (on Windows, for a
+    # junction) `Directory.Exists` looks past the link itself; a file behind it does.
     $link = Get-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
-    if ($link -and $link.LinkType -and -not [IO.Directory]::Exists($dest)) {
+    if ($link -and $link.LinkType -and -not [IO.File]::Exists((Join-Path $dest 'extension.toml'))) {
         $link.Delete()
     }
     if (Test-Path -LiteralPath $dest) {
