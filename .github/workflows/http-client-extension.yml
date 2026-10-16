@@ -15,6 +15,9 @@ on:
       - .github/workflows/http-client-extension.yml
   workflow_dispatch:
 
+# Runners are pinned: `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19, and the image should
+# change when we choose to. The Rust jobs compile, so they use the standard 4-vCPU image.
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -30,9 +33,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -51,9 +54,9 @@ jobs:
 
   coverage:
     name: Coverage (100% of lines and functions)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -76,7 +79,7 @@ jobs:
             cargo llvm-cov report --ignore-filename-regex 'tests/' --summary-only
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-lcov
@@ -85,9 +88,9 @@ jobs:
 
   extension:
     name: WebAssembly build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
@@ -109,12 +112,14 @@ jobs:
 
   catalog:
     name: Framework catalog
-    runs-on: ubuntu-latest
+    # No compilation here, just Python: the 1-vCPU container image is enough.
+    runs-on: ubuntu-slim
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate frameworks.json against its schema
         run: |
-          pip install --quiet jsonschema
+          # Ubuntu 24.04 marks its Python as externally managed; this is a throwaway runner.
+          pip install --quiet --break-system-packages jsonschema
           python3 - <<'PY'
           import json, jsonschema
           schema = json.load(open("frameworks.schema.json"))
