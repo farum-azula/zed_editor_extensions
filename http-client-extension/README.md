@@ -125,6 +125,9 @@ installs it on first use:
 2. Command palette (`cmd+shift+p`) → **`zed: install dev extension`**.
 3. Select the `http-client-extension` folder of this repository.
 
+Or run `./install.sh` from the repository root: it installs every extension of this repository
+that Zed does not have yet, the same way.
+
 Zed compiles the WASM part of the extension and the tree-sitter-http grammar, and then starts the
 language server. Finding the runner for it, the extension tries, in order:
 

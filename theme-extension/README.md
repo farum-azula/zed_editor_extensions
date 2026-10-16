@@ -25,6 +25,8 @@ Until the extension is published, install it from a clone of this repository:
 
 1. Command palette, `zed: install dev extension`.
 2. Pick the `theme-extension` folder.
+   (Or run `./install.sh` from the repository root: it installs every extension of this
+   repository that Zed does not have yet.)
 3. `theme selector: toggle`, then choose a Farum Azula theme, or set it in `settings.json`:
 
    ```json

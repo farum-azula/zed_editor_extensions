@@ -1,0 +1,54 @@
+name: install-scripts
+
+# install.sh and install.ps1 install every extension of the repository on a scratch Zed extensions
+# directory, with each shell on each OS; .github/scripts/test-install.ps1 checks the result.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.ps1
+      - '*/extension.toml'
+      - '*/Cargo.toml'
+      - '*/Cargo.lock'
+      - .github/scripts/test-install.ps1
+      - .github/workflows/install-scripts.yml
+  pull_request:
+    paths:
+      - install.sh
+      - install.ps1
+      - '*/extension.toml'
+      - '*/Cargo.toml'
+      - '*/Cargo.lock'
+      - .github/scripts/test-install.ps1
+      - .github/workflows/install-scripts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: ${{ matrix.installer }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, installer: sh }
+          - { os: ubuntu-24.04, installer: pwsh }
+          - { os: macos-15, installer: sh }
+          - { os: macos-15, installer: pwsh }
+          - { os: windows-2025, installer: pwsh }
+          # Windows PowerShell 5.1, the one every Windows has.
+          - { os: windows-2025, installer: powershell }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Install and check
+        shell: pwsh
+        run: .github/scripts/test-install.ps1 -Installer ${{ matrix.installer }}
