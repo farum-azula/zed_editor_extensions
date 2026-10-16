@@ -15,12 +15,23 @@ pub struct Endpoint {
 }
 
 /// Prefixes relative paths with `{{baseUrl}}`.
+///
+/// A path may already start with a variable: `{{baseUrl}}/items` (from `'$baseUrl/items'`) is the
+/// whole URL, while `{{id}}` (from `@HttpGet("{id}")`) is just the first segment of a path.
 pub fn to_http_url(path: &str) -> String {
-    if path.starts_with("http://") || path.starts_with("https://") || path.starts_with("{{") {
+    if path.starts_with("http://") || path.starts_with("https://") || names_a_base_url(path) {
         path.to_string()
     } else {
         format!("{{{{baseUrl}}}}/{}", path.trim_start_matches('/'))
     }
+}
+
+fn names_a_base_url(path: &str) -> bool {
+    let Some((name, _)) = path.strip_prefix("{{").and_then(|rest| rest.split_once("}}")) else {
+        return false;
+    };
+    let name = name.to_lowercase();
+    ["url", "uri", "base", "host", "server", "endpoint", "origin", "api"].iter().any(|k| name.contains(k))
 }
 
 pub fn slug(s: &str) -> String {
@@ -78,7 +89,7 @@ pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
     let body = spec.body.as_ref().map(|fields| {
         let obj = infer::sample(&infer::Ty::Obj(fields.clone()));
         headers.push("Content-Type: application/json".into());
-        serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".into())
+        serde_json::to_string_pretty(&obj).expect("sample values always serialize")
     });
 
     let mut out = format!("### {name}\n# @name {name}\n");
@@ -106,7 +117,8 @@ pub fn generate(catalog: &Catalog, text: &str, source: &Path, line: usize) -> Op
 /// `.http` file collecting all requests generated from `source`: `<dir>/<source file name>.http`
 /// (`server.ts` → `server.ts.http`).
 pub fn file_for_source(dir: &Path, source: &Path) -> PathBuf {
-    let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "endpoints".into());
+    // A source path always has a file name; `endpoints.http` is only a safety net.
+    let name = source.file_name().map_or("endpoints".into(), |n| n.to_string_lossy().into_owned());
     dir.join(format!("{name}.http"))
 }
 
@@ -143,19 +155,5 @@ pub fn free_path(dir: &Path, name: &str) -> PathBuf {
     path
 }
 
-pub const DEFAULT_ENV: &str = "{\n  \"dev\": {\n    \"baseUrl\": \"http://localhost:8080\",\n    \"token\": \"\"\n  }\n}\n";
-
-#[cfg(test)]
-mod file_tests {
-    use super::*;
-
-    #[test]
-    fn per_source_file() {
-        assert_eq!(file_for_source(Path::new("/r"), Path::new("/p/server.ts")), PathBuf::from("/r/server.ts.http"));
-        let text = "### a\n# @name a\nGET /a\n\n### b\n# @name b\n@id = 1\nGET /b/{{id}}\n";
-        assert_eq!(find_request(text, "b"), Some(4));
-        assert_eq!(find_request(text, "c"), None);
-        assert_eq!(append_text("x\n", "y"), "\ny");
-        assert_eq!(append_text("", "y"), "y");
-    }
-}
+pub const DEFAULT_ENV: &str =
+    "{\n  \"dev\": {\n    \"baseUrl\": \"http://localhost:8080\",\n    \"token\": \"\"\n  }\n}\n";

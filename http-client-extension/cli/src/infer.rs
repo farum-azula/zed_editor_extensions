@@ -56,14 +56,3 @@ pub fn var_name(header: &str) -> String {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn header_var_names() {
-        assert_eq!(var_name("X-Request-Id"), "xRequestId");
-        assert_eq!(var_name("x_token"), "xToken");
-    }
-}

@@ -8,24 +8,28 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
+/// Serves the protocol on stdio (how Zed starts the server).
 pub fn serve() {
     let stdin = io::stdin();
-    let mut input = stdin.lock();
+    let stdout = io::stdout();
+    serve_io(&mut stdin.lock(), &mut stdout.lock());
+}
+
+/// Reads requests from `input` and writes responses to `out` until `exit` or end of input.
+pub fn serve_io(input: &mut dyn BufRead, out: &mut dyn Write) {
     let mut docs: HashMap<String, String> = HashMap::new();
     let mut root: Option<PathBuf> = None;
     let mut next_id = 0u64;
     let mut catalogs = Catalogs::default();
-    while let Some(msg) = read_message(&mut input) {
+    while let Some(msg) = read_message(input) {
         let id = msg.get("id").cloned();
         // Responses to our own requests (workspace/applyEdit, window/showDocument).
         let Some(method) = msg.get("method").and_then(Value::as_str) else { continue };
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         let result = match method {
             "initialize" => {
-                root = params["workspaceFolders"][0]["uri"]
-                    .as_str()
-                    .or(params["rootUri"].as_str())
-                    .and_then(uri_to_path);
+                root =
+                    params["workspaceFolders"][0]["uri"].as_str().or(params["rootUri"].as_str()).and_then(uri_to_path);
                 Some(json!({
                 "capabilities": {
                     "textDocumentSync": 1,
@@ -49,10 +53,8 @@ pub fn serve() {
             }
             "textDocument/didChange" => {
                 let uri = params["textDocument"]["uri"].as_str().unwrap_or_default();
-                if let Some(text) = params["contentChanges"]
-                    .as_array()
-                    .and_then(|c| c.last())
-                    .and_then(|c| c["text"].as_str())
+                if let Some(text) =
+                    params["contentChanges"].as_array().and_then(|c| c.last()).and_then(|c| c["text"].as_str())
                 {
                     docs.insert(uri.to_string(), text.to_string());
                 }
@@ -74,7 +76,7 @@ pub fn serve() {
             }
             "workspace/executeCommand" => {
                 let c = catalogs.get(root.as_deref());
-                execute_command(c, &docs, &params, root.as_deref(), &mut next_id);
+                execute_command(c, &docs, &params, root.as_deref(), &mut next_id, out);
                 Some(Value::Null)
             }
             "textDocument/definition" => Some(with_variable(&docs, &params, definition).unwrap_or(Value::Null)),
@@ -90,12 +92,12 @@ pub fn serve() {
                     "error": { "code": -32601, "message": format!("method not found: {method}") }
                 }),
             };
-            write_message(&response);
+            write_message(out, &response);
         }
     }
 }
 
-fn read_message(input: &mut impl BufRead) -> Option<Value> {
+fn read_message(input: &mut dyn BufRead) -> Option<Value> {
     let mut length = None;
     loop {
         let mut line = String::new();
@@ -115,9 +117,8 @@ fn read_message(input: &mut impl BufRead) -> Option<Value> {
     serde_json::from_slice(&buf).ok()
 }
 
-fn write_message(msg: &Value) {
+fn write_message(out: &mut dyn Write, msg: &Value) {
     let body = msg.to_string();
-    let mut out = io::stdout().lock();
     let _ = write!(out, "Content-Length: {}\r\n\r\n{body}", body.len());
     let _ = out.flush();
 }
@@ -129,11 +130,7 @@ struct Target<'a> {
     name: String,
 }
 
-fn with_variable(
-    docs: &HashMap<String, String>,
-    params: &Value,
-    f: fn(&Target) -> Option<Value>,
-) -> Option<Value> {
+fn with_variable(docs: &HashMap<String, String>, params: &Value, f: fn(&Target) -> Option<Value>) -> Option<Value> {
     let uri = params["textDocument"]["uri"].as_str()?;
     if !is_http_file(uri) {
         return None;
@@ -192,7 +189,13 @@ struct Generation {
     edit: Value,
 }
 
-fn generation(catalog: &Catalog, docs: &HashMap<String, String>, uri: &str, line: usize, root: Option<&Path>) -> Option<Generation> {
+fn generation(
+    catalog: &Catalog,
+    docs: &HashMap<String, String>,
+    uri: &str,
+    line: usize,
+    root: Option<&Path>,
+) -> Option<Generation> {
     if is_http_file(uri) {
         return None;
     }
@@ -203,10 +206,7 @@ fn generation(catalog: &Catalog, docs: &HashMap<String, String>, uri: &str, line
     let base = root.join(ZED_HTTP_DIR);
     let dir = base.join("endpoints");
     let target = endpoint::file_for_source(&dir, &file);
-    let current = docs
-        .get(&path_to_uri(&target))
-        .cloned()
-        .or_else(|| fs::read_to_string(&target).ok());
+    let current = docs.get(&path_to_uri(&target)).cloned().or_else(|| fs::read_to_string(&target).ok());
     let existing = current.as_deref().and_then(|t| endpoint::find_request(t, &name));
 
     let mut changes = Vec::new();
@@ -284,7 +284,9 @@ fn code_lenses(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value
         let line = route.line;
         let Some(g) = generation(catalog, docs, uri, line, root) else { continue };
         let command = match g.existing {
-            Some(at) => json!({ "title": format!("🔗 Open {}", file_name(&g.target)), "command": OPEN, "arguments": [path_to_uri(&g.target), at] }),
+            Some(at) => {
+                json!({ "title": format!("🔗 Open {}", file_name(&g.target)), "command": OPEN, "arguments": [path_to_uri(&g.target), at] })
+            }
             None => json!({ "title": "🌐 Generate .http request", "command": GENERATE, "arguments": [uri, line] }),
         };
         lenses.push(json!({ "range": range_line(line), "command": command }));
@@ -292,7 +294,14 @@ fn code_lenses(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value
     json!(lenses)
 }
 
-fn execute_command(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>, next_id: &mut u64) {
+fn execute_command(
+    catalog: &Catalog,
+    docs: &HashMap<String, String>,
+    params: &Value,
+    root: Option<&Path>,
+    next_id: &mut u64,
+    out: &mut dyn Write,
+) {
     let args = &params["arguments"];
     let (target, at) = match params["command"].as_str() {
         Some(GENERATE) => {
@@ -303,10 +312,13 @@ fn execute_command(catalog: &Catalog, docs: &HashMap<String, String>, params: &V
             } else {
                 let at = appended_line(&g.target, docs);
                 *next_id += 1;
-                write_message(&json!({
-                    "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
-                    "params": { "label": format!("Generate {}", g.title), "edit": g.edit }
-                }));
+                write_message(
+                    out,
+                    &json!({
+                        "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
+                        "params": { "label": format!("Generate {}", g.title), "edit": g.edit }
+                    }),
+                );
                 (g.target, at)
             }
         }
@@ -317,17 +329,21 @@ fn execute_command(catalog: &Catalog, docs: &HashMap<String, String>, params: &V
         _ => return,
     };
     *next_id += 1;
-    write_message(&json!({
-        "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "window/showDocument",
-        "params": { "uri": path_to_uri(&target), "takeFocus": true, "selection": range_line(at) }
-    }));
+    write_message(
+        out,
+        &json!({
+            "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "window/showDocument",
+            "params": { "uri": path_to_uri(&target), "takeFocus": true, "selection": range_line(at) }
+        }),
+    );
 }
 
 fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-fn variable_at(line: &str, utf16_col: usize) -> Option<String> {
+/// The `{{name}}` under the cursor, if any.
+pub fn variable_at(line: &str, utf16_col: usize) -> Option<String> {
     let cursor = byte_index(line, utf16_col);
     let upto = (cursor..=cursor + 2).rev().find(|&e| e <= line.len() && line.is_char_boundary(e))?;
     let open = line[..upto].rfind("{{")?;
@@ -352,9 +368,7 @@ fn definition(t: &Target) -> Option<Value> {
         return Some(location(&t.path, line, col, name));
     }
     let env_dir = find_env_dir(&t.dir)?;
-    let selected = Environments::load(&t.dir)
-        .ok()
-        .and_then(|e| e.select(selected_env().as_deref()).ok().flatten());
+    let selected = Environments::load(&t.dir).ok().and_then(|e| e.select(selected_env().as_deref()).ok().flatten());
     let mut all = Vec::new();
     for file in ["http-client.private.env.json", "http-client.env.json"] {
         let path = env_dir.join(file);
@@ -370,11 +384,7 @@ fn definition(t: &Target) -> Option<Value> {
         .chain(all.iter().filter(|(env, _)| env == "$shared"))
         .map(|(_, l)| l.clone())
         .collect();
-    let result: Vec<Value> = if preferred.is_empty() {
-        all.into_iter().map(|(_, l)| l).collect()
-    } else {
-        preferred
-    };
+    let result: Vec<Value> = if preferred.is_empty() { all.into_iter().map(|(_, l)| l).collect() } else { preferred };
     (!result.is_empty()).then(|| Value::Array(result))
 }
 
@@ -418,7 +428,8 @@ fn selected_env() -> Option<String> {
     std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty())
 }
 
-fn find_file_variable(text: &str, name: &str) -> Option<(usize, usize)> {
+/// Line and column of an `@name =` declaration.
+pub fn find_file_variable(text: &str, name: &str) -> Option<(usize, usize)> {
     text.lines().enumerate().find_map(|(i, line)| {
         let trimmed = line.trim_start();
         let rest = trimmed.strip_prefix('@')?.strip_prefix(name)?;
@@ -427,7 +438,8 @@ fn find_file_variable(text: &str, name: &str) -> Option<(usize, usize)> {
     })
 }
 
-fn find_request_name(text: &str, name: &str) -> Option<(usize, usize)> {
+/// Line and column of a `# @name` declaration.
+pub fn find_request_name(text: &str, name: &str) -> Option<(usize, usize)> {
     text.lines().enumerate().find_map(|(i, line)| {
         let at = line.find("@name")?;
         let rest = line[at + 5..].trim_start_matches(|c: char| c == '=' || c.is_whitespace());
@@ -435,7 +447,8 @@ fn find_request_name(text: &str, name: &str) -> Option<(usize, usize)> {
     })
 }
 
-fn find_env_keys(src: &str, name: &str) -> Vec<(String, usize, usize)> {
+/// Every `(environment, line, column)` a key is declared at in an environment file.
+pub fn find_env_keys(src: &str, name: &str) -> Vec<(String, usize, usize)> {
     let chars: Vec<char> = src.chars().collect();
     let mut found = Vec::new();
     let (mut i, mut line, mut col, mut depth) = (0, 0, 0, 0);
@@ -510,7 +523,8 @@ fn utf16_len(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
-fn uri_to_path(uri: &str) -> Option<PathBuf> {
+/// `file://` URI to a path, undoing percent-encoding and the leading slash of `/C:/…`.
+pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let raw = uri.strip_prefix("file://")?;
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -533,7 +547,8 @@ fn uri_to_path(uri: &str) -> Option<PathBuf> {
     Some(PathBuf::from(path))
 }
 
-fn path_to_uri(path: &Path) -> String {
+/// Path to a `file://` URI.
+pub fn path_to_uri(path: &Path) -> String {
     let s = path.to_string_lossy().replace('\\', "/");
     let mut out = String::from(if s.starts_with('/') { "file://" } else { "file:///" });
     for b in s.bytes() {
@@ -543,42 +558,4 @@ fn path_to_uri(path: &Path) -> String {
         }
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn finds_variable_under_cursor() {
-        let line = "GET {{baseUrl}}/get?x={{ token }}";
-        assert_eq!(variable_at(line, 8).as_deref(), Some("baseUrl"));
-        assert_eq!(variable_at(line, 4).as_deref(), Some("baseUrl"));
-        assert_eq!(variable_at(line, 5).as_deref(), Some("baseUrl"));
-        assert_eq!(variable_at(line, 14).as_deref(), Some("baseUrl"));
-        assert_eq!(variable_at(line, 27).as_deref(), Some("token"));
-        assert_eq!(variable_at(line, 17), None);
-        assert_eq!(variable_at(line, 0), None);
-    }
-
-    #[test]
-    fn finds_env_keys_per_environment() {
-        let src = "{\n  \"$shared\": { \"baseUrl\": \"a\" },\n  \"dev\": {\n    \"baseUrl\": \"b\",\n    \"x\": {\"baseUrl\": 1}\n  }\n}";
-        let keys = find_env_keys(src, "baseUrl");
-        assert_eq!(keys, vec![("$shared".into(), 1, 16), ("dev".into(), 3, 5)]);
-    }
-
-    #[test]
-    fn finds_declarations() {
-        let text = "@token = abc\n### x\n# @name login\nGET /";
-        assert_eq!(find_file_variable(text, "token"), Some((0, 1)));
-        assert_eq!(find_file_variable(text, "tok"), None);
-        assert_eq!(find_request_name(text, "login"), Some((2, 8)));
-    }
-
-    #[test]
-    fn uri_roundtrip() {
-        let p = PathBuf::from("/tmp/my dir/env.json");
-        assert_eq!(uri_to_path(&path_to_uri(&p)).unwrap(), p);
-    }
 }

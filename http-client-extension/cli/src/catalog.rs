@@ -371,12 +371,18 @@ impl Catalog {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn endpoint(&self, lang: &Language, fw: &Framework, def: &RouteDef, hit: &Hit, text: &str, starts: &[usize], line: usize) -> Endpoint {
-        let method = hit
-            .get("method")
-            .map(str::to_uppercase)
-            .or_else(|| def.method.clone())
-            .unwrap_or_else(|| "GET".into());
+    fn endpoint(
+        &self,
+        lang: &Language,
+        fw: &Framework,
+        def: &RouteDef,
+        hit: &Hit,
+        text: &str,
+        starts: &[usize],
+        line: usize,
+    ) -> Endpoint {
+        let method =
+            hit.get("method").map(str::to_uppercase).or_else(|| def.method.clone()).unwrap_or_else(|| "GET".into());
         let mut path = match &def.url {
             Some(t) => fill(t, hit),
             None => hit.get("path").or(hit.get("route")).unwrap_or_default().to_string(),
@@ -475,7 +481,8 @@ impl Catalog {
         // Signature parameters (FastAPI-style): models go to the body, scalars to the query.
         for hit in fw.params.iter().flat_map(|m| m.hits(w)) {
             let Some(name) = hit.get("name") else { continue };
-            if taken.iter().any(|t| t == name) || matches!(name, "self" | "cls") || path_vars.iter().any(|p| p == name) {
+            if taken.iter().any(|t| t == name) || matches!(name, "self" | "cls") || path_vars.iter().any(|p| p == name)
+            {
                 continue;
             }
             match self.ty_of(lang, text, hit.get("type").unwrap_or("str"), 0) {
@@ -521,7 +528,8 @@ impl Catalog {
         vec![]
     }
 
-    fn unwrap_type<'a>(&self, t: &'a str) -> &'a str {
+    /// Strips wrapper types (`Optional<T>`, `Json<T>`…) down to the type they carry.
+    pub fn unwrap_type<'a>(&self, t: &'a str) -> &'a str {
         let mut t = t.trim().trim_start_matches(['&', '*']).trim_end_matches('?');
         t = t.strip_suffix(" | None").unwrap_or(t).trim();
         loop {
@@ -536,7 +544,8 @@ impl Catalog {
         }
     }
 
-    fn ty_of(&self, lang: &Language, text: &str, t: &str, depth: usize) -> Ty {
+    /// Maps a source type to the JSON shape used for sample values.
+    pub fn ty_of(&self, lang: &Language, text: &str, t: &str, depth: usize) -> Ty {
         let t = self.unwrap_type(t);
         if t.starts_with("[]") || t.ends_with("[]") {
             return Ty::List;
@@ -558,7 +567,11 @@ impl Catalog {
             Ty::Str
         } else if depth < 3 && base.chars().next().is_some_and(char::is_uppercase) {
             let fields = self.model_fields(lang, text, base, depth);
-            if fields.is_empty() { Ty::Str } else { Ty::Obj(fields) }
+            if fields.is_empty() {
+                Ty::Str
+            } else {
+                Ty::Obj(fields)
+            }
         } else {
             Ty::Str
         }
@@ -574,7 +587,8 @@ impl Catalog {
             return vec![];
         }
         let Ok(Some(decl)) = Matcher::new(&models.declarations, &[("type", name)]) else { return vec![] };
-        let Some(hit) = decl.hits(text).find(|h| text[h.end..].chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_'))
+        let Some(hit) =
+            decl.hits(text).find(|h| text[h.end..].chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_'))
         else {
             return vec![];
         };
@@ -617,7 +631,9 @@ impl Catalog {
             }
             if line.is_empty()
                 || line.starts_with(['#', '/', '*', '@'])
-                || ["def ", "fn ", "func ", "function ", "return", "class ", "static "].iter().any(|k| line.starts_with(k))
+                || ["def ", "fn ", "func ", "function ", "return", "class ", "static "]
+                    .iter()
+                    .any(|k| line.starts_with(k))
                 || (!parens && line.contains('('))
             {
                 continue;
@@ -642,7 +658,10 @@ impl Catalog {
                 let when = if f.imports.is_empty() {
                     "always".to_string()
                 } else {
-                    format!("when the file contains {}", f.imports.iter().map(|i| format!("`{i}`")).collect::<Vec<_>>().join(" or "))
+                    format!(
+                        "when the file contains {}",
+                        f.imports.iter().map(|i| format!("`{i}`")).collect::<Vec<_>>().join(" or ")
+                    )
                 };
                 let n = f.route_defs.len();
                 let plural = if n == 1 { "" } else { "s" };
@@ -668,7 +687,8 @@ impl Language {
         }
         let models = match l.models {
             Some(m) => Some(Models {
-                fields: compile(&m.fields, &ctx("models.fields"))?.ok_or_else(|| format!("{}: empty", ctx("models.fields")))?,
+                fields: compile(&m.fields, &ctx("models.fields"))?
+                    .ok_or_else(|| format!("{}: empty", ctx("models.fields")))?,
                 declarations: m.declarations,
                 block: m.block,
                 modifiers: m.modifiers,
@@ -679,7 +699,8 @@ impl Language {
             None
         } else {
             let alts = l.class_keywords.iter().map(|k| regex::escape(k)).collect::<Vec<_>>().join("|");
-            Some(Regex::new(&format!(r"\b(?:{alts})\s+\w")).map_err(|e| e.to_string())?)
+            // The keywords are escaped, so the pattern is always a valid regex.
+            Some(Regex::new(&format!(r"\b(?:{alts})\s+\w")).expect("escaped keywords"))
         };
         Ok(Language {
             key: key.to_string(),
@@ -719,7 +740,8 @@ impl Language {
     }
 
     fn find_definition(&self, lines: &[&str], handler: &str) -> Option<usize> {
-        let with_handler: Vec<String> = self.definition_patterns.iter().filter(|p| p.contains("{handler}")).cloned().collect();
+        let with_handler: Vec<String> =
+            self.definition_patterns.iter().filter(|p| p.contains("{handler}")).cloned().collect();
         let m = Matcher::new(&with_handler, &[("handler", handler)]).ok()??;
         lines.iter().position(|l| m.is_match(l))
     }
@@ -732,7 +754,10 @@ impl Language {
         while from > 0 && start - from < 3 {
             let prev = lines[from - 1].trim_end();
             let decorated = self.starts_decorated(prev);
-            if prev.trim().is_empty() || route_lines.contains(&(from - 1)) || (!decorated && prev.ends_with(['}', ';', ')'])) {
+            if prev.trim().is_empty()
+                || route_lines.contains(&(from - 1))
+                || (!decorated && prev.ends_with(['}', ';', ')']))
+            {
                 break;
             }
             from -= 1;
@@ -849,7 +874,8 @@ fn join(prefix: &str, path: &str) -> String {
 }
 
 /// Converts framework path parameters to `{{name}}` in one pass (so results are never re-converted).
-fn convert_params(path: &str, styles: &[Style]) -> String {
+/// Converts framework path parameters to `{{name}}`.
+pub fn convert_params(path: &str, styles: &[Style]) -> String {
     let mut alts = Vec::new();
     for style in [Style::Dollar, Style::Braces, Style::Angle, Style::Colon] {
         if styles.contains(&style) {
@@ -861,9 +887,7 @@ fn convert_params(path: &str, styles: &[Style]) -> String {
             });
         }
     }
-    if alts.is_empty() {
-        return path.to_string();
-    }
+    // `path_params` always holds at least one style (see `Framework::compile`).
     let re = Regex::new(&alts.join("|")).unwrap();
     re.replace_all(path, |c: &regex::Captures| {
         let lead = c.name("lead").map_or("", |m| m.as_str());
@@ -916,201 +940,4 @@ fn top_level(body: &str) -> String {
         }
     }
     out.replace(';', ";\n")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::infer::Ty;
-
-    fn ext_of(l: &Language) -> String {
-        l.extensions.iter().find(|e| *e != "*").cloned().unwrap_or_else(|| "txt".into())
-    }
-
-    /// Every framework's `examples` in frameworks.json must produce exactly its `expect` list.
-    #[test]
-    fn framework_examples() {
-        let c = Catalog::builtin();
-        let mut failures = Vec::new();
-        let mut count = 0;
-        for l in &c.languages {
-            for f in &l.frameworks {
-                assert!(!f.examples.is_empty(), "{}/{} has no examples", l.key, f.key);
-                for ex in &f.examples {
-                    count += 1;
-                    let path = PathBuf::from(format!("example.{}", ext_of(l)));
-                    let got: Vec<String> = c
-                        .routes(&ex.code, &path)
-                        .iter()
-                        .filter(|r| r.framework == format!("{}/{}", l.key, f.key))
-                        .map(|r| format!("{} {}", r.endpoint.method, r.endpoint.url))
-                        .collect();
-                    if got != ex.expect {
-                        failures.push(format!("{}/{}:\n  code: {:?}\n  expected: {:?}\n  got:      {:?}", l.key, f.key, ex.code, ex.expect, got));
-                    }
-                }
-            }
-        }
-        assert!(failures.is_empty(), "{} of {count} examples failed:\n{}", failures.len(), failures.join("\n"));
-    }
-
-    /// Every framework must have an example file under `examples/code/` that `detect` attributes to it,
-    /// so the examples folder always covers the whole catalog.
-    #[test]
-    fn every_framework_has_an_example_file() {
-        let c = Catalog::builtin();
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/code");
-        let mut found: BTreeSet<String> = BTreeSet::new();
-        for lang_dir in fs::read_dir(&dir).expect("examples/code").flatten() {
-            for file in fs::read_dir(lang_dir.path()).expect("language dir").flatten() {
-                let path = file.path();
-                let Ok(text) = fs::read_to_string(&path) else { continue };
-                found.extend(c.routes(&text, &path).into_iter().map(|r| r.framework));
-            }
-        }
-        let missing: Vec<String> = c
-            .languages
-            .iter()
-            .flat_map(|l| l.frameworks.iter().map(move |f| format!("{}/{}", l.key, f.key)))
-            // Weak-only matchers have no lens and no example of their own.
-            .filter(|k| k != "*/url-literal" && !found.contains(k))
-            .collect();
-        assert!(missing.is_empty(), "no example file for: {}", missing.join(", "));
-    }
-
-    /// The language server is attached to languages by their Zed names listed in extension.toml.
-    #[test]
-    fn zed_languages_registered() {
-        let manifest = include_str!("../../extension.toml");
-        for l in &Catalog::builtin().languages {
-            for z in &l.zed {
-                assert!(manifest.contains(&format!("\"{z}\"")), "{z} ({}) is missing in extension.toml", l.key);
-            }
-        }
-    }
-
-    #[test]
-    fn project_catalog_extends_builtin() {
-        let extra = r#"{ "languages": { "dart": { "frameworks": { "my-client": {
-            "name": "My client", "imports": ["my_client.dart"],
-            "routes": ["api.call(\"{method}\", \"{route}\""],
-            "examples": [{ "code": "api.call('POST', '/x')", "expect": ["POST {{baseUrl}}/x"] }]
-        } } } } }"#;
-        let c = Catalog::from_sources(&[BUILTIN, extra]).unwrap();
-        let dart = c.languages.iter().find(|l| l.key == "dart").unwrap();
-        assert!(dart.frameworks.iter().any(|f| f.key == "dio"), "built-in frameworks are kept");
-        let routes = c.routes("import 'my_client.dart';\napi.call('POST', '/x/$id');", Path::new("a.dart"));
-        assert_eq!(routes[0].endpoint.url, "{{baseUrl}}/x/{{id}}");
-        assert_eq!(routes[0].framework, "dart/my-client");
-
-        let bad = r#"{ "languages": { "dart": { "frameworks": { "x": { "name": "x", "routes": ["{nope}"] } } } } }"#;
-        let err = Catalog::from_sources(&[BUILTIN, bad]).err().unwrap();
-        assert!(err.contains("languages.dart.frameworks.x.routes") && err.contains("{nope}"), "{err}");
-        let typo = r#"{ "languages": { "dart": { "frameworks": { "x": { "name": "x", "routs": [] } } } } }"#;
-        assert!(Catalog::from_sources(&[BUILTIN, typo]).err().unwrap().contains("routs"));
-    }
-
-    fn req(code: &str, file: &str, line: usize) -> Spec {
-        let (_, spec, _) = Catalog::builtin().request(code, Path::new(file), line).expect("route on line");
-        spec
-    }
-
-    fn names(v: &[(String, Ty)]) -> Vec<&str> {
-        v.iter().map(|(n, _)| n.as_str()).collect()
-    }
-
-    #[test]
-    fn infer_spring() {
-        let java = r#"import org.springframework.web.bind.annotation.*;
-@RestController
-@RequestMapping("/api/users")
-public class C {
-    @PostMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public User create(@PathVariable long id, @RequestParam(defaultValue = "1") int page,
-                       @RequestHeader("X-Request-Id") String rid, @RequestBody CreateUser body) {}
-}
-public record CreateUser(String name, int age, List<String> tags, Address address) {}
-class Address {
-    private String city;
-    private boolean primary;
-    public String getCity() { return city; }
-}
-"#;
-        let s = req(java, "C.java", 4);
-        assert_eq!(s.query, vec![("page".into(), Ty::Int)]);
-        assert_eq!(s.headers, vec!["X-Request-Id"]);
-        assert!(s.auth);
-        let body = s.body.unwrap();
-        assert_eq!(names(&body), vec!["name", "age", "tags", "address"]);
-        assert_eq!(body[3].1, Ty::Obj(vec![("city".into(), Ty::Str), ("primary".into(), Ty::Bool)]));
-    }
-
-    #[test]
-    fn infer_dart() {
-        let dart = r#"import 'package:retrofit/retrofit.dart';
-import 'package:dio/dio.dart';
-class Item {
-  final int id;
-  final String title;
-  final bool done;
-}
-abstract class TaskApi {
-  @PUT('/tasks/{id}')
-  Future<Task> update(@Path('id') String id, @Query('notify') bool notify, @Header('X-Trace') String t, @Body() Item item);
-}
-Future f(Dio dio, String token) => dio.post('/login', data: {'email': e, 'password': p}, options: Options(headers: {'Authorization': 'Bearer $token'}));
-"#;
-        let s = req(dart, "a.dart", 8);
-        assert_eq!(s.query, vec![("notify".into(), Ty::Bool)]);
-        assert_eq!(s.headers, vec!["X-Trace"]);
-        assert_eq!(names(&s.body.unwrap()), vec!["id", "title", "done"]);
-        let s = req(dart, "a.dart", 11);
-        assert!(s.auth);
-        assert_eq!(names(&s.body.unwrap()), vec!["email", "password"]);
-    }
-
-    #[test]
-    fn infer_fastapi() {
-        let py = r#"from fastapi import FastAPI, Header
-class ItemIn(BaseModel):
-    name: str
-    price: float
-    tags: list[str] = []
-
-@app.post("/items/{item_id}")
-def create(item_id: int, item: ItemIn, q: str | None = None, x_token: str = Header(None)):
-    pass
-"#;
-        let s = req(py, "main.py", 6);
-        assert_eq!(s.query, vec![("q".into(), Ty::Str)]);
-        assert_eq!(s.headers, vec!["X-Token"]);
-        assert_eq!(s.body.unwrap(), vec![("name".into(), Ty::Str), ("price".into(), Ty::Float), ("tags".into(), Ty::List)]);
-    }
-
-    #[test]
-    fn infer_express_go_rust() {
-        let ts = "import express from 'express';\napp.post('/users', auth, (req, res) => {\n  const { name, email } = req.body;\n  const page = req.query.page;\n  const t = req.header('X-Tenant');\n});";
-        let s = req(ts, "s.ts", 1);
-        assert_eq!(names(&s.body.unwrap()), vec!["name", "email"]);
-        assert_eq!(names(&s.query), vec!["page"]);
-        assert_eq!(s.headers, vec!["X-Tenant"]);
-
-        let go = "import \"net/http\"\ntype Order struct {\n\tID    int    `json:\"id\"`\n\tItems []Item `json:\"items\"`\n}\nfunc main() {\n\tmux.HandleFunc(\"POST /orders\", createOrder)\n}\nfunc createOrder(w http.ResponseWriter, r *http.Request) {\n\tvar o Order\n\tjson.NewDecoder(r.Body).Decode(&o)\n\tr.URL.Query().Get(\"dry\")\n}";
-        let s = req(go, "m.go", 6);
-        assert_eq!(s.body.unwrap(), vec![("id".into(), Ty::Int), ("items".into(), Ty::List)]);
-        assert_eq!(names(&s.query), vec!["dry"]);
-
-        let rs = "use axum::Router;\n#[derive(Deserialize)]\nstruct CreateUser {\n    pub name: String,\n    admin: bool,\n}\nfn r() { Router::new().route(\"/users\", post(create_user)); }\nasync fn create_user(Json(body): Json<CreateUser>) {}";
-        let s = req(rs, "m.rs", 6);
-        assert_eq!(s.body.unwrap(), vec![("name".into(), Ty::Str), ("admin".into(), Ty::Bool)]);
-    }
-
-    #[test]
-    fn path_params() {
-        assert_eq!(convert_params("/a/{id}/b/{n:int}/{o?}", &[Style::Braces]), "/a/{{id}}/b/{{n}}/{{o}}");
-        assert_eq!(convert_params("$base/x/${item.id}/$y", &[Style::Dollar]), "{{base}}/x/{{id}}/{{y}}");
-        assert_eq!(convert_params("/a/:id/<int:n>", &[Style::Colon, Style::Angle]), "/a/{{id}}/{{n}}");
-        assert_eq!(convert_params("http://h:8080/x", &[Style::Colon]), "http://h:8080/x");
-    }
 }

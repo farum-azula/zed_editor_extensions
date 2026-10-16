@@ -4,9 +4,15 @@ version = "0.2.0"
 edition = "2021"
 description = "IntelliJ-style .http file runner used by the Zed HTTP Client extension"
 
+[lib]
+test = false
+name = "zed_http"
+path = "src/lib.rs"
+
 [[bin]]
 name = "zed-http"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 ureq = { version = "2", default-features = false, features = ["tls", "native-certs"] }
