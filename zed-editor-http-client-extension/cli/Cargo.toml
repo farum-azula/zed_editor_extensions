@@ -1,0 +1,16 @@
+[package]
+name = "zed-http"
+version = "0.1.0"
+edition = "2021"
+description = "IntelliJ-style .http file runner used by the Zed HTTP Client extension"
+
+[[bin]]
+name = "zed-http"
+path = "src/main.rs"
+
+[dependencies]
+ureq = { version = "2", default-features = false, features = ["tls", "native-certs"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rand = "0.8"
+base64 = "0.22"

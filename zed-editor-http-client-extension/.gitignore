@@ -1,0 +1,5 @@
+target/
+grammars/
+*.wasm
+http-client.private.env.json
+.zed-http/

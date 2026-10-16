@@ -1,0 +1,16 @@
+[
+  {
+    "label": "HTTP: $ZED_CUSTOM_method $ZED_CUSTOM_url",
+    "command": "zed-http",
+    "args": ["run", "\"$ZED_FILE\"", "--line", "$ZED_ROW"],
+    "tags": ["http-request"],
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "HTTP: run all requests in $ZED_FILENAME",
+    "command": "zed-http",
+    "args": ["run", "\"$ZED_FILE\"", "--all"]
+  }
+]

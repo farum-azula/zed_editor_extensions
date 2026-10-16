@@ -1,0 +1,31 @@
+@token = demo-token
+
+### Simple GET
+# @name ip
+GET {{baseUrl}}/get?client=zed
+Accept: application/json
+
+### POST JSON with dynamic variables
+# @name created
+POST {{baseUrl}}/post
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "id": "{{$uuid}}",
+  "createdAt": "{{$isoTimestamp}}",
+  "score": {{$randomInt 1 100}}
+}
+
+### Use a value from a previous response
+GET {{baseUrl}}/headers
+X-Request-Id: {{created.response.body.json.id}}
+
+### Basic auth (IntelliJ shorthand)
+GET {{baseUrl}}/basic-auth/user/passwd
+Authorization: Basic user passwd
+
+### Save response to file
+GET {{baseUrl}}/uuid
+
+>> ./out/uuid.json

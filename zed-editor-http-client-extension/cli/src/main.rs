@@ -1,0 +1,387 @@
+mod lsp;
+mod parser;
+mod vars;
+
+use parser::{Body, HttpFile, Request};
+use serde_json::Value;
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::{Duration, Instant};
+use vars::{Context, Environments};
+
+const USAGE: &str = "\
+zed-http — IntelliJ-style .http file runner
+
+USAGE:
+    zed-http run <file.http> [--line N | --name NAME | --all] [--env ENV] [--raw] [--timeout SECS]
+    zed-http list <file.http>
+    zed-http envs <file.http>
+    zed-http lsp
+
+The environment can also be set with the HTTP_CLIENT_ENV variable.
+Responses are saved to `.zed-http/` next to the .http file.";
+
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const RED: &str = "\x1b[31m";
+const CYAN: &str = "\x1b[36m";
+
+#[derive(Default)]
+struct Opts {
+    command: String,
+    file: PathBuf,
+    line: Option<usize>,
+    name: Option<String>,
+    all: bool,
+    env: Option<String>,
+    raw: bool,
+    timeout: u64,
+}
+
+fn parse_args() -> Result<Opts, String> {
+    let mut args = std::env::args().skip(1);
+    let mut o = Opts { timeout: 60, ..Default::default() };
+    o.command = args.next().ok_or(USAGE)?;
+    if matches!(o.command.as_str(), "-h" | "--help" | "help") {
+        return Err(USAGE.into());
+    }
+    while let Some(a) = args.next() {
+        let mut val = |n: &str| args.next().ok_or_else(|| format!("{n} requires a value"));
+        match a.as_str() {
+            "--line" | "-l" => o.line = Some(val("--line")?.parse().map_err(|_| "invalid --line")?),
+            "--name" | "-n" => o.name = Some(val("--name")?),
+            "--env" | "-e" => o.env = Some(val("--env")?),
+            "--timeout" => o.timeout = val("--timeout")?.parse().map_err(|_| "invalid --timeout")?,
+            "--all" | "-a" => o.all = true,
+            "--raw" => o.raw = true,
+            s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
+            s => o.file = PathBuf::from(s),
+        }
+    }
+    if o.file.as_os_str().is_empty() {
+        return Err(format!("missing <file.http>\n\n{USAGE}"));
+    }
+    if o.env.is_none() {
+        o.env = std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty());
+    }
+    Ok(o)
+}
+
+fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("lsp") {
+        lsp::serve();
+        return ExitCode::SUCCESS;
+    }
+    let opts = match parse_args() {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    match run(opts) {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(1),
+        Err(e) => {
+            eprintln!("{RED}error:{RESET} {e}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn run(o: Opts) -> Result<bool, String> {
+    let src = fs::read_to_string(&o.file).map_err(|e| format!("{}: {e}", o.file.display()))?;
+    let file = parser::parse(&src);
+    let dir = o.file.parent().map(Path::to_path_buf).unwrap_or_default();
+    let dir = if dir.as_os_str().is_empty() { PathBuf::from(".") } else { dir };
+    let envs = Environments::load(&dir)?;
+
+    match o.command.as_str() {
+        "envs" => {
+            for n in &envs.names {
+                println!("{n}");
+            }
+            Ok(true)
+        }
+        "list" => {
+            for r in &file.requests {
+                let label = r.name.as_ref().or(r.title.as_ref()).map(|s| format!("  {DIM}({s}){RESET}"));
+                println!("{:>4}: {BOLD}{}{RESET} {}{}", r.start_line, r.method, r.url, label.unwrap_or_default());
+            }
+            Ok(true)
+        }
+        "run" => {
+            let env = envs.select(o.env.as_deref())?;
+            let selected = select_requests(&file, &o)?;
+            let store_path = dir.join(".zed-http").join("responses.json");
+            let mut ctx = Context {
+                vars: envs.vars(env.as_deref()),
+                responses: load_store(&store_path),
+            };
+            ctx.vars.extend(file.variables.iter().cloned());
+
+            if let Some(e) = &env {
+                println!("{DIM}environment: {e}{RESET}");
+            }
+            let mut ok = true;
+            for (i, req) in selected.iter().enumerate() {
+                if i > 0 {
+                    println!("\n{DIM}{}{RESET}\n", "─".repeat(60));
+                }
+                match execute(req, &mut ctx, &dir, &o) {
+                    Ok(success) => ok &= success,
+                    Err(e) => {
+                        eprintln!("{RED}error:{RESET} {e}");
+                        ok = false;
+                    }
+                }
+            }
+            save_store(&store_path, &ctx.responses);
+            Ok(ok)
+        }
+        other => Err(format!("unknown command `{other}`\n\n{USAGE}")),
+    }
+}
+
+fn select_requests<'a>(file: &'a HttpFile, o: &Opts) -> Result<Vec<&'a Request>, String> {
+    if file.requests.is_empty() {
+        return Err("no requests found in file".into());
+    }
+    if o.all {
+        return Ok(file.requests.iter().collect());
+    }
+    if let Some(n) = &o.name {
+        return file
+            .requests
+            .iter()
+            .find(|r| r.name.as_deref() == Some(n) || r.title.as_deref() == Some(n))
+            .map(|r| vec![r])
+            .ok_or_else(|| format!("request `{n}` not found"));
+    }
+    let line = o.line.ok_or("specify --line, --name or --all")?;
+    file.requests
+        .iter()
+        .find(|r| line >= r.start_line && line <= r.end_line)
+        .or_else(|| file.requests.iter().rev().find(|r| r.start_line <= line))
+        .map(|r| vec![r])
+        .ok_or_else(|| format!("no request at line {line}"))
+}
+
+fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<bool, String> {
+    let url = ctx.resolve(&req.url)?;
+    let url = if url.contains("://") { url } else { format!("http://{url}") };
+    let mut headers = Vec::new();
+    for (k, v) in &req.headers {
+        let mut v = ctx.resolve(v)?;
+        if k.eq_ignore_ascii_case("authorization") {
+            v = expand_basic_auth(&v);
+        }
+        headers.push((ctx.resolve(k)?, v));
+    }
+    let body: Option<Vec<u8>> = match &req.body {
+        None => None,
+        Some(Body::Inline(b)) => Some(resolve_body(ctx, b, dir)?.into_bytes()),
+        Some(Body::File(p)) => {
+            let p = ctx.resolve(p)?;
+            let path = dir.join(&p);
+            Some(fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?)
+        }
+    };
+
+    println!("{BOLD}{CYAN}{}{RESET} {BOLD}{url}{RESET}", req.method);
+    for (k, v) in &headers {
+        println!("{DIM}{k}: {v}{RESET}");
+    }
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(o.timeout))
+        .redirects(if req.no_redirect { 0 } else { 10 })
+        .build();
+    let mut call = agent.request(&req.method, &url);
+    for (k, v) in &headers {
+        call = call.set(k, v);
+    }
+
+    let started = Instant::now();
+    let result = match &body {
+        Some(b) => call.send_bytes(b),
+        None => call.call(),
+    };
+    let resp = match result {
+        Ok(r) => r,
+        Err(ureq::Error::Status(_, r)) => r,
+        Err(ureq::Error::Transport(t)) => return Err(format!("request failed: {t}")),
+    };
+
+    let status = resp.status();
+    let status_text = resp.status_text().to_string();
+    let version = resp.http_version().to_string();
+    let mut resp_headers = serde_json::Map::new();
+    let mut header_lines = Vec::new();
+    for name in resp.headers_names() {
+        for v in resp.all(&name) {
+            header_lines.push(format!("{name}: {v}"));
+            resp_headers.insert(name.clone(), Value::String(v.to_string()));
+        }
+    }
+    let content_type = resp.content_type().to_string();
+    let mut bytes = Vec::new();
+    resp.into_reader()
+        .take(256 * 1024 * 1024)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("failed to read response: {e}"))?;
+    let elapsed = started.elapsed();
+
+    let color = match status {
+        200..=299 => GREEN,
+        300..=399 => YELLOW,
+        _ => RED,
+    };
+    println!(
+        "\n{BOLD}{version} {color}{status} {status_text}{RESET}  {DIM}{} ms · {}{RESET}",
+        elapsed.as_millis(),
+        human_size(bytes.len())
+    );
+    for h in &header_lines {
+        println!("{DIM}{h}{RESET}");
+    }
+    println!();
+
+    let text = String::from_utf8_lossy(&bytes);
+    let json: Option<Value> = serde_json::from_slice(&bytes).ok();
+    let pretty = match (&json, o.raw) {
+        (Some(j), false) => serde_json::to_string_pretty(j).unwrap_or_else(|_| text.to_string()),
+        _ => text.to_string(),
+    };
+    if is_textual(&content_type) || json.is_some() {
+        println!("{pretty}");
+    } else {
+        println!("{DIM}<{} of binary data ({content_type})>{RESET}", human_size(bytes.len()));
+    }
+
+    let key = req.name.clone().unwrap_or_else(|| format!("line-{}", req.start_line));
+    ctx.responses.insert(
+        key.clone(),
+        serde_json::json!({
+            "status": status,
+            "headers": resp_headers,
+            "body": json.clone().unwrap_or_else(|| Value::String(text.to_string())),
+        }),
+    );
+    let ext = extension_for(&content_type, json.is_some());
+    let out_dir = dir.join(".zed-http");
+    let saved = out_dir.join(format!("{}.{ext}", sanitize(&key)));
+    if fs::create_dir_all(&out_dir).is_ok() {
+        let data = if json.is_some() { pretty.into_bytes() } else { bytes.clone() };
+        if fs::write(&saved, data).is_ok() {
+            println!("\n{DIM}saved: {}{RESET}", saved.display());
+        }
+    }
+
+    if let Some((target, force)) = &req.redirect {
+        let target = dir.join(ctx.resolve(target)?);
+        let target = if !*force && target.exists() { unique_path(&target) } else { target };
+        if let Some(p) = target.parent() {
+            let _ = fs::create_dir_all(p);
+        }
+        fs::write(&target, &bytes).map_err(|e| format!("{}: {e}", target.display()))?;
+        println!("{DIM}written to: {}{RESET}", target.display());
+    }
+
+    Ok(status < 400)
+}
+
+fn resolve_body(ctx: &Context, body: &str, dir: &Path) -> Result<String, String> {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        if let Some(p) = line.trim().strip_prefix("< ") {
+            let path = dir.join(ctx.resolve(p.trim())?);
+            out.push(fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?);
+        } else {
+            out.push(ctx.resolve(line)?);
+        }
+    }
+    Ok(out.join("\n"))
+}
+
+fn expand_basic_auth(v: &str) -> String {
+    use base64::Engine;
+    if let Some(rest) = v.strip_prefix("Basic ") {
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.len() == 2 || (parts.len() == 1 && parts[0].contains(':') && !rest.ends_with('=')) {
+            let creds = if parts.len() == 2 { format!("{}:{}", parts[0], parts[1]) } else { parts[0].to_string() };
+            return format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(creds));
+        }
+    }
+    v.to_string()
+}
+
+fn is_textual(ct: &str) -> bool {
+    ct.starts_with("text/")
+        || ["json", "xml", "javascript", "html", "yaml", "x-www-form-urlencoded", "graphql"]
+            .iter()
+            .any(|t| ct.contains(t))
+        || ct.is_empty()
+}
+
+fn extension_for(ct: &str, is_json: bool) -> &'static str {
+    if is_json {
+        "json"
+    } else if ct.contains("html") {
+        "html"
+    } else if ct.contains("xml") {
+        "xml"
+    } else if ct.contains("yaml") {
+        "yaml"
+    } else if ct.contains("png") {
+        "png"
+    } else if ct.contains("jpeg") {
+        "jpg"
+    } else if is_textual(ct) {
+        "txt"
+    } else {
+        "bin"
+    }
+}
+
+fn sanitize(s: &str) -> String {
+    s.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect()
+}
+
+fn unique_path(p: &Path) -> PathBuf {
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("response");
+    let ext = p.extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+    (1..)
+        .map(|i| p.with_file_name(format!("{stem}-{i}{ext}")))
+        .find(|c| !c.exists())
+        .unwrap()
+}
+
+fn human_size(n: usize) -> String {
+    match n {
+        n if n < 1024 => format!("{n} B"),
+        n if n < 1024 * 1024 => format!("{:.1} KB", n as f64 / 1024.0),
+        n => format!("{:.1} MB", n as f64 / 1024.0 / 1024.0),
+    }
+}
+
+fn load_store(path: &Path) -> serde_json::Map<String, Value> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
+    if let Some(p) = path.parent() {
+        let _ = fs::create_dir_all(p);
+    }
+    if let Ok(s) = serde_json::to_string_pretty(store) {
+        let _ = fs::write(path, s);
+    }
+}
