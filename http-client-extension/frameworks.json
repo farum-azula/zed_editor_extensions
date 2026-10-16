@@ -10,6 +10,11 @@
     "wrappers": ["Optional", "Option", "Mono", "Future", "Promise", "ResponseEntity", "Json", "Query", "Form", "Body", "Valid", "Nullable", "Annotated", "Task", "ActionResult", "web::Json", "web::Query", "web::Form"]
   },
   "auth": ["Authorization", "Bearer", "\"authorization\""],
+  "urls": {
+    "assignments": ["{var} = {expr}", "{var}: {expr}", "{var} => {expr}"],
+    "literals": ["\"{path}\""],
+    "env": ["env(\"{name}\")", "env[\"{name}\"]", "ENV[\"{name}\"]", "env.get(\"{name}\")", "environ[\"{name}\"]", "environ.get(\"{name}\")", "process.env.{name}", "GetEnvironmentVariable(\"{name}\")"]
+  },
   "languages": {
     "java": {
       "name": "Java",
@@ -181,11 +186,15 @@
           "name": "Ktor client",
           "docs": "https://ktor.io/docs/client-requests.html",
           "imports": ["io.ktor.client"],
-          "routes": [".{method}(\"{route}\""],
+          "routes": [".{method}(\"{route}\"", ".{method}({ref})", ".{method}({ref},"],
           "path_params": ["dollar"],
           "body": ["setBody({var})"],
           "examples": [
-            { "code": "import io.ktor.client.*\nsuspend fun f() = client.get(\"https://ktor.io/docs/$page\")", "expect": ["GET https://ktor.io/docs/{{page}}"] }
+            { "code": "import io.ktor.client.*\nsuspend fun f() = client.get(\"https://ktor.io/docs/$page\")", "expect": ["GET https://ktor.io/docs/{{page}}"] },
+            {
+              "code": "import io.ktor.client.request.*\nval endpoint = System.getenv(\"API_URL\")\nsuspend fun load(client: HttpClient) = client.get(endpoint)",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         },
         "retrofit": {
@@ -235,7 +244,7 @@
           "name": "Dio",
           "docs": "https://pub.dev/packages/dio",
           "imports": ["package:dio/"],
-          "routes": [".{method}{generic}(\"{route}\""],
+          "routes": [".{method}{generic}(\"{route}\"", ".{method}{generic}({ref})", ".{method}{generic}({ref},"],
           "path_params": ["dollar", "braces"],
           "query": ["queryParameters: {keys}"],
           "headers": ["headers: {keys}"],
@@ -244,6 +253,10 @@
             {
               "code": "import 'package:dio/dio.dart';\nfinal a = _dio.post<Map<String, dynamic>>('/auth/login', data: {});\nfinal b = dio.get('/users/$id');",
               "expect": ["POST {{baseUrl}}/auth/login", "GET {{baseUrl}}/users/{{id}}"]
+            },
+            {
+              "code": "import 'package:dio/dio.dart';\nfinal baseUrl = '$host/v2';\nFuture<Response> items(Dio dio) => dio.get(baseUrl);",
+              "expect": ["GET {{host}}/v2"]
             }
           ]
         },
@@ -254,7 +267,9 @@
           "routes": [
             ".{method}(Uri.parse(\"{path}\")",
             { "pattern": ".{method}(Uri.https(\"{host}\", \"{path}\"", "url": "https://{host}{path}" },
-            { "pattern": ".{method}(Uri.http(\"{host}\", \"{path}\"", "url": "http://{host}{path}" }
+            { "pattern": ".{method}(Uri.http(\"{host}\", \"{path}\"", "url": "http://{host}{path}" },
+            ".{method}({ref})",
+            ".{method}({ref},"
           ],
           "path_params": ["dollar"],
           "query": ["Uri.https(\"{host}\", \"{path}\", {keys}"],
@@ -264,6 +279,10 @@
             {
               "code": "import 'package:http/http.dart' as http;\nf() => http.put(Uri.parse('$baseUrl/items/${item.id}'));\ng() => http.delete(Uri.https('api.example.com', '/v1/tasks/$id'));",
               "expect": ["PUT {{baseUrl}}/items/{{id}}", "DELETE https://api.example.com/v1/tasks/{{id}}"]
+            },
+            {
+              "code": "import 'package:http/http.dart' as http;\nclass Ai {\n  late final Uri _endpoint;\n  void install() => _endpoint = Uri.parse(dotenv.get('GROQ_URL'));\n  Future<Response> send(String prompt) => http.post(\n        _endpoint,\n        headers: {'Content-Type': 'application/json'},\n      );\n}",
+              "expect": ["POST {{GROQ_URL}}"]
             }
           ]
         },
@@ -401,13 +420,17 @@
           "name": "Axios",
           "docs": "https://axios-http.com/docs/api_intro",
           "imports": ["axios"],
-          "routes": ["axios.{method}{generic}(\"{path}\"", "{_}.{method}{generic}(\"{route}\"", "axios({{ method: \"{method}\", url: \"{path}\""],
+          "routes": ["axios.{method}{generic}(\"{path}\"", "{_}.{method}{generic}(\"{route}\"", "axios({{ method: \"{method}\", url: \"{path}\"", ".{method}{generic}({ref})", ".{method}{generic}({ref},"],
           "path_params": ["dollar", "colon"],
           "query": ["params: {keys}"],
           "headers": ["headers: {keys}"],
           "body": [".{method}{generic}(\"{path}\", {keys}", ".{method}{generic}(\"{path}\", {var}", "data: {keys}"],
           "examples": [
-            { "code": "import axios from 'axios';\naxios.post('/api/login', { email, password });\napi.get<User>(`/users/${id}`);", "expect": ["POST {{baseUrl}}/api/login", "GET {{baseUrl}}/users/{{id}}"] }
+            { "code": "import axios from 'axios';\naxios.post('/api/login', { email, password });\napi.get<User>(`/users/${id}`);", "expect": ["POST {{baseUrl}}/api/login", "GET {{baseUrl}}/users/{{id}}"] },
+            {
+              "code": "import axios from 'axios';\nconst endpoint = process.env.API_URL;\nexport const list = () => axios.get(endpoint);",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         },
         "angular": {
@@ -425,12 +448,16 @@
         "fetch": {
           "name": "fetch",
           "docs": "https://developer.mozilla.org/docs/Web/API/Fetch_API",
-          "routes": ["fetch(\"{path}\", {{ method: \"{method}\"", "fetch(\"{path}\"...method: \"{method}\"", "fetch(\"{path}\""],
+          "routes": ["fetch(\"{path}\", {{ method: \"{method}\"", "fetch(\"{path}\"...method: \"{method}\"", "fetch(\"{path}\"", "fetch({ref})", "fetch({ref},"],
           "path_params": ["dollar"],
           "headers": ["headers: {keys}"],
           "body": ["body: JSON.stringify({keys})", "body: JSON.stringify({var})"],
           "examples": [
-            { "code": "await fetch(`https://api.example.com/orders/${orderId}`, { method: \"DELETE\" });\nfetch('/api/me');", "expect": ["DELETE https://api.example.com/orders/{{orderId}}", "GET {{baseUrl}}/api/me"] }
+            { "code": "await fetch(`https://api.example.com/orders/${orderId}`, { method: \"DELETE\" });\nfetch('/api/me');", "expect": ["DELETE https://api.example.com/orders/{{orderId}}", "GET {{baseUrl}}/api/me"] },
+            {
+              "code": "const apiUrl = 'https://api.example.com/v1/users';\nexport const load = () => fetch(apiUrl);",
+              "expect": ["GET https://api.example.com/v1/users"]
+            }
           ]
         }
       }
@@ -498,13 +525,17 @@
           "name": "requests / httpx / aiohttp",
           "docs": "https://requests.readthedocs.io/",
           "imports": ["requests", "httpx", "aiohttp"],
-          "routes": ["{_}.{method}(\"{route}\"", "{_}.{method}(f\"{path}\""],
+          "routes": ["{_}.{method}(\"{route}\"", "{_}.{method}(f\"{path}\"", ".{method}({ref})", ".{method}({ref},"],
           "path_params": ["braces"],
           "query": ["params={keys}"],
           "headers": ["headers={keys}"],
           "body": ["json={keys}", "json={var}", "data={keys}"],
           "examples": [
-            { "code": "import requests\nr = requests.post(\"https://e.com/api\", json={\"a\": 1})", "expect": ["POST https://e.com/api"] }
+            { "code": "import requests\nr = requests.post(\"https://e.com/api\", json={\"a\": 1})", "expect": ["POST https://e.com/api"] },
+            {
+              "code": "import os\nimport requests\nBASE_URL = os.environ[\"API_URL\"]\ndef users():\n    return requests.get(BASE_URL)",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         }
       }
@@ -549,14 +580,20 @@
             "http.{method}(\"{route}\"",
             "http.NewRequest(\"{method}\", \"{path}\"",
             "http.NewRequestWithContext({_}, \"{method}\", \"{path}\"",
-            "http.NewRequest(http.Method{method}, \"{path}\""
+            "http.NewRequest(http.Method{method}, \"{path}\"",
+            "http.{method}({ref})",
+            "http.NewRequest(\"{method}\", {ref},"
           ],
           "path_params": ["braces"],
           "query": ["URL.Query().Get(\"{name}\")", "FormValue(\"{name}\")"],
           "headers": ["Header.Get(\"{name}\")", "Header.Set(\"{name}\""],
           "body": ["Decode(&{var})", "json.Unmarshal({_}, &{var})"],
           "examples": [
-            { "code": "import \"net/http\"\nmux.HandleFunc(\"POST /orders\", createOrder)\nmux.HandleFunc(\"/health\", health)\nreq, _ := http.NewRequest(http.MethodDelete, \"https://api.x.io/v1/a\", nil)", "expect": ["POST {{baseUrl}}/orders", "GET {{baseUrl}}/health", "DELETE https://api.x.io/v1/a"] }
+            { "code": "import \"net/http\"\nmux.HandleFunc(\"POST /orders\", createOrder)\nmux.HandleFunc(\"/health\", health)\nreq, _ := http.NewRequest(http.MethodDelete, \"https://api.x.io/v1/a\", nil)", "expect": ["POST {{baseUrl}}/orders", "GET {{baseUrl}}/health", "DELETE https://api.x.io/v1/a"] },
+            {
+              "code": "import \"net/http\"\nvar endpoint = os.Getenv(\"API_URL\")\nfunc list() { http.Get(endpoint) }",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         },
         "gin": {
@@ -670,14 +707,18 @@
           "name": "reqwest",
           "docs": "https://docs.rs/reqwest/latest/reqwest/",
           "imports": ["reqwest"],
-          "routes": ["reqwest::{method}(\"{route}\")", "{_}.{method}(\"{route}\")", "{_}.{method}(format!(\"{path}\""],
+          "routes": ["reqwest::{method}(\"{route}\")", "{_}.{method}(\"{route}\")", "{_}.{method}(format!(\"{path}\"", ".{method}({ref})"],
           "path_params": ["braces"],
           "query": [".query(&[(\"{name}\""],
           "headers": [".header(\"{name}\""],
           "body": [".json(&{var})"],
           "auth": [".bearer_auth("],
           "examples": [
-            { "code": "use reqwest;\nlet r = client.post(\"https://httpbin.org/post\").json(&body).send().await?;", "expect": ["POST https://httpbin.org/post"] }
+            { "code": "use reqwest;\nlet r = client.post(\"https://httpbin.org/post\").json(&body).send().await?;", "expect": ["POST https://httpbin.org/post"] },
+            {
+              "code": "use reqwest::Client;\nasync fn items(client: &Client) -> reqwest::Result<()> {\n    let url = format!(\"{base}/items\");\n    client.get(url).send().await?;\n    Ok(())\n}",
+              "expect": ["GET {{base}}/items"]
+            }
           ]
         }
       }
@@ -742,13 +783,17 @@
           "name": "Guzzle",
           "docs": "https://docs.guzzlephp.org/en/stable/quickstart.html",
           "imports": ["GuzzleHttp"],
-          "routes": ["{_}->request(\"{method}\", \"{path}\"", "{_}->{method}(\"{route}\""],
+          "routes": ["{_}->request(\"{method}\", \"{path}\"", "{_}->{method}(\"{route}\"", "->{method}({ref})", "->{method}({ref},"],
           "path_params": ["braces"],
           "query": ["\"query\" => {keys}"],
           "headers": ["\"headers\" => {keys}"],
           "body": ["\"json\" => {keys}", "\"form_params\" => {keys}"],
           "examples": [
-            { "code": "<?php\nuse GuzzleHttp\\Client;\n$r = $client->request('POST', 'https://httpbin.org/post', ['json' => ['a' => 1]]);", "expect": ["POST https://httpbin.org/post"] }
+            { "code": "<?php\nuse GuzzleHttp\\Client;\n$r = $client->request('POST', 'https://httpbin.org/post', ['json' => ['a' => 1]]);", "expect": ["POST https://httpbin.org/post"] },
+            {
+              "code": "<?php\nuse GuzzleHttp\\Client;\n$url = getenv('API_URL');\n$client->get($url);",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         }
       }
@@ -786,13 +831,17 @@
           "name": "Faraday / HTTParty",
           "docs": "https://lostisland.github.io/faraday/",
           "imports": ["faraday", "httparty"],
-          "routes": ["{_}.{method}(\"{route}\""],
+          "routes": ["{_}.{method}(\"{route}\"", ".{method}({ref})", ".{method}({ref},"],
           "path_params": ["dollar"],
           "query": ["query: {keys}"],
           "headers": ["headers: {keys}"],
           "body": ["body: {keys}"],
           "examples": [
-            { "code": "require 'httparty'\nHTTParty.get('https://api.stackexchange.com/2.2/questions')", "expect": ["GET https://api.stackexchange.com/2.2/questions"] }
+            { "code": "require 'httparty'\nHTTParty.get('https://api.stackexchange.com/2.2/questions')", "expect": ["GET https://api.stackexchange.com/2.2/questions"] },
+            {
+              "code": "require 'faraday'\nurl = ENV['API_URL']\nFaraday.get(url)",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         }
       }
@@ -857,11 +906,15 @@
           "name": "HttpClient",
           "docs": "https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient",
           "imports": ["HttpClient", "System.Net.Http"],
-          "routes": [".{method}Async(\"{route}\"", ".{method}FromJsonAsync{generic}(\"{route}\"", ".{method}AsJsonAsync(\"{route}\"", "new HttpRequestMessage(HttpMethod.{method}, \"{path}\""],
+          "routes": [".{method}Async(\"{route}\"", ".{method}FromJsonAsync{generic}(\"{route}\"", ".{method}AsJsonAsync(\"{route}\"", "new HttpRequestMessage(HttpMethod.{method}, \"{path}\"", ".{method}Async({ref})", ".{method}Async({ref},"],
           "path_params": ["braces"],
           "headers": ["DefaultRequestHeaders.Add(\"{name}\""],
           "examples": [
-            { "code": "using System.Net.Http;\nvar r = await client.GetFromJsonAsync<Todo>(\"https://jsonplaceholder.typicode.com/todos/1\");", "expect": ["GET https://jsonplaceholder.typicode.com/todos/1"] }
+            { "code": "using System.Net.Http;\nvar r = await client.GetFromJsonAsync<Todo>(\"https://jsonplaceholder.typicode.com/todos/1\");", "expect": ["GET https://jsonplaceholder.typicode.com/todos/1"] },
+            {
+              "code": "using System.Net.Http;\nvar url = Environment.GetEnvironmentVariable(\"API_URL\");\nawait client.GetAsync(url);",
+              "expect": ["GET {{API_URL}}"]
+            }
           ]
         }
       }

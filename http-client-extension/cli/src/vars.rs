@@ -132,6 +132,14 @@ fn response_value(resp: &Value, path: &str) -> Option<String> {
     })
 }
 
+/// The environment asked for: an explicit choice (`--env`), then the `.http` file's own
+/// `# @env NAME`, then `HTTP_CLIENT_ENV`. `None` leaves it to [`Environments::select`]'s defaults.
+pub fn requested_env(explicit: Option<String>, http_file: &str) -> Option<String> {
+    explicit
+        .or_else(|| crate::parser::file_env(http_file).map(|(_, name)| name))
+        .or_else(|| std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty()))
+}
+
 /// Project-local config dir: `<root>/.zed/http/`.
 pub const ZED_HTTP_DIR: &str = ".zed/http";
 
@@ -161,6 +169,7 @@ fn read_json(path: &Path) -> Result<serde_json::Map<String, Value>, String> {
     }
 }
 
+#[derive(Default)]
 pub struct Environments {
     pub names: Vec<String>,
     merged: serde_json::Map<String, Value>,

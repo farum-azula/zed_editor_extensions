@@ -11,6 +11,8 @@
 //! | `{name}`     | an identifier or header name (`page`, `X-Request-Id`)                  |
 //! | `{type}`     | a type expression (`int`, `List<String>`, `list[str]`, `Dto?`)         |
 //! | `{var}`      | a variable name (its declared type is looked up)                       |
+//! | `{ref}`      | a variable holding the URL (its value is looked up; `this.url`)        |
+//! | `{expr}`     | the rest of an expression, up to `;` or the end of the line            |
 //! | `{handler}`  | a function name (its definition is included in the search window)      |
 //! | `{keys}`     | a `{...}` / `[...]` literal; its keys or destructured names are taken  |
 //! | `{generic}`  | an optional `<...>` type argument list                                 |
@@ -39,7 +41,9 @@ fn class_of(name: &str) -> Option<&'static str> {
         "name" => r"[A-Za-z_$][\w$-]*",
         "type" => r"(?:\[\]|\*|&|map\[[^\]\n]*\])*[\w.$]+(?:<[^()=;{}\n]*>|\[[^\]\n]*\])?(?:\[\])*\??",
         "var" | "handler" | "_" => r"[A-Za-z_$][\w$]*",
-        "keys" => r"(?:<[^>\n]*>\s*)?(?:\{[^{}]*\}|\[[^\[\]]*\])",
+        "ref" => r"[A-Za-z_$@][\w$]*(?:\.[A-Za-z_$][\w$]*)*",
+        "expr" => r"[^\n;]*",
+        "keys" => r"(?:<[^>\n]*>\s*)?(?:\{(?:[^{}]|\{[^{}]*\})*\}|\[(?:[^\[\]]|\[[^\[\]]*\])*\])",
         "generic" => r"(?:<[^()\n]*>)?",
         _ => return None,
     })
@@ -47,7 +51,7 @@ fn class_of(name: &str) -> Option<&'static str> {
 
 /// Placeholder names, for error messages.
 pub const PLACEHOLDERS: &[&str] =
-    &["method", "path", "route", "host", "name", "type", "var", "handler", "keys", "generic", "_"];
+    &["method", "path", "route", "host", "name", "type", "var", "ref", "expr", "handler", "keys", "generic", "_"];
 
 /// Several patterns compiled into one matcher. At any position the first listed pattern wins.
 #[derive(Debug)]
@@ -248,20 +252,40 @@ fn compile(p: &str, alt: usize, bind: &[(&str, &str)]) -> Result<(String, Vec<St
 }
 
 /// Keys of a `{keys}` capture: quoted keys (`'a': 1`, `"a" => 1`) or destructured names (`{ a, b: c }`).
+/// Only the top level, so the keys of a nested object are not read as keys of this one.
 pub fn keys_of(literal: &str) -> Vec<String> {
     let inner = literal
         .trim()
         .trim_start_matches(|c| c != '{' && c != '[')
         .trim_start_matches(['{', '['])
         .trim_end_matches(['}', ']']);
-    let quoted = Regex::new(r#"["']([\w-]+)["']\s*(?::|=>)"#).unwrap();
-    let keys: Vec<String> = quoted.captures_iter(inner).map(|c| c[1].to_string()).collect();
+    let parts = fields(inner);
+    let quoted = Regex::new(r#"^["']([\w-]+)["']\s*(?::|=>)"#).unwrap();
+    let keys: Vec<String> = parts.iter().filter_map(|p| quoted.captures(p.trim())).map(|c| c[1].to_string()).collect();
     if !keys.is_empty() {
         return keys;
     }
-    inner
-        .split(',')
+    parts
+        .iter()
         .map(|p| p.split([':', '=']).next().unwrap_or("").trim().trim_start_matches("...").to_string())
         .filter(|k| !k.is_empty() && k.chars().all(|c| is_word(c) || c == '$'))
         .collect()
+}
+
+/// Splits on the commas of the outermost level only.
+fn fields(inner: &str) -> Vec<&str> {
+    let (mut depth, mut start, mut out) = (0i32, 0, Vec::new());
+    for (i, c) in inner.char_indices() {
+        match c {
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => depth -= 1,
+            ',' if depth <= 0 => {
+                out.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(&inner[start..]);
+    out
 }

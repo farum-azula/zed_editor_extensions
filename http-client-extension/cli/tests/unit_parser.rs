@@ -52,3 +52,26 @@ fn multiline_url_and_no_method() {
     assert_eq!(f.requests[0].method, "GET");
     assert_eq!(f.requests[0].url, "https://example.com/api?a=1&b=2");
 }
+
+#[test]
+fn the_file_can_name_its_environment() {
+    use zed_http::parser::file_env;
+    assert_eq!(file_env("# @env prod\nGET https://x\n"), Some((0, "prod".into())));
+    assert_eq!(file_env("// api\n//   @env = staging  \n### a\nGET https://x\n"), Some((1, "staging".into())));
+    assert_eq!(file_env("# @env dev\n# @env prod\n"), Some((0, "dev".into())), "the first one counts");
+    assert_eq!(file_env("# @environment prod\n# @env\n@env = prod\nGET https://x\n"), None);
+    assert_eq!(file_env("### a\n# @env prod\nGET https://x\n"), None, "below a ### it is the request's");
+}
+
+#[test]
+fn a_request_can_name_its_own_environment() {
+    let file = parser::parse(
+        "# @env prod\nGET https://header\n\n### a\n# @env dev\n# @env other\nGET https://a\n\n### b\nGET https://b\n",
+    );
+    let [header, a, b] = &file.requests[..] else { panic!("{:?}", file.requests) };
+    assert_eq!((header.own_block, &header.env), (false, &None), "the header's choice is the file's");
+    assert_eq!((a.own_block, &a.env), (true, &Some((4, "dev".to_string()))), "the first one counts");
+    assert_eq!((b.own_block, &b.env), (true, &None));
+    assert_eq!(parser::request_at(&file, 6).map(|r| r.url.as_str()), Some("https://a"));
+    assert!(parser::request_at(&file, 99).is_none());
+}

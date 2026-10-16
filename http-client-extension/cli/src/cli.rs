@@ -23,7 +23,8 @@ USAGE:
     zed-http frameworks [ROOT]
     zed-http lsp
 
-The environment can also be set with the HTTP_CLIENT_ENV variable.
+Without --env, the environment is the one the file names with `# @env NAME`, then the
+HTTP_CLIENT_ENV variable, then dev / local / development, then the first one defined.
 Responses are saved to `.zed-http/` next to the .http file.";
 
 const RESET: &str = "\x1b[0m";
@@ -68,9 +69,6 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Opts, String> {
     }
     if o.file.as_os_str().is_empty() {
         return Err(format!("missing <file.http>\n\n{USAGE}"));
-    }
-    if o.env.is_none() {
-        o.env = std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty());
     }
     Ok(o)
 }
@@ -153,20 +151,31 @@ fn run(o: Opts) -> Result<bool, String> {
             Ok(true)
         }
         "run" => {
-            let env = envs.select(o.env.as_deref())?;
             let selected = select_requests(&file, &o)?;
-            let store_path = dir.join(".zed-http").join("responses.json");
-            let mut ctx = Context { vars: envs.vars(env.as_deref()), responses: load_store(&store_path) };
-            ctx.vars.extend(file.variables.iter().cloned());
-
-            if let Some(e) = &env {
-                println!("{DIM}environment: {e}{RESET}");
+            // Each request in its own environment: --env, then its `# @env`, then the file's.
+            // All are checked before anything is sent.
+            let mut chosen = Vec::new();
+            for req in &selected {
+                let own = o.env.clone().or_else(|| req.env.as_ref().map(|(_, name)| name.clone()));
+                chosen.push(envs.select(vars::requested_env(own, &src).as_deref())?);
             }
+            let store_path = dir.join(".zed-http").join("responses.json");
+            let mut ctx = Context { vars: Default::default(), responses: load_store(&store_path) };
+
             let mut ok = true;
-            for (i, req) in selected.iter().enumerate() {
+            let mut shown = None;
+            for (i, (req, env)) in selected.iter().zip(&chosen).enumerate() {
                 if i > 0 {
                     println!("\n{DIM}{}{RESET}\n", "─".repeat(60));
                 }
+                if shown != Some(env) {
+                    if let Some(e) = env {
+                        println!("{DIM}environment: {e}{RESET}");
+                    }
+                    shown = Some(env);
+                }
+                ctx.vars = envs.vars(env.as_deref());
+                ctx.vars.extend(file.variables.iter().cloned());
                 match execute(req, &mut ctx, &dir, &o) {
                     Ok(success) => ok &= success,
                     Err(e) => {

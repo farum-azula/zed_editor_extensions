@@ -61,6 +61,9 @@ fn binary_speaks_the_language_server_protocol() {
     ];
     let mut child = Command::new(BIN)
         .arg("lsp")
+        // The server installs a copy of itself for Zed tasks to find; keep it out of $HOME.
+        .env("HOME", dir.path())
+        .env("USERPROFILE", dir.path())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -74,7 +77,9 @@ fn binary_speaks_the_language_server_protocol() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("\"serverInfo\""));
     assert!(stdout.contains("🌐 Generate .http request"), "{stdout}");
-    assert!(stdout.contains("workspace/applyEdit"), "{stdout}");
+    assert!(stdout.contains("window/showDocument"), "{stdout}");
+    assert!(dir.read(".zed/http/endpoints/server.ts.http").contains("GET {{baseUrl}}/users/{{id}}"));
+    assert!(dir.exists(".zed-http/bin/zed-http"), "the runner installs itself for tasks");
 }
 
 #[test]
@@ -91,4 +96,26 @@ fn new_tries_to_open_the_result_in_zed() {
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(dir.exists(".zed/http/endpoints/opened.http"));
+}
+
+#[test]
+fn the_environment_is_chosen_by_flag_then_file_then_variable() {
+    let dir = Dir::new();
+    let dead = r#"{ "baseUrl": "http://127.0.0.1:1" }"#;
+    dir.write("http-client.env.json", &format!(r#"{{ "dev": {dead}, "prod": {dead}, "staging": {dead} }}"#));
+    let chosen = dir.write("chosen.http", "# @env staging\nGET {{baseUrl}}/x\n");
+    let plain = dir.write("plain.http", "GET {{baseUrl}}/x\n");
+    let environment = |file: &std::path::Path, extra: &[&str]| {
+        let out = Command::new(BIN)
+            .args(["run", file.to_str().unwrap(), "--all"])
+            .args(extra)
+            .env("HTTP_CLIENT_ENV", "prod")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        stdout.lines().next().unwrap_or_default().replace("\x1b[2m", "").replace("\x1b[0m", "")
+    };
+    assert_eq!(environment(&plain, &[]), "environment: prod", "the variable");
+    assert_eq!(environment(&chosen, &[]), "environment: staging", "the file beats the variable");
+    assert_eq!(environment(&chosen, &["--env", "dev"]), "environment: dev", "the flag beats both");
 }

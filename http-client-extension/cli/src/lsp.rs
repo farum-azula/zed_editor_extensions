@@ -1,7 +1,7 @@
 use crate::catalog::{self, Catalog};
 use crate::endpoint;
 use crate::parser;
-use crate::vars::{find_env_dir, Context, Environments, ZED_HTTP_DIR};
+use crate::vars::{find_env_dir, requested_env, Context, Environments, ZED_HTTP_DIR};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 
 /// Serves the protocol on stdio (how Zed starts the server).
 pub fn serve() {
+    // Zed runs this binary from wherever the extension put it; tasks look elsewhere.
+    crate::launcher::install();
     let stdin = io::stdin();
     let stdout = io::stdout();
     serve_io(&mut stdin.lock(), &mut stdout.lock());
@@ -37,7 +39,7 @@ pub fn serve_io(input: &mut dyn BufRead, out: &mut dyn Write) {
                     "hoverProvider": true,
                     "codeActionProvider": true,
                     "codeLensProvider": { "resolveProvider": false },
-                    "executeCommandProvider": { "commands": [GENERATE, OPEN] }
+                    "executeCommandProvider": { "commands": [GENERATE, OPEN, ENV] }
                 },
                 "serverInfo": { "name": "zed-http" }
                 }))
@@ -124,6 +126,8 @@ fn write_message(out: &mut dyn Write, msg: &Value) {
 }
 
 struct Target<'a> {
+    /// The cursor line (0-based).
+    line: usize,
     path: PathBuf,
     dir: PathBuf,
     text: &'a str,
@@ -141,7 +145,7 @@ fn with_variable(docs: &HashMap<String, String>, params: &Value, f: fn(&Target) 
     let name = variable_at(text.lines().nth(line)?, character)?;
     let path = uri_to_path(uri)?;
     let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    f(&Target { path, dir, text, name })
+    f(&Target { line, path, dir, text, name })
 }
 
 fn is_http_file(uri: &str) -> bool {
@@ -177,6 +181,7 @@ impl Catalogs {
 
 const GENERATE: &str = "zed-http.generate";
 const OPEN: &str = "zed-http.open";
+const ENV: &str = "zed-http.env";
 
 /// What generating the request for `line` would do. All requests from one source file go to
 /// `.zed/http/endpoints/<source file>.http`; an already generated request is opened instead.
@@ -186,7 +191,12 @@ struct Generation {
     target: PathBuf,
     /// Line of the existing request in `target`, if it was generated before.
     existing: Option<usize>,
-    edit: Value,
+    /// `target` before the request is added; `None` if it does not exist yet.
+    current: Option<String>,
+    /// The text that adds the request at the end of `current`.
+    added: String,
+    /// The environment file to create, when the project has none.
+    env_file: Option<PathBuf>,
 }
 
 fn generation(
@@ -208,33 +218,47 @@ fn generation(
     let target = endpoint::file_for_source(&dir, &file);
     let current = docs.get(&path_to_uri(&target)).cloned().or_else(|| fs::read_to_string(&target).ok());
     let existing = current.as_deref().and_then(|t| endpoint::find_request(t, &name));
+    let added = endpoint::append_text(current.as_deref().unwrap_or_default(), &content);
+    let env_file = find_env_dir(&dir).is_none().then(|| base.join("http-client.env.json"));
+    Some(Generation { title: format!("{} {}", ep.method, ep.url), name, target, existing, current, added, env_file })
+}
 
-    let mut changes = Vec::new();
-    let mut insert = |path: &Path, at: (usize, usize), text: &str, create: bool| {
-        let uri = path_to_uri(path);
-        if create {
-            changes.push(json!({ "kind": "create", "uri": uri, "options": { "ignoreIfExists": true } }));
+/// Adds the generated request. A `.http` file open in Zed is edited in its buffer, which Zed then
+/// saves like any other edit; otherwise the file is written to disk, where `zed-http run` reads it.
+/// (A workspace edit to a file that is not open would leave it unsaved, and empty on disk.)
+fn add_request(
+    g: &Generation,
+    docs: &HashMap<String, String>,
+    next_id: &mut u64,
+    out: &mut dyn Write,
+) -> io::Result<()> {
+    if let Some(env) = &g.env_file {
+        fs::create_dir_all(env.parent().expect("a file in .zed/http"))?;
+        fs::write(env, endpoint::DEFAULT_ENV)?;
+    }
+    let uri = path_to_uri(&g.target);
+    match g.current.as_deref().filter(|_| docs.contains_key(&uri)) {
+        Some(open) => {
+            let (line, character) = end_position(open);
+            let at = json!({ "line": line, "character": character });
+            *next_id += 1;
+            write_message(
+                out,
+                &json!({
+                    "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
+                    "params": {
+                        "label": format!("Generate {}", g.title),
+                        "edit": { "changes": { uri: [{ "range": { "start": at, "end": at }, "newText": g.added }] } }
+                    }
+                }),
+            );
         }
-        let pos = json!({ "line": at.0, "character": at.1 });
-        changes.push(json!({
-            "textDocument": { "uri": uri, "version": null },
-            "edits": [{ "range": { "start": pos, "end": pos }, "newText": text }]
-        }));
-    };
-    if find_env_dir(&dir).is_none() {
-        insert(&base.join("http-client.env.json"), (0, 0), endpoint::DEFAULT_ENV, true);
+        None => {
+            fs::create_dir_all(g.target.parent().expect("a file in .zed/http/endpoints"))?;
+            fs::write(&g.target, format!("{}{}", g.current.as_deref().unwrap_or_default(), g.added))?;
+        }
     }
-    match &current {
-        Some(cur) => insert(&target, end_position(cur), &endpoint::append_text(cur, &content), false),
-        None => insert(&target, (0, 0), &content, true),
-    }
-    Some(Generation {
-        title: format!("{} {}", ep.method, ep.url),
-        name,
-        target,
-        existing,
-        edit: json!({ "documentChanges": changes }),
-    })
+    Ok(())
 }
 
 /// LSP position just past the end of `text`.
@@ -259,6 +283,9 @@ fn range_line(line: usize) -> Value {
 fn code_actions(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
     let uri = params["textDocument"]["uri"].as_str().unwrap_or_default();
     let Some(line) = params["range"]["start"]["line"].as_u64() else { return json!([]) };
+    if let Some(text) = docs.get(uri).filter(|_| is_http_file(uri)) {
+        return env_actions(uri, text, line as usize);
+    }
     let Some(g) = generation(catalog, docs, uri, line as usize, root) else { return json!([]) };
     json!([match g.existing {
         Some(at) => json!({
@@ -275,9 +302,13 @@ fn code_actions(catalog: &Catalog, docs: &HashMap<String, String>, params: &Valu
 }
 
 /// A clickable lens above every route / client call: generates the request, or opens it if it exists.
+/// In a `.http` file: the environment switcher instead.
 fn code_lenses(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
     let uri = params["textDocument"]["uri"].as_str().unwrap_or_default();
-    let Some(text) = docs.get(uri).filter(|_| !is_http_file(uri)) else { return json!([]) };
+    let Some(text) = docs.get(uri) else { return json!([]) };
+    if is_http_file(uri) {
+        return env_lenses(uri, text);
+    }
     let Some(file) = uri_to_path(uri) else { return json!([]) };
     let mut lenses = Vec::new();
     for route in catalog.routes(text, &file).into_iter().filter(|r| !r.endpoint.weak) {
@@ -294,6 +325,103 @@ fn code_lenses(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value
     json!(lenses)
 }
 
+/// Environment switchers in a `.http` file. Above its first line: `env: dev`, the environment the
+/// file runs in, then the others. Above a request's own `# @env`: the same, plus `from file`.
+/// A click writes the choice into the file (see [`env_edit`]).
+fn env_lenses(uri: &str, text: &str) -> Value {
+    let envs = environments(uri);
+    let mut lenses = Vec::new();
+    let requested = requested_env(None, text);
+    if let Some(current) = envs.select(requested.as_deref()).unwrap_or(requested) {
+        lenses.extend(env_row(uri, &envs, 0, &current, false));
+    }
+    for (line, name) in parser::parse(text).requests.iter().filter_map(|r| r.env.as_ref()) {
+        lenses.extend(env_row(uri, &envs, *line, name, true));
+    }
+    json!(lenses)
+}
+
+fn env_row(uri: &str, envs: &Environments, line: usize, current: &str, request: bool) -> Vec<Value> {
+    let label = if envs.names.iter().any(|n| n == current) {
+        format!("env: {current}")
+    } else {
+        format!("env: {current} (not defined)")
+    };
+    // A request is identified by a line of its block; the file's choice needs none.
+    let lens = |title: String, name: Value| {
+        let mut arguments = vec![json!(uri), name];
+        arguments.extend(request.then(|| json!(line)));
+        json!({ "range": range_line(line), "command": { "title": title, "command": ENV, "arguments": arguments } })
+    };
+    let mut row = vec![lens(label, json!(current))];
+    row.extend(envs.names.iter().filter(|n| *n != current).map(|n| lens(n.clone(), json!(n))));
+    if request {
+        row.push(lens("from file".into(), Value::Null));
+    }
+    row
+}
+
+/// The environment files next to the `.http` file at `uri`; none if they are missing or invalid.
+fn environments(uri: &str) -> Environments {
+    let dir = uri_to_path(uri).and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
+    Environments::load(&dir).unwrap_or_default()
+}
+
+/// `cmd+.` on a request without an environment of its own: give it one (then switch with its lens).
+fn env_actions(uri: &str, text: &str, line: usize) -> Value {
+    let file = parser::parse(text);
+    if !parser::request_at(&file, line + 1).is_some_and(|r| r.own_block && r.env.is_none()) {
+        return json!([]);
+    }
+    let Some(current) = environments(uri).select(requested_env(None, text).as_deref()).ok().flatten() else {
+        return json!([]);
+    };
+    json!([{
+        "title": "HTTP: choose an environment for this request",
+        "kind": "refactor",
+        "command": { "title": "Environment", "command": ENV, "arguments": [uri, current, line] }
+    }])
+}
+
+/// The edit that sets the environment of the file, or of the request whose block holds `request`
+/// (a 0-based line), to `name`; `name: None` drops the request's own choice. `None` if there is
+/// nothing to change.
+pub fn env_edit(uri: &str, text: &str, name: Option<&str>, request: Option<usize>) -> Option<Value> {
+    let file = parser::parse(text);
+    let lines: Vec<&str> = text.lines().collect();
+    let replace = |line: usize, n: &str| {
+        let end = utf16_len(lines[line]);
+        json!({ "range": { "start": { "line": line, "character": 0 }, "end": { "line": line, "character": end } }, "newText": format!("# @env {n}") })
+    };
+    let insert = |line: usize, n: &str| json!({ "range": range_line(line), "newText": format!("# @env {n}\n") });
+    // A request in the file's header has no choice of its own: the file's is its.
+    let request = request.and_then(|l| parser::request_at(&file, l + 1)).filter(|r| r.own_block);
+    let edit = match (request, name) {
+        (Some(r), Some(n)) => match &r.env {
+            Some((line, _)) => replace(*line, n),
+            // Right below its `###` line.
+            None => insert(r.start_line, n),
+        },
+        (Some(r), None) => {
+            let (line, _) = r.env.as_ref()?;
+            json!({ "range": { "start": { "line": line, "character": 0 }, "end": { "line": line + 1, "character": 0 } }, "newText": "" })
+        }
+        (None, Some(n)) => match parser::file_env(text) {
+            Some((line, _)) => replace(line, n),
+            None => insert(0, n),
+        },
+        (None, None) => return None,
+    };
+    Some(json!({ "changes": { uri: [edit] } }))
+}
+
+/// The environment variables resolve in at `line` (0-based): the request's own, then the file's.
+fn env_at(text: &str, line: usize) -> Option<String> {
+    let file = parser::parse(text);
+    let own = parser::request_at(&file, line + 1).and_then(|r| r.env.as_ref().map(|(_, name)| name.clone()));
+    requested_env(own, text)
+}
+
 fn execute_command(
     catalog: &Catalog,
     docs: &HashMap<String, String>,
@@ -304,6 +432,20 @@ fn execute_command(
 ) {
     let args = &params["arguments"];
     let (target, at) = match params["command"].as_str() {
+        Some(ENV) => {
+            let Some((uri, text)) = args[0].as_str().and_then(|u| Some((u, docs.get(u)?))) else { return };
+            let request = args[2].as_u64().map(|l| l as usize);
+            let Some(edit) = env_edit(uri, text, args[1].as_str(), request) else { return };
+            *next_id += 1;
+            write_message(
+                out,
+                &json!({
+                    "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
+                    "params": { "label": "Environment", "edit": edit }
+                }),
+            );
+            return;
+        }
         Some(GENERATE) => {
             let (Some(uri), Some(line)) = (args[0].as_str(), args[1].as_u64()) else { return };
             let Some(g) = generation(catalog, docs, uri, line as usize, root) else { return };
@@ -311,14 +453,11 @@ fn execute_command(
                 (g.target, at)
             } else {
                 let at = appended_line(&g.target, docs);
-                *next_id += 1;
-                write_message(
-                    out,
-                    &json!({
-                        "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
-                        "params": { "label": format!("Generate {}", g.title), "edit": g.edit }
-                    }),
-                );
+                if let Err(e) = add_request(&g, docs, next_id, out) {
+                    // Shown in Zed's language server log.
+                    eprintln!("zed-http: {}: {e}", g.target.display());
+                    return;
+                }
                 (g.target, at)
             }
         }
@@ -368,7 +507,8 @@ fn definition(t: &Target) -> Option<Value> {
         return Some(location(&t.path, line, col, name));
     }
     let env_dir = find_env_dir(&t.dir)?;
-    let selected = Environments::load(&t.dir).ok().and_then(|e| e.select(selected_env().as_deref()).ok().flatten());
+    let selected =
+        Environments::load(&t.dir).ok().and_then(|e| e.select(env_at(t.text, t.line).as_deref()).ok().flatten());
     let mut all = Vec::new();
     for file in ["http-client.private.env.json", "http-client.env.json"] {
         let path = env_dir.join(file);
@@ -391,7 +531,7 @@ fn definition(t: &Target) -> Option<Value> {
 fn hover(t: &Target) -> Option<Value> {
     let name = t.name.as_str();
     let envs = Environments::load(&t.dir).ok()?;
-    let env = envs.select(selected_env().as_deref()).ok().flatten();
+    let env = envs.select(env_at(t.text, t.line).as_deref()).ok().flatten();
     let file = parser::parse(t.text);
     let mut ctx = Context {
         vars: envs.vars(env.as_deref()),
@@ -422,10 +562,6 @@ fn hover(t: &Target) -> Option<Value> {
     Some(json!({
         "contents": { "kind": "markdown", "value": format!("**{name}** · {source}\n\n{value}") }
     }))
-}
-
-fn selected_env() -> Option<String> {
-    std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty())
 }
 
 /// Line and column of an `@name =` declaration.

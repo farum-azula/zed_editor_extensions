@@ -30,6 +30,11 @@ fn names_a_base_url(path: &str) -> bool {
     let Some((name, _)) = path.strip_prefix("{{").and_then(|rest| rest.split_once("}}")) else {
         return false;
     };
+    names_a_url(name)
+}
+
+/// Does `name` name a whole URL (`apiUrl`, `_endpoint`, `GROQ_URL`) rather than one path segment?
+pub fn names_a_url(name: &str) -> bool {
     let name = name.to_lowercase();
     ["url", "uri", "base", "host", "server", "endpoint", "origin", "api"].iter().any(|k| name.contains(k))
 }
@@ -70,7 +75,15 @@ pub fn url_vars(url: &str) -> Vec<String> {
 
 /// Full `.http` request: file variables for path/query/header values, query string, headers, JSON body.
 pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
-    let mut vars: Vec<(String, &str)> = url_vars(url).into_iter().map(|v| (v, "1")).collect();
+    // A path parameter stands for one segment; a variable naming the whole URL needs a URL.
+    let sample = |v: &str| if names_a_url(v) { LOCAL_SERVER } else { "1" };
+    let mut vars: Vec<(String, &str)> = url_vars(url)
+        .into_iter()
+        .map(|v| {
+            let value = sample(&v);
+            (v, value)
+        })
+        .collect();
     let mut url = url.to_string();
     for (i, (q, ty)) in spec.query.iter().enumerate() {
         let v = infer::var_name(q);
@@ -154,6 +167,9 @@ pub fn free_path(dir: &Path, name: &str) -> PathBuf {
     }
     path
 }
+
+/// What a URL defaults to before the environment file is filled in.
+pub const LOCAL_SERVER: &str = "http://localhost:8080";
 
 pub const DEFAULT_ENV: &str =
     "{\n  \"dev\": {\n    \"baseUrl\": \"http://localhost:8080\",\n    \"token\": \"\"\n  }\n}\n";

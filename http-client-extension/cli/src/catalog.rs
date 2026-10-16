@@ -34,7 +34,24 @@ struct FileDef {
     types: TypesDef,
     #[serde(default)]
     auth: Vec<String>,
+    #[serde(default)]
+    urls: UrlsDef,
     languages: serde_json::Map<String, Value>,
+}
+
+/// How to read the URL out of a variable, for calls that pass one (`http.post(_endpoint, …)`).
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct UrlsDef {
+    /// Patterns binding `{var}` and capturing the `{expr}` assigned to it.
+    #[serde(default)]
+    assignments: Vec<String>,
+    /// Patterns capturing a URL `{path}` in such an expression.
+    #[serde(default)]
+    literals: Vec<String>,
+    /// Patterns capturing the `{name}` of an environment variable read in such an expression.
+    #[serde(default)]
+    env: Vec<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -200,7 +217,15 @@ pub struct Example {
 pub struct Catalog {
     types: TypesDef,
     auth: Option<Matcher>,
+    urls: Urls,
     pub languages: Vec<Language>,
+}
+
+/// Compiled [`UrlsDef`]. Assignment patterns are compiled per lookup, with `{var}` bound.
+struct Urls {
+    assignments: Vec<String>,
+    literals: Option<Matcher>,
+    env: Option<Matcher>,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -314,7 +339,12 @@ impl Catalog {
             let l: LanguageDef = serde_json::from_value(v).map_err(|e| format!("languages.{key}: {e}"))?;
             languages.push(Language::compile(&key, l)?);
         }
-        Ok(Catalog { auth: compile(&file.auth, "auth")?, types: file.types, languages })
+        let urls = Urls {
+            assignments: file.urls.assignments,
+            literals: compile(&file.urls.literals, "urls.literals")?,
+            env: compile(&file.urls.env, "urls.env")?,
+        };
+        Ok(Catalog { auth: compile(&file.auth, "auth")?, types: file.types, urls, languages })
     }
 
     fn language_for(&self, path: &Path) -> Option<usize> {
@@ -352,7 +382,7 @@ impl Catalog {
                 }
                 let end_line = line_of(&starts, hit.end.saturating_sub(1));
                 let def = &fw.route_defs[hit.alt];
-                let endpoint = self.endpoint(lang, fw, def, &hit, text, &starts, line);
+                let Some(endpoint) = self.endpoint(lang, fw, def, &hit, text, &starts, line) else { continue };
                 let replace = match by_line.get(&line) {
                     None => true,
                     Some(r) => r.endpoint.weak && !endpoint.weak,
@@ -370,6 +400,8 @@ impl Catalog {
         by_line.into_values().collect()
     }
 
+    /// The endpoint a route matched, or `None` when the match turns out not to be a request:
+    /// a `{ref}` pattern whose variable holds no URL (`map.get(key)`).
     #[allow(clippy::too_many_arguments)]
     fn endpoint(
         &self,
@@ -380,12 +412,13 @@ impl Catalog {
         text: &str,
         starts: &[usize],
         line: usize,
-    ) -> Endpoint {
+    ) -> Option<Endpoint> {
         let method =
             hit.get("method").map(str::to_uppercase).or_else(|| def.method.clone()).unwrap_or_else(|| "GET".into());
-        let mut path = match &def.url {
-            Some(t) => fill(t, hit),
-            None => hit.get("path").or(hit.get("route")).unwrap_or_default().to_string(),
+        let mut path = match (&def.url, hit.get("ref")) {
+            (Some(t), _) => fill(t, hit),
+            (None, Some(r)) => self.url_of(text, r)?,
+            (None, None) => hit.get("path").or(hit.get("route")).unwrap_or_default().to_string(),
         };
         let absolute = path.starts_with("http://") || path.starts_with("https://");
         if !absolute && def.prefixed.unwrap_or(true) {
@@ -394,7 +427,34 @@ impl Catalog {
             }
         }
         let path = convert_params(&path, &fw.path_params);
-        Endpoint { method, url: endpoint::to_http_url(&path), weak: def.weak }
+        Some(Endpoint { method, url: endpoint::to_http_url(&path), weak: def.weak })
+    }
+
+    /// The URL a variable holds: a literal or environment variable assigned to it anywhere in
+    /// the file, or the variable itself when its name names a URL (`_endpoint` → `{{endpoint}}`,
+    /// filled in from the environment file). `None` when neither holds, which is what tells a
+    /// `{ref}` match apart from an unrelated call.
+    fn url_of(&self, text: &str, reference: &str) -> Option<String> {
+        let var = reference.rsplit('.').next().unwrap_or(reference).trim_start_matches(['$', '@']);
+        if let Some(expr) = self.assigned(text, var) {
+            let mut literals =
+                self.urls.literals.iter().flat_map(|m| m.hits(&expr)).filter_map(|h| h.get("path").map(str::to_string));
+            let literal = literals.find(|p| looks_like_url(p));
+            let key =
+                self.urls.env.iter().filter_map(|m| m.first(&expr)).find_map(|h| h.get("name").map(str::to_string));
+            if let Some(url) = literal.or_else(|| key.map(|k| format!("{{{{{k}}}}}"))) {
+                return Some(url);
+            }
+        }
+        let name = var.trim_start_matches('_');
+        endpoint::names_a_url(name).then(|| format!("{{{{{name}}}}}"))
+    }
+
+    /// The expression assigned to `var` anywhere in `text`.
+    fn assigned(&self, text: &str, var: &str) -> Option<String> {
+        let m = Matcher::new(&self.urls.assignments, &[("var", var)]).ok()??;
+        let found = m.hits(text).find_map(|h| h.get("expr").map(str::to_string));
+        found
     }
 
     fn prefix(&self, lang: &Language, fw: &Framework, text: &str, starts: &[usize], line: usize) -> Option<String> {
@@ -493,7 +553,8 @@ impl Catalog {
 
         spec.auth = [&self.auth, &fw.auth].iter().any(|m| m.as_ref().is_some_and(|m| m.is_match(w)))
             || spec.headers.iter().any(|h| h.eq_ignore_ascii_case("authorization"));
-        spec.headers.retain(|h| !h.eq_ignore_ascii_case("authorization"));
+        // Authorization and Content-Type are rendered from the auth flag and the body instead.
+        spec.headers.retain(|h| !["authorization", "content-type"].iter().any(|k| h.eq_ignore_ascii_case(k)));
         spec.query.retain(|(n, _)| !path_vars.contains(n));
         let method = route.endpoint.method.as_str();
         if matches!(method, "GET" | "HEAD") {
@@ -863,6 +924,12 @@ fn fill(template: &str, hit: &Hit) -> String {
     out
 }
 
+/// Is this string literal a URL or a path, rather than any other text a variable may hold?
+/// Interpolation counts: `$baseUrl/items`, `{base}/users` and `${API}/users` are all URLs.
+fn looks_like_url(s: &str) -> bool {
+    s.contains("://") || s.starts_with('/') || s.starts_with('$') || s.starts_with('{')
+}
+
 fn join(prefix: &str, path: &str) -> String {
     let (a, b) = (prefix.trim_matches('/'), path.trim_start_matches('/'));
     match (a.is_empty(), b.is_empty()) {
@@ -873,10 +940,10 @@ fn join(prefix: &str, path: &str) -> String {
     }
 }
 
-/// Converts framework path parameters to `{{name}}` in one pass (so results are never re-converted).
-/// Converts framework path parameters to `{{name}}`.
+/// Converts framework path parameters to `{{name}}`, in one pass: a `{{name}}` already in the
+/// path (a URL read out of a variable) is left as it is instead of being converted again.
 pub fn convert_params(path: &str, styles: &[Style]) -> String {
-    let mut alts = Vec::new();
+    let mut alts = vec![r"(?P<keep>\{\{\s*\w+\s*\}\})"];
     for style in [Style::Dollar, Style::Braces, Style::Angle, Style::Colon] {
         if styles.contains(&style) {
             alts.push(match style {
@@ -890,6 +957,9 @@ pub fn convert_params(path: &str, styles: &[Style]) -> String {
     // `path_params` always holds at least one style (see `Framework::compile`).
     let re = Regex::new(&alts.join("|")).unwrap();
     re.replace_all(path, |c: &regex::Captures| {
+        if let Some(kept) = c.name("keep") {
+            return kept.as_str().to_string();
+        }
         let lead = c.name("lead").map_or("", |m| m.as_str());
         let name = ["d1", "d2", "b", "a", "c"].iter().find_map(|n| c.name(n)).map_or("", |m| m.as_str());
         format!("{lead}{{{{{name}}}}}")

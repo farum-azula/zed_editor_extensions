@@ -135,25 +135,106 @@ fn code_lenses_for_routes_and_none_for_http_files() {
 }
 
 #[test]
-fn generate_appends_the_request_and_opens_it() {
+fn generate_writes_the_request_and_opens_it() {
     let dir = Dir::new();
     let src = dir.write("server.ts", EXPRESS);
+    let generate = |line: u32| {
+        talk(vec![
+            init(&dir),
+            open(&src, EXPRESS),
+            request(
+                2,
+                "workspace/executeCommand",
+                json!({"command": "zed-http.generate", "arguments": [uri(&src), line]}),
+            ),
+        ])
+    };
+
+    // The .http file is not open in Zed: it is written to disk, where the runner reads it,
+    // instead of an edit that would leave it unsaved.
+    let out = generate(1);
+    assert!(sent(&out, "workspace/applyEdit").is_empty(), "{out:#?}");
+    let written = dir.read(".zed/http/endpoints/server.ts.http");
+    assert!(
+        written.starts_with("### get-users-by-id\n") && written.contains("GET {{baseUrl}}/users/{{id}}"),
+        "{written}"
+    );
+    assert_eq!(dir.read(".zed/http/http-client.env.json"), zed_http::endpoint::DEFAULT_ENV);
+    assert!(!dir.exists(".zed/http/.gitignore"), "no .gitignore");
+    let shown = sent(&out, "window/showDocument");
+    assert_eq!(shown[0]["params"]["uri"], json!(uri(&dir.join(".zed/http/endpoints/server.ts.http"))));
+    assert_eq!(shown[0]["params"]["selection"]["start"]["line"], json!(0));
+
+    // The next request is appended after a blank line, and the environment file is left alone.
+    dir.write(".zed/http/http-client.env.json", ENVS);
+    let out = generate(2);
+    let written = dir.read(".zed/http/endpoints/server.ts.http");
+    assert!(written.contains("{{id}}\nAccept: application/json\n\n### post-users\n"), "{written}");
+    assert_eq!(dir.read(".zed/http/http-client.env.json"), ENVS);
+    let at = written.lines().position(|l| l == "### post-users").unwrap();
+    assert_eq!(sent(&out, "window/showDocument")[0]["params"]["selection"]["start"]["line"], json!(at));
+}
+
+#[test]
+fn generate_edits_a_http_file_that_is_open() {
+    let dir = Dir::new();
+    let src = dir.write("server.ts", EXPRESS);
+    let target = dir.join(".zed/http/endpoints/server.ts.http");
+    let unsaved = "### mine\nGET {{baseUrl}}/mine\n";
+    let out = talk(vec![
+        init(&dir),
+        open(&src, EXPRESS),
+        open(&target, unsaved),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
+    ]);
+    let edits = sent(&out, "workspace/applyEdit");
+    assert_eq!(edits.len(), 1, "{out:#?}");
+    let edit = &edits[0]["params"]["edit"]["changes"][uri(&target)][0];
+    assert_eq!(edit["range"]["start"], json!({"line": 2, "character": 0}), "after the buffer's text");
+    assert!(edit["newText"].as_str().unwrap().starts_with("\n### get-users-by-id\n"), "{edit}");
+    assert!(!target.exists(), "the open buffer is edited, not the file behind it");
+    assert!(dir.exists(".zed/http/http-client.env.json"));
+    assert_eq!(sent(&out, "window/showDocument")[0]["params"]["selection"]["start"]["line"], json!(3));
+}
+
+#[test]
+fn a_http_file_does_not_generate_requests_from_itself() {
+    let dir = Dir::new();
+    let api = dir.write("api.http", "GET https://example.com/users\n");
+    let out = talk(vec![
+        init(&dir),
+        open(&api, "GET https://example.com/users\n"),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&api), 0]})),
+    ]);
+    assert_eq!(result(&out, 2), json!(null));
+    assert!(sent(&out, "window/showDocument").is_empty());
+    assert!(!dir.exists(".zed"));
+}
+
+#[test]
+fn generate_reports_a_file_it_cannot_write() {
+    let dir = Dir::new();
+    let src = dir.write("server.ts", EXPRESS);
+    dir.write(".zed", "a file where the .zed directory should be");
     let out = talk(vec![
         init(&dir),
         open(&src, EXPRESS),
         request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
     ]);
-    let edits = sent(&out, "workspace/applyEdit");
-    assert_eq!(edits.len(), 1);
-    let changes = edits[0]["params"]["edit"]["documentChanges"].as_array().unwrap().clone();
-    let created: Vec<String> =
-        changes.iter().filter(|c| c["kind"] == json!("create")).map(|c| c["uri"].as_str().unwrap().into()).collect();
-    assert!(created.iter().any(|u| u.ends_with("/.zed/http/endpoints/server.ts.http")), "{created:?}");
-    assert!(created.iter().any(|u| u.ends_with("/.zed/http/http-client.env.json")), "{created:?}");
-    assert!(!created.iter().any(|u| u.ends_with(".gitignore")), "no .gitignore: {created:?}");
-    let text = changes.last().unwrap()["edits"][0]["newText"].as_str().unwrap();
-    assert!(text.contains("GET {{baseUrl}}/users/{{id}}"), "{text}");
-    assert_eq!(sent(&out, "window/showDocument").len(), 1);
+    assert_eq!(result(&out, 2), json!(null));
+    assert!(sent(&out, "window/showDocument").is_empty(), "nothing to show");
+
+    // Same when only the request file is in the way.
+    let dir = Dir::new();
+    let src = dir.write("server.ts", EXPRESS);
+    dir.write(".zed/http/http-client.env.json", ENVS);
+    dir.write(".zed/http/endpoints", "a file where the directory should be");
+    let out = talk(vec![
+        init(&dir),
+        open(&src, EXPRESS),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
+    ]);
+    assert!(sent(&out, "window/showDocument").is_empty());
 }
 
 #[test]
@@ -476,7 +557,253 @@ fn without_a_workspace_root_the_file_directory_is_used() {
         request(3, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
     ]);
     assert_eq!(result(&out, 2).as_array().unwrap().len(), 2);
-    let edit = sent(&out, "workspace/applyEdit");
-    let target = edit[0]["params"]["edit"]["documentChanges"][0]["uri"].as_str().unwrap().to_string();
-    assert!(target.contains("/.zed/http/"), "written next to the source file: {target}");
+    assert!(sent(&out, "window/showDocument").len() == 1, "{out:#?}");
+    assert!(dir.exists(".zed/http/endpoints/server.ts.http"), "written next to the source file");
+}
+
+const ENVS: &str = r#"{ "dev": { "baseUrl": "http://localhost" }, "prod": { "baseUrl": "https://api.example.com" } }"#;
+
+/// Titles of the lenses the server returns for `path`, opened with `text`.
+fn lens_titles(dir: &Dir, path: &Path, text: &str) -> Vec<String> {
+    let out = talk(vec![
+        init(dir),
+        open(path, text),
+        request(2, "textDocument/codeLens", json!({"textDocument": {"uri": uri(path)}})),
+    ]);
+    let lenses = result(&out, 2);
+    lenses.as_array().unwrap().iter().map(|l| l["command"]["title"].as_str().unwrap().to_string()).collect()
+}
+
+#[test]
+fn http_files_get_an_environment_switcher() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+
+    // Nothing chosen: the default, then the other environments to switch to.
+    assert_eq!(lens_titles(&dir, &api, "GET {{baseUrl}}/users\n"), ["env: dev", "prod"]);
+    // Chosen in the file.
+    assert_eq!(lens_titles(&dir, &api, "# @env prod\n\nGET {{baseUrl}}/users\n"), ["env: prod", "dev"]);
+    // Chosen, but not defined anywhere: said so, and every defined one is offered.
+    assert_eq!(
+        lens_titles(&dir, &api, "// @env staging\nGET {{baseUrl}}/users\n"),
+        ["env: staging (not defined)", "dev", "prod"]
+    );
+
+    // Without environment files there is nothing to choose from.
+    let bare = Dir::new();
+    assert!(lens_titles(&bare, &bare.join("api.http"), "GET https://example.com\n").is_empty());
+}
+
+#[test]
+fn switching_the_environment_edits_the_file() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let switch = |text: &str, name: &str| {
+        let out = talk(vec![
+            init(&dir),
+            open(&api, text),
+            request(2, "workspace/executeCommand", json!({"command": "zed-http.env", "arguments": [uri(&api), name]})),
+        ]);
+        assert_eq!(result(&out, 2), json!(null));
+        let edits = sent(&out, "workspace/applyEdit");
+        assert_eq!(edits.len(), 1, "{out:#?}");
+        assert!(sent(&out, "window/showDocument").is_empty(), "the file is already open");
+        edits[0]["params"]["edit"]["changes"][uri(&api)][0].clone()
+    };
+
+    // No choice yet: one is written at the top.
+    let edit = switch("GET {{baseUrl}}/users\n", "prod");
+    assert_eq!(edit["newText"], "# @env prod\n");
+    assert_eq!(edit["range"]["start"], json!({"line": 0, "character": 0}));
+    assert_eq!(edit["range"]["end"], json!({"line": 0, "character": 0}));
+
+    // A choice already there, above the first `###`, is replaced where it is.
+    let edit = switch("// first line\n// @env  prod\n\n### users\nGET {{baseUrl}}/users\n", "dev");
+    assert_eq!(edit["newText"], "# @env dev");
+    assert_eq!(edit["range"]["start"], json!({"line": 1, "character": 0}));
+    assert_eq!(edit["range"]["end"], json!({"line": 1, "character": 13}));
+
+    // Below a `###` the line is that request's, so the file still has no choice of its own.
+    let edit = switch("### users\n# @env prod\nGET {{baseUrl}}/users\n", "dev");
+    assert_eq!(edit["newText"], "# @env dev\n");
+    assert_eq!(edit["range"]["start"], json!({"line": 0, "character": 0}));
+}
+
+/// The server's response to `zed-http.env` with `arguments`, for a document with `text`.
+fn env_command(text: &str, arguments: Value) -> Vec<Value> {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let mut args = arguments.as_array().unwrap().clone();
+    args.insert(0, json!(uri(&api)));
+    let out = talk(vec![
+        init(&dir),
+        open(&api, text),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.env", "arguments": args})),
+    ]);
+    sent(&out, "workspace/applyEdit").iter().map(|e| e["params"]["edit"]["changes"][uri(&api)][0].clone()).collect()
+}
+
+const TWO_REQUESTS: &str = "# @env prod\n\n### users\n# @name users\nGET {{baseUrl}}/users\n\n### health\n# @env dev\nGET {{baseUrl}}/health\n";
+
+#[test]
+fn a_request_can_have_an_environment_of_its_own() {
+    // Given one: inserted right below its `###`.
+    let edits = env_command(TWO_REQUESTS, json!(["dev", 4]));
+    assert_eq!(edits[0]["newText"], "# @env dev\n");
+    assert_eq!(edits[0]["range"]["start"], json!({"line": 3, "character": 0}));
+
+    // Changed where it is.
+    let edits = env_command(TWO_REQUESTS, json!(["prod", 8]));
+    assert_eq!(edits[0]["newText"], "# @env prod");
+    assert_eq!(edits[0]["range"]["start"], json!({"line": 7, "character": 0}));
+    assert_eq!(edits[0]["range"]["end"], json!({"line": 7, "character": 10}));
+
+    // Dropped, so that the file's applies again.
+    let edits = env_command(TWO_REQUESTS, json!([null, 7]));
+    assert_eq!(edits[0]["newText"], "");
+    assert_eq!(edits[0]["range"]["start"], json!({"line": 7, "character": 0}));
+    assert_eq!(edits[0]["range"]["end"], json!({"line": 8, "character": 0}));
+
+    // Nothing to drop, nothing to do.
+    assert!(env_command(TWO_REQUESTS, json!([null, 4])).is_empty());
+    assert!(env_command(TWO_REQUESTS, json!([null])).is_empty(), "the file's choice is not removed this way");
+
+    // A request in the file's header has none of its own: its choice is the file's.
+    let edits = env_command("# @env prod\nGET {{baseUrl}}/users\n", json!(["dev", 1]));
+    assert_eq!(edits[0]["newText"], "# @env dev");
+    assert_eq!(edits[0]["range"]["start"], json!({"line": 0, "character": 0}));
+}
+
+#[test]
+fn a_request_with_its_own_environment_gets_its_own_switcher() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let out = talk(vec![
+        init(&dir),
+        open(&api, TWO_REQUESTS),
+        request(2, "textDocument/codeLens", json!({"textDocument": {"uri": uri(&api)}})),
+    ]);
+    let lenses = result(&out, 2);
+    let row = |line: u64| -> Vec<(String, Value)> {
+        lenses
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["range"]["start"]["line"] == json!(line))
+            .map(|l| (l["command"]["title"].as_str().unwrap().to_string(), l["command"]["arguments"].clone()))
+            .collect()
+    };
+    let file: Vec<String> = row(0).into_iter().map(|(t, _)| t).collect();
+    assert_eq!(file, ["env: prod", "dev"]);
+    let own = row(7);
+    let titles: Vec<&str> = own.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(titles, ["env: dev", "prod", "from file"]);
+    assert_eq!(own[1].1, json!([uri(&api), "prod", 7]));
+    assert_eq!(own[2].1, json!([uri(&api), null, 7]));
+}
+
+#[test]
+fn cmd_dot_on_a_request_offers_an_environment_of_its_own() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let header = dir.join("header.http");
+    let action_at = |out: &[Value], id: u32| result(out, id).as_array().unwrap().clone();
+    let at = |id: u32, path: &Path, line: u32| {
+        request(
+            id,
+            "textDocument/codeAction",
+            json!({"textDocument": {"uri": uri(path)},
+                   "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 0}}}),
+        )
+    };
+    let out = talk(vec![
+        init(&dir),
+        open(&api, TWO_REQUESTS),
+        open(&header, "GET {{baseUrl}}/x\n"),
+        at(2, &api, 4),
+        at(3, &api, 8),
+        at(4, &header, 0),
+        at(5, &api, 0),
+    ]);
+    let offered = action_at(&out, 2);
+    assert_eq!(offered[0]["title"], json!("HTTP: choose an environment for this request"));
+    assert_eq!(offered[0]["command"]["arguments"], json!([uri(&api), "prod", 4]), "starts from the file's");
+    assert!(action_at(&out, 3).is_empty(), "already has one: its lens switches it");
+    assert!(action_at(&out, 4).is_empty(), "in the file's header");
+    assert!(action_at(&out, 5).is_empty(), "not on a request");
+
+    // Without environment files there is nothing to choose.
+    let bare = Dir::new();
+    let file = bare.join("api.http");
+    let out = talk(vec![init(&bare), open(&file, TWO_REQUESTS), at(2, &file, 4)]);
+    assert!(action_at(&out, 2).is_empty());
+}
+
+#[test]
+fn variables_resolve_in_the_environment_of_their_request() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let hover = |line: u32| {
+        request(
+            line + 10,
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri(&api)}, "position": {"line": line, "character": 7}}),
+        )
+    };
+    let out = talk(vec![init(&dir), open(&api, TWO_REQUESTS), hover(4), hover(8)]);
+    let text = |id: u32| result(&out, id)["contents"]["value"].as_str().unwrap().to_string();
+    assert!(text(14).contains("environment `prod`"), "the file's: {}", text(14));
+    assert!(text(18).contains("environment `dev`"), "the request's own: {}", text(18));
+}
+
+#[test]
+fn switching_needs_a_known_document_and_a_name() {
+    let dir = Dir::new();
+    let api = dir.join("api.http");
+    let out = talk(vec![
+        init(&dir),
+        open(&api, "GET https://example.com\n"),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.env", "arguments": [uri(&api)]})),
+        request(
+            3,
+            "workspace/executeCommand",
+            json!({"command": "zed-http.env", "arguments": [uri(&dir.join("closed.http")), "dev"]}),
+        ),
+    ]);
+    assert_eq!(result(&out, 2), json!(null));
+    assert_eq!(result(&out, 3), json!(null));
+    assert!(sent(&out, "workspace/applyEdit").is_empty());
+}
+
+#[test]
+fn hover_uses_the_environment_chosen_in_the_file() {
+    let dir = Dir::new();
+    dir.write("http-client.env.json", ENVS);
+    let api = dir.join("api.http");
+    let text = "# @env prod\nGET {{baseUrl}}/users\n";
+    let out = talk(vec![
+        init(&dir),
+        open(&api, text),
+        request(
+            2,
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri(&api)}, "position": {"line": 1, "character": 7}}),
+        ),
+        request(
+            3,
+            "textDocument/definition",
+            json!({"textDocument": {"uri": uri(&api)}, "position": {"line": 1, "character": 7}}),
+        ),
+    ]);
+    let hover = result(&out, 2)["contents"]["value"].as_str().unwrap().to_string();
+    assert!(hover.contains("environment `prod`") && hover.contains("https://api.example.com"), "{hover}");
+    let definition = result(&out, 3);
+    let targets = definition.as_array().unwrap();
+    assert_eq!(targets.len(), 1, "only the chosen environment: {definition:#}");
 }

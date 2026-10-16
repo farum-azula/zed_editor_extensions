@@ -1,10 +1,22 @@
 id = "http-client"
 name = "HTTP Client"
 description = "IntelliJ IDEA-style HTTP client: run .http/.rest requests from the gutter, and generate them from routes and HTTP calls in 48 frameworks."
-version = "0.2.0"
+version = "0.2.1"
 schema_version = 1
 authors = ["Farum-Azula"]
 repository = "https://github.com/farum-azula/zed_editor_extensions"
+
+# Installing the runner: a prebuilt one from this repository's releases, or a build from the
+# `cli/` crate when the extension is a clone of the repository.
+[[capabilities]]
+kind = "download_file"
+host = "github.com"
+path = ["farum-azula", "zed_editor_extensions", "releases", "download", "**"]
+
+[[capabilities]]
+kind = "process:exec"
+command = "cargo"
+args = ["install", "**"]
 
 [grammars.http]
 repository = "https://github.com/rest-nvim/tree-sitter-http"

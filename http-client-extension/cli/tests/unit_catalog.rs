@@ -372,3 +372,64 @@ fn catalog_loading_errors() {
     assert!(err.contains("models.fields: empty"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A call that passes its URL in a variable: the variable's value, or its name, has to say that
+/// it holds a URL — otherwise the call is not a request at all.
+#[test]
+fn urls_held_in_variables() {
+    let c = Catalog::builtin();
+    let found = |code: &str| {
+        c.routes(code, Path::new("app.dart"))
+            .iter()
+            .filter(|r| !r.endpoint.weak)
+            .map(|r| format!("{} {}", r.endpoint.method, r.endpoint.url))
+            .collect::<Vec<_>>()
+    };
+    let dart = "import 'package:http/http.dart' as http;\n";
+
+    // Assigned a URL somewhere in the file.
+    let code = format!("{dart}final base = 'https://api.example.com/v1';\nf() => http.get(base);\n");
+    assert_eq!(found(&code), ["GET https://api.example.com/v1"]);
+
+    // Assigned something that is not a URL: the name stands in for it, to be filled in later.
+    let code = format!("{dart}final apiUrl = 'production';\nf() => http.get(apiUrl);\n");
+    assert_eq!(found(&code), ["GET {{apiUrl}}"]);
+
+    // Never assigned here, but named like a URL.
+    let code = format!("{dart}f(Uri apiUrl) => http.get(apiUrl);\n");
+    assert_eq!(found(&code), ["GET {{apiUrl}}"]);
+
+    // Neither: not a request.
+    let code = format!("{dart}f(Map headers) => headers.get(key);\n");
+    assert_eq!(found(&code), Vec::<String>::new());
+}
+
+/// Without a `urls` section there is nothing to look up, and only the variable name is left.
+#[test]
+fn urls_without_a_lookup_section() {
+    let extra = r#"{ "languages": { "toy": {
+        "name": "Toy", "extensions": ["toy"], "frameworks": { "client": {
+            "name": "Toy client", "routes": [".{method}({ref})"]
+        } } } } }"#;
+    let c = Catalog::from_sources(&[extra]).unwrap();
+    let routes = c.routes("final endpoint = 'https://example.com';\nclient.get(endpoint);\n", Path::new("a.toy"));
+    assert_eq!(routes[0].endpoint.url, "{{endpoint}}");
+    assert!(c.routes("client.get(payload);\n", Path::new("a.toy")).is_empty());
+}
+
+/// Every tag set in `runnables.scm` is bound to a task in `tasks.json`, or its ▶ would do nothing.
+#[test]
+fn every_runnable_has_a_task() {
+    let query = include_str!("../../languages/http/runnables.scm");
+    let tasks: serde_json::Value = serde_json::from_str(include_str!("../../languages/http/tasks.json")).unwrap();
+    let tagged: BTreeSet<&str> = tasks
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|t| t["tags"].as_array().into_iter().flatten())
+        .filter_map(|t| t.as_str())
+        .collect();
+    let tags: BTreeSet<&str> = query.split("(#set! tag ").skip(1).filter_map(|rest| rest.split(')').next()).collect();
+    assert_eq!(tags, BTreeSet::from(["http-request", "http-request-named"]));
+    assert_eq!(tags, tagged);
+}

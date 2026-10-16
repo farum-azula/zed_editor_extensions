@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod cli;
 pub mod endpoint;
 pub mod infer;
+pub mod launcher;
 pub mod lsp;
 pub mod parser;
 pub mod pattern;

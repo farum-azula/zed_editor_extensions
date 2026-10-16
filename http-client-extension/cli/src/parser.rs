@@ -10,6 +10,10 @@ pub struct Request {
     pub start_line: usize,
     pub end_line: usize,
     pub no_redirect: bool,
+    /// The request's own `# @env NAME` and its line (0-based); it wins over the file's.
+    pub env: Option<(usize, String)>,
+    /// Below a `###` of its own, rather than in the file's header (where `# @env` is the file's).
+    pub own_block: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +45,31 @@ fn comment_text(line: &str) -> &str {
     t.trim()
 }
 
+/// The environment a whole file runs in: `# @env NAME` (or `// @env NAME`) above its first `###`,
+/// and that line (0-based). The first such line counts. Below a `###`, the same line belongs to
+/// that request only (see [`Request::env`]).
+pub fn file_env(src: &str) -> Option<(usize, String)> {
+    src.lines()
+        .enumerate()
+        .take_while(|(_, line)| !is_separator(line))
+        .find_map(|(i, line)| Some((i, env_directive(line)?)))
+}
+
+/// `NAME` of a `# @env NAME` line.
+fn env_directive(line: &str) -> Option<String> {
+    if !is_comment(line) {
+        return None;
+    }
+    let rest = comment_text(line).strip_prefix("@env")?;
+    let name = rest.strip_prefix([' ', '\t', '='])?.trim_start_matches(['=', ' ', '\t']).split_whitespace().next()?;
+    Some(name.to_string())
+}
+
+/// The request whose block holds `line` (1-based, like `--line` and `$ZED_ROW`).
+pub fn request_at(file: &HttpFile, line: usize) -> Option<&Request> {
+    file.requests.iter().find(|r| line >= r.start_line && line <= r.end_line)
+}
+
 /// Parses an `@name = value` declaration.
 pub fn parse_var_decl(line: &str) -> Option<(String, String)> {
     let t = line.trim();
@@ -57,23 +86,31 @@ pub fn parse(src: &str) -> HttpFile {
     let lines: Vec<&str> = src.lines().collect();
     let mut file = HttpFile::default();
 
-    let mut sections: Vec<(usize, usize, Option<String>)> = Vec::new();
+    // (start, end, title, below a `###`): what comes before the first `###` is the file's header.
+    let mut sections: Vec<(usize, usize, Option<String>, bool)> = Vec::new();
     let mut start = 0;
     let mut title = None;
+    let mut separated = false;
     for (i, line) in lines.iter().enumerate() {
         if is_separator(line) {
             if i > start || title.is_some() {
-                sections.push((start, i, title.take()));
+                sections.push((start, i, title.take(), separated));
             }
             let t = line.trim_start().trim_start_matches('#').trim();
             title = (!t.is_empty()).then(|| t.to_string());
             start = i + 1;
+            separated = true;
         }
     }
-    sections.push((start, lines.len(), title));
+    sections.push((start, lines.len(), title, separated));
 
-    for (s, e, title) in sections {
-        if let Some(req) = parse_section(&lines, s, e, title, &mut file.variables) {
+    for (s, e, title, separated) in sections {
+        if let Some(mut req) = parse_section(&lines, s, e, title, &mut file.variables) {
+            req.own_block = separated;
+            if !separated {
+                // An `# @env` in the header is the whole file's.
+                req.env = None;
+            }
             file.requests.push(req);
         }
     }
@@ -105,6 +142,8 @@ fn parse_section(
                 }
             } else if c.starts_with("@no-redirect") {
                 req.no_redirect = true;
+            } else if let Some(env) = env_directive(line).filter(|_| req.env.is_none()) {
+                req.env = Some((i, env));
             }
             i += 1;
             continue;

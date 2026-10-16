@@ -80,6 +80,58 @@ fn environment_selection() {
 }
 
 #[test]
+fn the_file_chooses_its_environment() {
+    let dir = Dir::new();
+    let server = Server::start();
+    dir.write(
+        "http-client.env.json",
+        &format!(
+            r#"{{"dev": {{"baseUrl": "http://127.0.0.1:1"}}, "live": {{"baseUrl": "http://127.0.0.1:{}"}}}}"#,
+            server.port
+        ),
+    );
+    let file = dir.write("api.http", "# @env live\n\nGET {{baseUrl}}/text\n");
+    let file = file.to_str().unwrap();
+
+    assert_eq!(run_args(args(&["run", file, "--all"])), 0, "`# @env live` reaches the server");
+    assert_eq!(server.last().path, "/text");
+    assert_eq!(run_args(args(&["run", file, "--all", "--env", "dev"])), 1, "--env wins: nothing listens there");
+
+    let typo = dir.write("typo.http", "# @env lve\nGET {{baseUrl}}/text\n");
+    assert_eq!(run_args(args(&["run", typo.to_str().unwrap(), "--all"])), 2, "an unknown environment is an error");
+}
+
+#[test]
+fn a_request_can_run_in_an_environment_of_its_own() {
+    let dir = Dir::new();
+    let server = Server::start();
+    dir.write(
+        "http-client.env.json",
+        &format!(
+            r#"{{"dev": {{"baseUrl": "http://127.0.0.1:1"}}, "live": {{"baseUrl": "http://127.0.0.1:{}"}}}}"#,
+            server.port
+        ),
+    );
+    // The file runs in dev, where nothing listens; one request runs in live.
+    let file = dir.write(
+        "api.http",
+        "# @env dev\n\n### down\nGET {{baseUrl}}/text\n\n### up\n# @env live\nGET {{baseUrl}}/json\n",
+    );
+    let file = file.to_str().unwrap();
+    assert_eq!(run_args(args(&["run", file, "--name", "up"])), 0, "its own environment wins over the file's");
+    assert_eq!(server.last().path, "/json");
+    assert_eq!(run_args(args(&["run", file, "--name", "down"])), 1, "the file's environment");
+    assert_eq!(run_args(args(&["run", file, "--all"])), 1, "each in its own: one fails, one succeeds");
+    assert_eq!(server.requests().len(), 2);
+    assert_eq!(run_args(args(&["run", file, "--name", "up", "--env", "dev"])), 1, "--env wins over both");
+
+    // An unknown environment anywhere in the run stops it before anything is sent.
+    let typo = dir.write("typo.http", "### a\nGET {{baseUrl}}/text\n\n### b\n# @env lve\nGET {{baseUrl}}/json\n");
+    assert_eq!(run_args(args(&["run", typo.to_str().unwrap(), "--all"])), 2);
+    assert_eq!(server.requests().len(), 2, "nothing was sent");
+}
+
+#[test]
 fn status_codes_decide_the_exit_code() {
     let dir = Dir::new();
     let server = Server::start();

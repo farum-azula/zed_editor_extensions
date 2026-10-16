@@ -9,7 +9,7 @@
   "definitions": {
     "pattern": {
       "type": "string",
-      "description": "Source code with placeholders: {method} HTTP method (any case) · {path} string contents · {route} string contents starting with / or http(s):// · {host} host name · {name} identifier or header name · {type} type expression · {var} variable (its type is looked up) · {handler} function name (its body is searched) · {keys} a {...}/[...] literal (keys or destructured names) · {generic} optional <...> · {_} any identifier · {x?} optional placeholder · ... anything on the line except parentheses · \" any quote · whitespace = optional whitespace · ? optional ? · leading ^ = line start · {{ }} literal braces."
+      "description": "Source code with placeholders: {method} HTTP method (any case) · {path} string contents · {route} string contents starting with / or http(s):// · {host} host name · {name} identifier or header name · {type} type expression · {var} variable (its type is looked up) · {ref} variable holding the URL (its value is looked up) · {expr} rest of an expression, up to ; or the end of the line · {handler} function name (its body is searched) · {keys} a {...}/[...] literal (keys or destructured names) · {generic} optional <...> · {_} any identifier · {x?} optional placeholder · ... anything on the line except parentheses · \" any quote · whitespace = optional whitespace · ? optional ? · leading ^ = line start · {{ }} literal braces."
     },
     "patterns": { "type": "array", "items": { "$ref": "#/definitions/pattern" } },
     "route": {
@@ -109,6 +109,16 @@
       }
     },
     "auth": { "$ref": "#/definitions/patterns", "description": "Global auth markers for every framework." },
+    "urls": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How to read the URL out of a variable, for calls that pass one: http.post(_endpoint, ...). A {ref} route only becomes a request if the variable resolves here, or is named like a URL (apiUrl, _endpoint).",
+      "properties": {
+        "assignments": { "$ref": "#/definitions/patterns", "description": "Assignments to {var}, capturing the {expr} assigned to it." },
+        "literals": { "$ref": "#/definitions/patterns", "description": "A URL {path} inside such an expression; it must be absolute, rooted or interpolated to count." },
+        "env": { "$ref": "#/definitions/patterns", "description": "An environment variable {name} read in such an expression; the request then uses {{name}}." }
+      }
+    },
     "languages": { "type": "object", "additionalProperties": { "$ref": "#/definitions/language" } }
   }
 }

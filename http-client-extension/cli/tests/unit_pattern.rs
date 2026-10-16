@@ -52,6 +52,10 @@ fn keys() {
     assert_eq!(keys_of("<String, int>{'page': 1}"), vec!["page"]);
     assert_eq!(keys_of("{ name, email: mail, ...rest }"), vec!["name", "email", "rest"]);
     assert_eq!(keys_of("['title' => 'required', 'body' => 'x']"), vec!["title", "body"]);
+    // Nested objects and lists describe values; their keys do not belong to this one.
+    let nested = "{'model': m, 'messages': [{'role': 'system', 'content': p}], 'n': f(1, 2)}";
+    assert_eq!(keys_of(nested), vec!["model", "messages", "n"]);
+    assert_eq!(keys_of("{ user: { name, city }, tags }"), vec!["user", "tags"]);
 }
 
 #[test]

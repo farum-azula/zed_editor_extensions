@@ -72,11 +72,15 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
   - JSON, XML, and GraphQL highlighting inside the request body;
   - outline panel (`cmd+shift+o`) listing the file's requests;
   - `#` and `//` comments (`cmd+/`), auto-closing of brackets and quotes;
-  - **go to variable definition** via `cmd+click` / `F12`, and a hover showing the value.
-- A **▶ run button in the gutter of every request**, plus Zed tasks to run one or all requests in a file.
+  - **go to variable definition** via `cmd+click` / `F12`, and a hover showing the value;
+  - an **environment switcher** above the first line (`env: dev | prod`), stored in the file as `# @env`,
+    and one per request that needs a different environment.
+- A **▶ run button in the gutter of every request in a `.http` file**, plus Zed tasks to run one or
+  all requests in such a file.
 - A **🌐 Generate .http request** lens above every route or HTTP call in your code
   (see [Generating a Request from Code](#generating-a-request-from-code)).
-- The **`zed-http`** runner:
+- The **`zed-http`** runner, installed by the extension itself — nothing to set up by hand
+  (see [Installation](#installation)):
   - any HTTP method, headers, body, multi-line URLs;
   - file variables, environments (`http-client.env.json` + private file), `$shared`;
   - dynamic variables: `$uuid`, `$timestamp`, `$isoTimestamp`, `$randomInt`, `$random.*`, `$processEnv.*`;
@@ -110,46 +114,49 @@ When a `.http` file is opened, Zed starts `zed-http lsp`, which handles "go to d
 ## Requirements
 
 - Zed (a recent version with support for tasks and runnables);
-- Rust toolchain (`cargo`) to build the runner and the dev extension;
 - macOS or Linux (Windows should work but is untested).
 
 ## Installation
 
-### 1. Runner
-
-```sh
-git clone <this repository>
-cd http-client-extension
-cargo install --path cli
-```
-
-The `zed-http` binary is installed to `~/.cargo/bin`. Make sure that directory is in your `PATH`:
-
-```sh
-zed-http --help
-```
-
-> Zed runs tasks through your shell. If the command isn't found inside Zed,
-> make sure `~/.cargo/bin` is added to `PATH` in `~/.zshrc` / `~/.bashrc`, not just in the current session.
-
-### 2. Extension
+Install the extension — that is all. The runner, `zed-http`, is a native binary, and the extension
+installs it on first use:
 
 1. Open Zed.
 2. Command palette (`cmd+shift+p`) → **`zed: install dev extension`**.
-3. Select the root folder of this repository.
+3. Select the `http-client-extension` folder of this repository.
 
-Zed compiles the WASM part of the extension (requires `rustup`; Zed installs the `wasm32-wasip2` target itself)
-and the tree-sitter-http grammar. After that, `.http` and `.rest` files open as the **HTTP** language,
-and the **zed-http** language server appears at the bottom.
+Zed compiles the WASM part of the extension and the tree-sitter-http grammar, and then starts the
+language server. Finding the runner for it, the extension tries, in order:
+
+1. a `zed-http` already in `PATH` — an installation of your own always wins;
+2. a copy it installed earlier, under its own directory in Zed's extension work folder;
+3. the release build for this platform, downloaded from this repository's
+   [releases](https://github.com/farum-azula/zed_editor_extensions/releases);
+4. a build from the `cli/` crate of the extension itself, with `cargo install`. This is the usual
+   case for a development extension, which is a clone of the repository; the first start then
+   takes as long as a release build of the runner does.
+
+While that happens, Zed shows the server as installing. The server also keeps a copy of itself in
+`~/.zed-http/bin`, which is where the ▶ run button looks for it when `PATH` has no `zed-http`:
+tasks are shell commands, and the shell does not know about Zed's extension folders.
+
+To install the runner by hand anyway — to use it as a CLI, for instance:
+
+```sh
+git clone <this repository>
+cd zed_editor_extensions/http-client-extension
+cargo install --path cli
+```
 
 ### Updating
 
 ```sh
 git pull
-cargo install --path cli --force
 ```
 
-In Zed: `zed: extensions` → click **Rebuild** on the dev extension.
+In Zed: `zed: extensions` → click **Rebuild** on the dev extension. The runner is versioned with
+the extension, so the new version is installed on the next start; if you installed one by hand,
+update it with `cargo install --path cli --force`.
 
 ## Quick Start
 
@@ -198,10 +205,13 @@ A more complete example is in [`examples/requests.http`](examples/requests.http)
 | Method | What runs |
 |---|---|
 | ▶ in the gutter next to the method | This request |
-| `task: spawn` → "HTTP: GET …" | The request under the cursor |
+| `task: spawn` → "HTTP: GET …" | The request under the cursor (named after its `# @name`, if it has one) |
 | `task: spawn` → "HTTP: run all requests in …" | All requests in the file, in order |
 | `task: rerun` | Repeat the last run |
 | Keyboard shortcut (see [below](#keyboard-shortcuts)) | The request nearest the cursor |
+
+The task — and its terminal tab — is called after the request's `# @name` (`HTTP: get-todos-by-id`),
+or after its method and URL when it has none (`HTTP: GET {{baseUrl}}/todos/{{id}}`).
 
 From the terminal:
 
@@ -256,7 +266,8 @@ Comments between headers are skipped.
 
 | Directive | Meaning |
 |---|---|
-| `# @name login` | Request name: for `--name` and response references |
+| `# @name login` | Request name: for `--name`, response references and the task's title |
+| `# @env prod` | The environment: of the whole file above the first `###`, of one request below it |
 | `# @no-redirect` | Do not follow 3xx redirects |
 
 ## Variables
@@ -336,25 +347,48 @@ Numbers and booleans are converted to strings.
 
 ### Selecting an Environment
 
-By priority:
+A `.http` file names its environment itself. Above the first `###`, `# @env` is the whole file's;
+in a request's block, below its `###`, it is that request's, and wins:
 
-1. The `--env prod` flag.
-2. The `HTTP_CLIENT_ENV` variable.
-3. `dev`, `local`, or `development`, if present.
-4. The first environment in the file.
+```http
+# @env prod
 
-The selected environment is printed on the first line of output. To make Zed tasks use a different environment,
-set the variable in settings (`zed: open settings`):
+### Users
+GET {{baseUrl}}/users
 
-```json
-{
-  "terminal": {
-    "env": { "HTTP_CLIENT_ENV": "prod" }
-  }
-}
+### Health — on the dev server only
+# @env dev
+GET {{baseUrl}}/health
 ```
 
-Or per project in `.zed/settings.json`.
+In Zed you rarely type it. Above the first line of every `.http` file there is a row of lenses,
+
+```
+env: prod | dev | staging
+```
+
+the environment of the file, then the others; clicking one writes (or rewrites) the file's `# @env`.
+A request with an environment of its own gets the same row above its `# @env` line, plus
+`from file`, which removes the line so the request follows the file again. To give a request one,
+put the cursor on it and press `cmd+.` → **HTTP: choose an environment for this request**.
+
+The ▶ run button, hover and go-to-definition all use the request's environment. The runner reads
+the saved file, so with autosave off, save before running — as with any other edit.
+Lenses must be enabled (`"code_lens": "on"`, see
+[Generating a Request from Code](#generating-a-request-from-code)); without them, type the lines.
+
+By priority:
+
+1. The `--env prod` flag of the CLI, for every request it runs.
+2. The request's own `# @env prod` (or `// @env prod`), below its `###`.
+3. The file's `# @env prod`, above the first `###`. In either place the first such line counts.
+4. The `HTTP_CLIENT_ENV` variable — for a default across files, e.g. in Zed's
+   `"terminal": { "env": { "HTTP_CLIENT_ENV": "prod" } }`.
+5. `dev`, `local`, or `development`, if present.
+6. The first environment in the file.
+
+The environment is printed before the requests that run in it. An environment that is not defined
+stops the run before anything is sent, and is marked `(not defined)` in the lens.
 
 List environments:
 
@@ -389,8 +423,9 @@ https://httpbin.org
 For response references, the value is taken from `.zed-http/responses.json`; if the request hasn't run yet, the hover says so.
 For dynamic variables, a sample value is shown.
 
-The current environment for navigation is determined the same way as for running (`HTTP_CLIENT_ENV`, then `dev`/`local`).
-After changing `HTTP_CLIENT_ENV`, restart the server: `editor: restart language server`.
+The current environment for navigation is determined the same way as for running: the request's
+`# @env`, the file's, then `HTTP_CLIENT_ENV`, then `dev`/`local`. Switching with the lens takes effect at once; after changing
+`HTTP_CLIENT_ENV` itself, restart the server: `editor: restart language server`.
 
 ## Request Chaining
 
@@ -692,8 +727,26 @@ A framework is active in a file only when the file contains one of its `imports`
 Path parameters (`{id}`, `:id`, `<id>`, `<int:id>`, `$id`, `${user.id}`) become `{{id}}`,
 and relative paths get the `{{baseUrl}}` prefix. Bare `https://…` literals get a `cmd+.` action but no lens.
 
-Limits: matching is per pattern, not a full parse — a path assembled from variables elsewhere
-won't be found, and models defined in other files are not resolved (the body is then `{}`).
+#### URLs kept in a variable
+
+Client calls rarely spell the URL out: `http.post(_endpoint, …)`, `axios.get(endpoint)`,
+`requests.get(BASE_URL)`. Those are recognized too. The variable is looked up in the same file,
+and the request uses, in order:
+
+- the URL assigned to it — `final base = 'https://api.example.com/v1'` → `GET https://api.example.com/v1`,
+  interpolation included (`'$host/v2'` → `{{host}}/v2`);
+- the environment variable it is read from — `_endpoint = Uri.parse(dotenv.get('GROQ_URL'))` →
+  `POST {{GROQ_URL}}`, with `process.env.X`, `os.environ["X"]`, `getenv("X")`, `ENV['X']` and
+  `Environment.GetEnvironmentVariable("X")` all understood;
+- the variable's own name, when it names a URL (`apiUrl`, `_endpoint`, `baseUri`) → `{{apiUrl}}`,
+  to be filled in from `.zed/http/http-client.env.json`.
+
+A variable that is none of those is not a URL, and the call is left alone — so `map.get(key)` in a
+file that happens to use an HTTP client does not turn into a request. The lookup patterns are the
+`urls` section of `frameworks.json`, and a project can extend them like any other part of the catalog.
+
+Limits: matching is per pattern, not a full parse — a URL assembled across several statements
+or files won't be found, and models defined in other files are not resolved (the body is then `{}`).
 
 ### Pattern language
 
@@ -721,6 +774,8 @@ Patterns are source code with typed placeholders — no regular expressions:
 | `{name}` | an identifier or header name |
 | `{type}` | a type: `int`, `List<String>`, `list[str]`, `*Order`, `Dto?` — models are expanded into fields |
 | `{var}` | a variable; its declared type is looked up (`Decode(&{var})`, `{var}.toJson()`) |
+| `{ref}` | a variable holding the URL; its value is looked up (`http.post({ref},`) |
+| `{expr}` | the rest of an expression, up to `;` or the end of the line |
 | `{handler}` | a function name; its body is searched too (`post({handler})`) |
 | `{keys}` | a `{…}` / `[…]` literal; its keys or destructured names are taken |
 | `{generic}` | an optional `<…>` type argument list |
@@ -825,7 +880,7 @@ Run `zed: open keymap` and add:
 ├── frameworks.schema.json      JSON Schema for frameworks.json
 ├── extension.toml              extension manifest, grammar, language server
 ├── Cargo.toml                  WASM part of the extension
-├── src/lib.rs                  launches `zed-http lsp` from Zed
+├── src/lib.rs                  installs the runner and starts `zed-http lsp` from Zed
 ├── languages/http/
 │   ├── config.toml             file extensions, comments, brackets
 │   ├── highlights.scm          highlighting
@@ -845,6 +900,7 @@ Run `zed: open keymap` and add:
 │       ├── endpoint.rs         .http request rendering and files
 │       ├── infer.rs            request shape (query, headers, body) and sample values
 │       ├── lsp.rs              language server: definition, hover, code actions, code lenses
+│       ├── launcher.rs         the copy of the runner that gutter tasks fall back to
 │       ├── parser.rs           .http file parsing
 │       └── vars.rs             variables, environments, response references
 └── examples/
@@ -930,11 +986,22 @@ extensions in the repository have their own workflow and are unaffected.
 Each job is scoped to `http-client-extension/`, and the `paths` filter keeps the workflow from
 running when another extension changes.
 
+[`.github/workflows/http-client-extension-release.yml`](../.github/workflows/http-client-extension-release.yml)
+publishes the prebuilt runners the extension downloads. It runs on a tag named after the version in
+`extension.toml` and attaches `zed-http-<version>-<target>.tar.gz` for macOS and Linux, on both
+Intel and ARM, to the release:
+
+```sh
+git tag http-client-extension-v0.2.1
+git push origin http-client-extension-v0.2.1
+```
+
+The workflow refuses a tag that disagrees with `extension.toml`.
+
 ## Limitations
 
 - JavaScript handlers (`> {% ... %}`, `> ./handler.js`) and pre-request scripts are skipped.
   To pass data between requests, use `{{name.response...}}`.
-- No UI environment switcher; only `HTTP_CLIENT_ENV` or `--env`.
 - The response is shown in the terminal, not in a separate panel (a Zed extension API limitation).
 - No support for WebSocket, gRPC, GraphQL subscriptions, or `HTTP/2`-specific features; send GraphQL queries as `POST` with JSON.
 - No cookie jar between requests; pass `Cookie` manually or via `{{name.response.headers.Set-Cookie}}`.
@@ -944,6 +1011,9 @@ running when another extension changes.
 
 **No ▶ in the gutter of a `.http` file.**
 Check that the file language in the bottom right is **HTTP**. If not, reinstall the extension and check `zed: open log`.
+If the arrow is there but running it reports `zed-http: command not found`, the server has not started
+yet in this window (it is what installs the copy the task falls back to) — open a `.http` file, wait for
+**zed-http** to appear in the status bar, and run it again.
 The buttons also require `"gutter": { "runnables": true }` to be enabled (it is by default).
 
 **The ▶ is there, but the "HTTP: …" task isn't offered.**
