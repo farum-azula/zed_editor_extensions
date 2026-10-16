@@ -1,7 +1,7 @@
 id = "http-client"
 name = "HTTP Client"
 description = "IntelliJ IDEA-style HTTP client: .http/.rest files with highlighting, environments, variables and ▶ run buttons."
-version = "0.1.0"
+version = "0.2.0"
 schema_version = 1
 authors = ["Farum-Azula"]
 repository = "https://github.com/farum-azula/zed_editor_extensions"
@@ -12,7 +12,8 @@ commit = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"
 
 [language_servers.zed-http]
 name = "zed-http"
-# Non-HTTP languages: only the "generate .http request" code action is active there.
+# Non-HTTP languages: only the "generate .http request" lenses / code actions are active there,
+# driven by frameworks.json. Every `zed` language name in frameworks.json must be listed here.
 languages = [
     "HTTP",
     "Dart", "JavaScript", "TypeScript", "TSX", "Python", "Go", "Rust",

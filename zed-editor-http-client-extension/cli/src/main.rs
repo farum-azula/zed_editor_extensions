@@ -1,6 +1,9 @@
+mod catalog;
 mod endpoint;
+mod infer;
 mod lsp;
 mod parser;
+mod pattern;
 mod vars;
 
 use parser::{Body, HttpFile, Request};
@@ -21,6 +24,7 @@ USAGE:
     zed-http envs <file.http>
     zed-http new [ROOT] [--name NAME] [--method METHOD] [--url URL] [--from FILE:LINE] [--no-open]
     zed-http detect <file> [--line N]
+    zed-http frameworks [ROOT]
     zed-http lsp
 
 The environment can also be set with the HTTP_CLIENT_ENV variable.
@@ -82,6 +86,15 @@ fn main() -> ExitCode {
     }
     if std::env::args().nth(1).as_deref() == Some("new") {
         return match new_endpoint(std::env::args().skip(2)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{RED}error:{RESET} {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    if std::env::args().nth(1).as_deref() == Some("frameworks") {
+        return match frameworks(std::env::args().nth(2)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("{RED}error:{RESET} {e}");
@@ -409,10 +422,11 @@ fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
 }
 
 /// `zed-http new`: creates `<root>/.zed/http/endpoints/<name>.http` from a template.
-/// `.zed/http/` gets its own `.gitignore` with `*`, so nothing there is ever committed,
-/// while the rest of `.zed/` (settings, tasks) stays shareable.
+/// Whether `.zed/http/` is committed is up to the user (no `.gitignore` is generated).
 fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let (mut root, mut name, mut method, mut url, mut open) = (None, None, None, None, true);
+    let mut generated: Option<String> = None;
+    let mut source: Option<PathBuf> = None;
     while let Some(a) = args.next() {
         let mut val = |n: &str| args.next().ok_or_else(|| format!("{n} requires a value"));
         match a.as_str() {
@@ -425,10 +439,13 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
                 let (file, line) = from.rsplit_once(':').ok_or("--from expects FILE:LINE")?;
                 let line: usize = line.parse().map_err(|_| "invalid line in --from")?;
                 let src = fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
-                let ep = endpoint::detect(&src, line.saturating_sub(1))
+                let catalog = catalog::for_source(Path::new(file))?;
+                let (ep, _, content) = endpoint::generate(&catalog, &src, Path::new(file), line.saturating_sub(1))
                     .ok_or_else(|| format!("no HTTP endpoint found at {from}"))?;
                 method.get_or_insert(ep.method);
                 url.get_or_insert(ep.url);
+                generated = Some(content);
+                source = Some(PathBuf::from(file));
             }
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
             s => root = Some(PathBuf::from(s)),
@@ -457,20 +474,38 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let base = root.join(vars::ZED_HTTP_DIR);
     let dir = base.join("endpoints");
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let ignore = base.join(".gitignore");
-    if !ignore.exists() {
-        fs::write(&ignore, "*\n").map_err(|e| format!("{}: {e}", ignore.display()))?;
-    }
     if vars::find_env_dir(&dir).is_none() {
         let env = base.join("http-client.env.json");
         fs::write(&env, endpoint::DEFAULT_ENV).map_err(|e| format!("{}: {e}", env.display()))?;
         println!("{GREEN}created:{RESET} {}", env.display());
     }
 
-    let path = endpoint::free_path(&dir, &name);
-    let text = endpoint::template(&method, &url, &name);
-    fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
-    println!("{GREEN}created:{RESET} {}", path.display());
+    let text = match generated {
+        // Rendered with the default name; swap in the chosen one.
+        Some(t) => {
+            let default = endpoint::default_name(&method, &url);
+            t.replace(&format!("### {default}\n# @name {default}"), &format!("### {name}\n# @name {name}"))
+        }
+        None => endpoint::template(&method, &url, &name),
+    };
+    // Requests generated from a source file are collected in `<source file>.http`.
+    let path = match &source {
+        Some(src) => endpoint::file_for_source(&dir, src),
+        None => endpoint::free_path(&dir, &name),
+    };
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    if endpoint::find_request(&existing, &name).is_some() {
+        println!("{YELLOW}exists:{RESET} {name} in {}", path.display());
+    } else {
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        std::io::Write::write_all(&mut f, endpoint::append_text(&existing, &text).as_bytes())
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    println!("{GREEN}saved:{RESET} {}", path.display());
 
     // Open in Zed if its CLI is available; otherwise the printed path is cmd+clickable.
     if open {
@@ -492,7 +527,7 @@ fn prompt(label: &str, default: &str) -> Result<String, String> {
     Ok(if line.is_empty() { default.into() } else { line.into() })
 }
 
-/// `zed-http detect`: prints `LINE<TAB>METHOD<TAB>URL` for endpoints found in a source file.
+/// `zed-http detect`: prints `LINE<TAB>METHOD<TAB>URL<TAB>language/framework` for routes in a source file.
 fn detect(mut args: impl Iterator<Item = String>) -> Result<bool, String> {
     let (mut file, mut only) = (None, None);
     while let Some(a) = args.next() {
@@ -506,15 +541,28 @@ fn detect(mut args: impl Iterator<Item = String>) -> Result<bool, String> {
     }
     let file = file.ok_or_else(|| format!("missing <file>\n\n{USAGE}"))?;
     let src = fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
+    let catalog = catalog::for_source(Path::new(&file))?;
     let mut found = false;
-    for i in 0..src.lines().count() {
-        if only.is_some_and(|l| l != i + 1) {
+    for r in catalog.routes(&src, Path::new(&file)) {
+        if only.is_some_and(|l| l != r.line + 1) {
             continue;
         }
-        if let Some(ep) = endpoint::detect(&src, i) {
-            println!("{}\t{}\t{}", i + 1, ep.method, ep.url);
-            found = true;
-        }
+        println!("{}\t{}\t{}\t{}", r.line + 1, r.endpoint.method, r.endpoint.url, r.framework);
+        found = true;
     }
     Ok(found)
+}
+
+/// `zed-http frameworks`: prints the supported languages and frameworks (validating the project catalog).
+fn frameworks(root: Option<String>) -> Result<(), String> {
+    let root = root.map(PathBuf::from).unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let custom = catalog::project_file(&root);
+    let catalog = if custom.exists() {
+        println!("{DIM}built-in catalog + {}{RESET}\n", custom.display());
+        catalog::Catalog::for_root(&root)?
+    } else {
+        catalog::Catalog::from_sources(&[catalog::BUILTIN])?
+    };
+    print!("{}", catalog.tree());
+    Ok(())
 }

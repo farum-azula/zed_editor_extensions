@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/farum-azula/zed_editor_extensions/frameworks.schema.json",
+  "title": "zed-http frameworks catalog",
+  "description": "Languages → frameworks → patterns used to find HTTP routes and calls in source code and generate .http requests. A project can extend it with .zed/http/frameworks.json (merged key by key).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["languages"],
+  "definitions": {
+    "pattern": {
+      "type": "string",
+      "description": "Source code with placeholders: {method} HTTP method (any case) · {path} string contents · {route} string contents starting with / or http(s):// · {host} host name · {name} identifier or header name · {type} type expression · {var} variable (its type is looked up) · {handler} function name (its body is searched) · {keys} a {...}/[...] literal (keys or destructured names) · {generic} optional <...> · {_} any identifier · {x?} optional placeholder · ... anything on the line except parentheses · \" any quote · whitespace = optional whitespace · ? optional ? · leading ^ = line start · {{ }} literal braces."
+    },
+    "patterns": { "type": "array", "items": { "$ref": "#/definitions/pattern" } },
+    "route": {
+      "oneOf": [
+        { "$ref": "#/definitions/pattern" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pattern"],
+          "properties": {
+            "pattern": { "$ref": "#/definitions/pattern" },
+            "method": { "type": "string", "description": "Method when the pattern has no {method}. Default GET." },
+            "url": { "type": "string", "description": "URL template from captures, e.g. https://{host}{path}. Default: {path} or {route}." },
+            "prefixed": { "type": "boolean", "description": "Apply the framework prefix. Default true." },
+            "weak": { "type": "boolean", "description": "Low-confidence match: code action only, no lens." }
+          }
+        }
+      ]
+    },
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "routes"],
+      "properties": {
+        "name": { "type": "string" },
+        "docs": { "type": "string", "format": "uri" },
+        "imports": { "type": "array", "items": { "type": "string" }, "description": "The framework is active only if the file contains one of these strings. Empty = always." },
+        "prefix": { "$ref": "#/definitions/patterns", "description": "Path prefix declarations capturing {path}, e.g. @RequestMapping(\"{path}\")." },
+        "prefix_scope": { "enum": ["class", "file"], "description": "class: an annotation right above a class declaration (default). file: the first match in the file." },
+        "controller_token": { "type": "string", "description": "Token in the prefix replaced by the controller class name without the Controller suffix, e.g. [controller]." },
+        "routes": { "type": "array", "items": { "$ref": "#/definitions/route" }, "minItems": 1, "description": "At one position the first matching pattern wins." },
+        "path_params": { "type": "array", "items": { "enum": ["braces", "colon", "angle", "dollar"] }, "description": "Path parameter syntaxes: {id} · :id · <id> / <int:id> · $id / ${id}. Default: all." },
+        "query": { "$ref": "#/definitions/patterns", "description": "Query parameters: capture {name} (+ {type}), {keys}, {var} or a model {type}." },
+        "headers": { "$ref": "#/definitions/patterns", "description": "Headers: capture {name} or {keys}." },
+        "header_case": { "enum": ["kebab"], "description": "kebab: parameter x_request_id → header X-Request-Id." },
+        "body": { "$ref": "#/definitions/patterns", "description": "JSON body: capture a model {type}, a {var}, {keys} or single fields {name}." },
+        "params": { "$ref": "#/definitions/patterns", "description": "Handler signature parameters {name}: {type}; models go to the body, scalars to the query (FastAPI-style)." },
+        "ignore": { "$ref": "#/definitions/patterns", "description": "Parameters {name} that are neither query nor body (dependencies, request objects)." },
+        "auth": { "$ref": "#/definitions/patterns", "description": "Any match adds Authorization: Bearer {{token}}." },
+        "examples": {
+          "type": "array",
+          "description": "Checked by the test suite: every route found in code (for this framework) as METHOD URL.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "expect"],
+            "properties": {
+              "code": { "type": "string" },
+              "expect": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "language": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "extensions", "frameworks"],
+      "properties": {
+        "name": { "type": "string" },
+        "zed": { "type": "array", "items": { "type": "string" }, "description": "Zed language names; the language server must be registered for them in extension.toml." },
+        "extensions": { "type": "array", "items": { "type": "string" }, "description": "File extensions without the dot; \"*\" applies to every file." },
+        "decorators": { "type": "array", "items": { "type": "string" }, "description": "Line prefixes of annotations/attributes, e.g. @ or #[." },
+        "class_keywords": { "type": "array", "items": { "type": "string" } },
+        "definitions": { "$ref": "#/definitions/patterns", "description": "Lines starting a function; patterns with {handler} also find a handler by name." },
+        "handler_refs": { "$ref": "#/definitions/patterns", "description": "How a route line references its handler, capturing {handler}." },
+        "variables": { "$ref": "#/definitions/patterns", "description": "Variable declarations with {var} and {type}." },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["declarations", "fields"],
+          "properties": {
+            "declarations": { "$ref": "#/definitions/patterns", "description": "Model declarations with {type}, e.g. class {type}." },
+            "block": { "enum": ["braces", "indent"], "description": "Body delimiter; a ( right after the name is read as a constructor/record parameter list." },
+            "modifiers": { "type": "array", "items": { "type": "string" }, "description": "Words stripped from the start of field lines." },
+            "fields": { "$ref": "#/definitions/patterns", "description": "One field line with {name} and {type}." }
+          }
+        },
+        "frameworks": { "type": "object", "additionalProperties": { "$ref": "#/definitions/framework" } }
+      }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "types": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Type names (case-insensitive, last path segment) mapped to JSON sample values.",
+      "properties": {
+        "int": { "type": "array", "items": { "type": "string" } },
+        "float": { "type": "array", "items": { "type": "string" } },
+        "bool": { "type": "array", "items": { "type": "string" } },
+        "string": { "type": "array", "items": { "type": "string" } },
+        "list": { "type": "array", "items": { "type": "string" } },
+        "object": { "type": "array", "items": { "type": "string" } },
+        "wrappers": { "type": "array", "items": { "type": "string" }, "description": "Generic wrappers unwrapped to their first type argument (Optional<T>, Json<T>…)." }
+      }
+    },
+    "auth": { "$ref": "#/definitions/patterns", "description": "Global auth markers for every framework." },
+    "languages": { "type": "object", "additionalProperties": { "$ref": "#/definitions/language" } }
+  }
+}

@@ -1,3 +1,4 @@
+use crate::catalog::{self, Catalog};
 use crate::endpoint;
 use crate::parser;
 use crate::vars::{find_env_dir, Context, Environments, ZED_HTTP_DIR};
@@ -12,9 +13,12 @@ pub fn serve() {
     let mut input = stdin.lock();
     let mut docs: HashMap<String, String> = HashMap::new();
     let mut root: Option<PathBuf> = None;
+    let mut next_id = 0u64;
+    let mut catalogs = Catalogs::default();
     while let Some(msg) = read_message(&mut input) {
         let id = msg.get("id").cloned();
-        let method = msg.get("method").and_then(Value::as_str).unwrap_or_default();
+        // Responses to our own requests (workspace/applyEdit, window/showDocument).
+        let Some(method) = msg.get("method").and_then(Value::as_str) else { continue };
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         let result = match method {
             "initialize" => {
@@ -27,7 +31,9 @@ pub fn serve() {
                     "textDocumentSync": 1,
                     "definitionProvider": true,
                     "hoverProvider": true,
-                    "codeActionProvider": true
+                    "codeActionProvider": true,
+                    "codeLensProvider": { "resolveProvider": false },
+                    "executeCommandProvider": { "commands": [GENERATE, OPEN] }
                 },
                 "serverInfo": { "name": "zed-http" }
                 }))
@@ -58,7 +64,19 @@ pub fn serve() {
                 }
                 None
             }
-            "textDocument/codeAction" => Some(code_actions(&docs, &params, root.as_deref())),
+            "textDocument/codeAction" => {
+                let c = catalogs.get(root.as_deref());
+                Some(code_actions(c, &docs, &params, root.as_deref()))
+            }
+            "textDocument/codeLens" => {
+                let c = catalogs.get(root.as_deref());
+                Some(code_lenses(c, &docs, &params, root.as_deref()))
+            }
+            "workspace/executeCommand" => {
+                let c = catalogs.get(root.as_deref());
+                execute_command(c, &docs, &params, root.as_deref(), &mut next_id);
+                Some(Value::Null)
+            }
             "textDocument/definition" => Some(with_variable(&docs, &params, definition).unwrap_or(Value::Null)),
             "textDocument/hover" => Some(with_variable(&docs, &params, hover).unwrap_or(Value::Null)),
             _ => None,
@@ -133,49 +151,180 @@ fn is_http_file(uri: &str) -> bool {
     uri.ends_with(".http") || uri.ends_with(".rest")
 }
 
-/// "Generate .http request" for an endpoint on the cursor line in any source file.
-/// The edit creates `.zed/http/endpoints/<name>.http` (plus `.gitignore` and a default env if missing).
-fn code_actions(docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
-    let actions = (|| {
-        let uri = params["textDocument"]["uri"].as_str()?;
-        if is_http_file(uri) {
-            return None;
-        }
-        let text = docs.get(uri)?;
-        let line = params["range"]["start"]["line"].as_u64()? as usize;
-        let ep = endpoint::detect(text, line)?;
-        let file = uri_to_path(uri)?;
-        let root = root
-            .map(Path::to_path_buf)
-            .or_else(|| file.parent().map(Path::to_path_buf))?;
-        let base = root.join(ZED_HTTP_DIR);
-        let dir = base.join("endpoints");
-        let name = endpoint::default_name(&ep.method, &ep.url);
-        let target = endpoint::free_path(&dir, &name);
+/// The built-in catalog, or built-in + `<root>/.zed/http/frameworks.json` (reloaded when it changes).
+#[derive(Default)]
+struct Catalogs {
+    project: Option<(std::time::SystemTime, Catalog)>,
+}
 
-        let mut changes = Vec::new();
-        let mut create = |path: &Path, text: &str| {
-            let uri = path_to_uri(path);
-            changes.push(json!({ "kind": "create", "uri": uri, "options": { "ignoreIfExists": true } }));
-            changes.push(json!({
-                "textDocument": { "uri": uri, "version": null },
-                "edits": [{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "newText": text }]
-            }));
+impl Catalogs {
+    fn get(&mut self, root: Option<&Path>) -> &Catalog {
+        let Some(root) = root else { return Catalog::builtin() };
+        let file = catalog::project_file(root);
+        let Some(mtime) = fs::metadata(&file).and_then(|m| m.modified()).ok() else {
+            return Catalog::builtin();
         };
-        if !base.join(".gitignore").exists() {
-            create(&base.join(".gitignore"), "*\n");
+        if self.project.as_ref().is_none_or(|(t, _)| *t != mtime) {
+            match Catalog::for_root(root) {
+                Ok(c) => self.project = Some((mtime, c)),
+                Err(e) => {
+                    // Shown in Zed's language server log; keep working with the built-in catalog.
+                    eprintln!("zed-http: {e}");
+                    return Catalog::builtin();
+                }
+            }
         }
-        if find_env_dir(&dir).is_none() {
-            create(&base.join("http-client.env.json"), endpoint::DEFAULT_ENV);
+        &self.project.as_ref().unwrap().1
+    }
+}
+
+const GENERATE: &str = "zed-http.generate";
+const OPEN: &str = "zed-http.open";
+
+/// What generating the request for `line` would do. All requests from one source file go to
+/// `.zed/http/endpoints/<source file>.http`; an already generated request is opened instead.
+struct Generation {
+    title: String,
+    name: String,
+    target: PathBuf,
+    /// Line of the existing request in `target`, if it was generated before.
+    existing: Option<usize>,
+    edit: Value,
+}
+
+fn generation(catalog: &Catalog, docs: &HashMap<String, String>, uri: &str, line: usize, root: Option<&Path>) -> Option<Generation> {
+    if is_http_file(uri) {
+        return None;
+    }
+    let text = docs.get(uri)?;
+    let file = uri_to_path(uri)?;
+    let (ep, name, content) = endpoint::generate(catalog, text, &file, line)?;
+    let root = root.map(Path::to_path_buf).or_else(|| file.parent().map(Path::to_path_buf))?;
+    let base = root.join(ZED_HTTP_DIR);
+    let dir = base.join("endpoints");
+    let target = endpoint::file_for_source(&dir, &file);
+    let current = docs
+        .get(&path_to_uri(&target))
+        .cloned()
+        .or_else(|| fs::read_to_string(&target).ok());
+    let existing = current.as_deref().and_then(|t| endpoint::find_request(t, &name));
+
+    let mut changes = Vec::new();
+    let mut insert = |path: &Path, at: (usize, usize), text: &str, create: bool| {
+        let uri = path_to_uri(path);
+        if create {
+            changes.push(json!({ "kind": "create", "uri": uri, "options": { "ignoreIfExists": true } }));
         }
-        create(&target, &endpoint::template(&ep.method, &ep.url, &name));
-        Some(json!([{
-            "title": format!("HTTP: generate request {} {}", ep.method, ep.url),
+        let pos = json!({ "line": at.0, "character": at.1 });
+        changes.push(json!({
+            "textDocument": { "uri": uri, "version": null },
+            "edits": [{ "range": { "start": pos, "end": pos }, "newText": text }]
+        }));
+    };
+    if find_env_dir(&dir).is_none() {
+        insert(&base.join("http-client.env.json"), (0, 0), endpoint::DEFAULT_ENV, true);
+    }
+    match &current {
+        Some(cur) => insert(&target, end_position(cur), &endpoint::append_text(cur, &content), false),
+        None => insert(&target, (0, 0), &content, true),
+    }
+    Some(Generation {
+        title: format!("{} {}", ep.method, ep.url),
+        name,
+        target,
+        existing,
+        edit: json!({ "documentChanges": changes }),
+    })
+}
+
+/// LSP position just past the end of `text`.
+fn end_position(text: &str) -> (usize, usize) {
+    let line = text.matches('\n').count();
+    let last = text.rsplit('\n').next().unwrap_or_default();
+    (line, utf16_len(last))
+}
+
+/// Line of the newly appended request (its `###` header) after applying the edit.
+fn appended_line(target: &Path, docs: &HashMap<String, String>) -> usize {
+    let cur = docs.get(&path_to_uri(target)).cloned().or_else(|| fs::read_to_string(target).ok());
+    let cur = cur.unwrap_or_default();
+    (cur.clone() + &endpoint::append_text(&cur, "")).matches('\n').count()
+}
+
+fn range_line(line: usize) -> Value {
+    json!({ "start": { "line": line, "character": 0 }, "end": { "line": line, "character": 0 } })
+}
+
+/// "Generate .http request" / "Open request" for an endpoint on the cursor line in any source file.
+fn code_actions(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
+    let uri = params["textDocument"]["uri"].as_str().unwrap_or_default();
+    let Some(line) = params["range"]["start"]["line"].as_u64() else { return json!([]) };
+    let Some(g) = generation(catalog, docs, uri, line as usize, root) else { return json!([]) };
+    json!([match g.existing {
+        Some(at) => json!({
+            "title": format!("HTTP: open {} in {}", g.name, file_name(&g.target)),
             "kind": "refactor",
-            "edit": { "documentChanges": changes }
-        }]))
-    })();
-    actions.unwrap_or_else(|| json!([]))
+            "command": { "title": "Open", "command": OPEN, "arguments": [path_to_uri(&g.target), at] }
+        }),
+        None => json!({
+            "title": format!("HTTP: generate request {} → {}", g.title, file_name(&g.target)),
+            "kind": "refactor",
+            "command": { "title": "Generate", "command": GENERATE, "arguments": [uri, line] }
+        }),
+    }])
+}
+
+/// A clickable lens above every route / client call: generates the request, or opens it if it exists.
+fn code_lenses(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
+    let uri = params["textDocument"]["uri"].as_str().unwrap_or_default();
+    let Some(text) = docs.get(uri).filter(|_| !is_http_file(uri)) else { return json!([]) };
+    let Some(file) = uri_to_path(uri) else { return json!([]) };
+    let mut lenses = Vec::new();
+    for route in catalog.routes(text, &file).into_iter().filter(|r| !r.endpoint.weak) {
+        let line = route.line;
+        let Some(g) = generation(catalog, docs, uri, line, root) else { continue };
+        let command = match g.existing {
+            Some(at) => json!({ "title": format!("🔗 Open {}", file_name(&g.target)), "command": OPEN, "arguments": [path_to_uri(&g.target), at] }),
+            None => json!({ "title": "🌐 Generate .http request", "command": GENERATE, "arguments": [uri, line] }),
+        };
+        lenses.push(json!({ "range": range_line(line), "command": command }));
+    }
+    json!(lenses)
+}
+
+fn execute_command(catalog: &Catalog, docs: &HashMap<String, String>, params: &Value, root: Option<&Path>, next_id: &mut u64) {
+    let args = &params["arguments"];
+    let (target, at) = match params["command"].as_str() {
+        Some(GENERATE) => {
+            let (Some(uri), Some(line)) = (args[0].as_str(), args[1].as_u64()) else { return };
+            let Some(g) = generation(catalog, docs, uri, line as usize, root) else { return };
+            if let Some(at) = g.existing {
+                (g.target, at)
+            } else {
+                let at = appended_line(&g.target, docs);
+                *next_id += 1;
+                write_message(&json!({
+                    "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/applyEdit",
+                    "params": { "label": format!("Generate {}", g.title), "edit": g.edit }
+                }));
+                (g.target, at)
+            }
+        }
+        Some(OPEN) => match args[0].as_str().and_then(uri_to_path) {
+            Some(p) => (p, args[1].as_u64().unwrap_or(0) as usize),
+            None => return,
+        },
+        _ => return,
+    };
+    *next_id += 1;
+    write_message(&json!({
+        "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "window/showDocument",
+        "params": { "uri": path_to_uri(&target), "takeFocus": true, "selection": range_line(at) }
+    }));
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 fn variable_at(line: &str, utf16_col: usize) -> Option<String> {

@@ -1,0 +1,888 @@
+{
+  "$schema": "./frameworks.schema.json",
+  "types": {
+    "int": ["int", "integer", "long", "short", "byte", "number", "num", "bigint", "biginteger", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64"],
+    "float": ["float", "double", "decimal", "bigdecimal", "f32", "f64", "float32", "float64", "single"],
+    "bool": ["bool", "boolean"],
+    "string": ["string", "str", "char", "character", "uuid", "guid", "datetime", "date", "localdate", "localdatetime", "offsetdatetime", "zoneddatetime", "instant", "time", "timestamp", "url", "uri", "email", "emailstr"],
+    "list": ["list", "vec", "set", "hashset", "array", "iterable", "collection", "sequence", "seq", "slice", "flux", "ienumerable", "icollection"],
+    "object": ["map", "hashmap", "dict", "record", "object", "any", "dynamic", "jsonnode", "jsonobject", "value"],
+    "wrappers": ["Optional", "Option", "Mono", "Future", "Promise", "ResponseEntity", "Json", "Query", "Form", "Body", "Valid", "Nullable", "Annotated", "Task", "ActionResult", "web::Json", "web::Query", "web::Form"]
+  },
+  "auth": ["Authorization", "Bearer", "\"authorization\""],
+  "languages": {
+    "java": {
+      "name": "Java",
+      "zed": ["Java"],
+      "extensions": ["java"],
+      "decorators": ["@"],
+      "class_keywords": ["class", "interface", "record", "enum"],
+      "definitions": ["^public {type} {handler}(", "^protected {type} {handler}(", "^private {type} {handler}(", "^public static {type} {handler}("],
+      "variables": ["{type} {var} =", "{type} {var};", "{type} {var},", "{type} {var})"],
+      "models": {
+        "declarations": ["record {type}", "class {type}", "interface {type}"],
+        "block": "braces",
+        "modifiers": ["private", "public", "protected", "final", "static", "transient", "volatile"],
+        "fields": ["{type} {name}"]
+      },
+      "frameworks": {
+        "spring": {
+          "name": "Spring Web (MVC / WebFlux / OpenFeign)",
+          "docs": "https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html",
+          "imports": ["org.springframework"],
+          "prefix": ["@RequestMapping(\"{path}\"", "@RequestMapping(value = \"{path}\"", "@RequestMapping(path = \"{path}\""],
+          "routes": [
+            "@{method}Mapping(\"{path}\"",
+            "@{method}Mapping(value = \"{path}\"",
+            "@{method}Mapping(path = \"{path}\"",
+            "@{method}Mapping({{\"{path}\"",
+            "@{method}Mapping",
+            "@RequestMapping(...\"{path}\"...RequestMethod.{method}",
+            { "pattern": "@RequestMapping(\"{path}\"", "method": "GET" }
+          ],
+          "path_params": ["braces"],
+          "query": [
+            "@RequestParam(\"{name}\"...) {type} {_}",
+            "@RequestParam(...value = \"{name}\"...) {type} {_}",
+            "@RequestParam(...name = \"{name}\"...) {type} {_}",
+            "@RequestParam(...) {type} {name}",
+            "@RequestParam {type} {name}"
+          ],
+          "headers": ["@RequestHeader(\"{name}\"", "@RequestHeader(...value = \"{name}\"", "@RequestHeader(...name = \"{name}\"", "@RequestHeader {type} {name}"],
+          "body": ["@RequestBody @{_} {type} {_}", "@RequestBody {type} {_}"],
+          "auth": ["@PreAuthorize", "@Secured", "@RolesAllowed", "@AuthenticationPrincipal"],
+          "examples": [
+            {
+              "code": "import org.springframework.web.bind.annotation.*;\n@RestController\n@RequestMapping(\"/api/users\")\npublic class C {\n  @GetMapping(\"/{id}\")\n  User get(@PathVariable long id) {}\n  @PostMapping\n  User create() {}\n  @RequestMapping(value = \"/{id}/avatar\", method = RequestMethod.DELETE)\n  void d() {}\n}\nrecord CreateUser(String name) {}",
+              "expect": ["GET {{baseUrl}}/api/users/{{id}}", "POST {{baseUrl}}/api/users", "DELETE {{baseUrl}}/api/users/{{id}}/avatar"]
+            }
+          ]
+        },
+        "jax-rs": {
+          "name": "JAX-RS (Quarkus, Jakarta EE, Helidon, Dropwizard)",
+          "docs": "https://quarkus.io/guides/rest",
+          "imports": ["jakarta.ws.rs", "javax.ws.rs"],
+          "prefix": ["@Path(\"{path}\")"],
+          "routes": ["@{method} @Path(\"{path}\")", "@Path(\"{path}\") @{method}", "@{method}"],
+          "path_params": ["braces"],
+          "query": ["@QueryParam(\"{name}\") {type} {_}", "@QueryParam(\"{name}\")"],
+          "headers": ["@HeaderParam(\"{name}\")"],
+          "body": ["@Valid {type} {_}"],
+          "auth": ["@RolesAllowed", "@Authenticated"],
+          "examples": [
+            {
+              "code": "import jakarta.ws.rs.*;\n@Path(\"/greetings\")\npublic class R {\n  @GET\n  public String all() {}\n  @POST\n  @Path(\"/{id}\")\n  public String one() {}\n}",
+              "expect": ["GET {{baseUrl}}/greetings", "POST {{baseUrl}}/greetings/{{id}}"]
+            }
+          ]
+        },
+        "micronaut": {
+          "name": "Micronaut HTTP",
+          "docs": "https://docs.micronaut.io/latest/guide/#routing",
+          "imports": ["io.micronaut.http"],
+          "prefix": ["@Controller(\"{path}\")"],
+          "routes": ["@{method}(\"{path}\"", "@{method}(uri = \"{path}\"", "@{method}(value = \"{path}\"", "@{method}"],
+          "path_params": ["braces"],
+          "query": ["@QueryValue(\"{name}\") {type} {_}", "@QueryValue {type} {name}"],
+          "headers": ["@Header(\"{name}\")"],
+          "body": ["@Body {type} {_}"],
+          "auth": ["@Secured"],
+          "examples": [
+            {
+              "code": "import io.micronaut.http.annotation.*;\n@Controller(\"/books\")\npublic class B {\n  @Get(\"/{isbn}\")\n  Book find() {}\n  @Post\n  Book save() {}\n}",
+              "expect": ["GET {{baseUrl}}/books/{{isbn}}", "POST {{baseUrl}}/books"]
+            }
+          ]
+        },
+        "retrofit": {
+          "name": "Retrofit",
+          "docs": "https://square.github.io/retrofit/",
+          "imports": ["retrofit2"],
+          "routes": ["@{method}(\"{path}\")", "@HTTP(method = \"{method}\", path = \"{path}\""],
+          "path_params": ["braces"],
+          "query": ["@Query(\"{name}\") {type} {_}"],
+          "headers": ["@Header(\"{name}\")"],
+          "body": ["@Body {type} {_}"],
+          "examples": [
+            {
+              "code": "import retrofit2.http.*;\ninterface GitHub {\n  @GET(\"users/{user}/repos\")\n  Call<List<Repo>> repos();\n}",
+              "expect": ["GET {{baseUrl}}/users/{{user}}/repos"]
+            }
+          ]
+        },
+        "feign": {
+          "name": "OpenFeign (native annotations)",
+          "docs": "https://github.com/OpenFeign/feign",
+          "imports": ["import feign."],
+          "routes": ["@RequestLine(\"{method} {path}\")"],
+          "path_params": ["braces"],
+          "query": ["@Param(\"{name}\")"],
+          "headers": ["@Headers(\"{name}:"],
+          "examples": [
+            { "code": "import feign.RequestLine;\ninterface Api {\n  @RequestLine(\"POST /repos/{owner}\")\n  void create();\n}", "expect": ["POST {{baseUrl}}/repos/{{owner}}"] }
+          ]
+        }
+      }
+    },
+    "kotlin": {
+      "name": "Kotlin",
+      "zed": ["Kotlin"],
+      "extensions": ["kt", "kts"],
+      "decorators": ["@"],
+      "class_keywords": ["class", "interface", "object"],
+      "definitions": ["fun {handler}(", "fun {_}.{handler}("],
+      "variables": ["val {var}: {type}", "var {var}: {type}", "{var}: {type}"],
+      "models": {
+        "declarations": ["data class {type}", "class {type}"],
+        "block": "braces",
+        "modifiers": ["val", "var", "private", "public", "internal", "override", "open", "lateinit"],
+        "fields": ["{name}: {type}"]
+      },
+      "frameworks": {
+        "spring": {
+          "name": "Spring Web (Kotlin)",
+          "docs": "https://docs.spring.io/spring-framework/reference/languages/kotlin.html",
+          "imports": ["org.springframework"],
+          "prefix": ["@RequestMapping(\"{path}\"", "@RequestMapping(value = [\"{path}\"", "@RequestMapping(path = [\"{path}\""],
+          "routes": [
+            "@{method}Mapping(\"{path}\"",
+            "@{method}Mapping(value = [\"{path}\"",
+            "@{method}Mapping(path = [\"{path}\"",
+            "@{method}Mapping",
+            { "pattern": "@RequestMapping(\"{path}\"", "method": "GET" }
+          ],
+          "path_params": ["braces"],
+          "query": ["@RequestParam(\"{name}\"...) {_}: {type}", "@RequestParam(...) {name}: {type}", "@RequestParam {name}: {type}"],
+          "headers": ["@RequestHeader(\"{name}\"", "@RequestHeader {name}: {type}"],
+          "body": ["@RequestBody @{_} {_}: {type}", "@RequestBody {_}: {type}"],
+          "auth": ["@PreAuthorize", "@Secured"],
+          "examples": [
+            {
+              "code": "import org.springframework.web.bind.annotation.*\n@RestController\n@RequestMapping(\"/api/orders\")\nclass OrderController {\n  @GetMapping(\"/{id}\")\n  fun get(@PathVariable id: Long) = 1\n}",
+              "expect": ["GET {{baseUrl}}/api/orders/{{id}}"]
+            }
+          ]
+        },
+        "ktor-server": {
+          "name": "Ktor server",
+          "docs": "https://ktor.io/docs/server-routing.html",
+          "imports": ["io.ktor.server"],
+          "routes": ["^{method}(\"{path}\")"],
+          "path_params": ["braces"],
+          "query": ["queryParameters[\"{name}\"]"],
+          "headers": ["request.headers[\"{name}\"]", "request.header(\"{name}\")"],
+          "body": ["call.receive<{type}>()"],
+          "auth": ["authenticate("],
+          "examples": [
+            { "code": "import io.ktor.server.routing.*\nfun Route.users() {\n    get(\"/users/{id}\") {\n    }\n    post(\"/users\") {\n    }\n}", "expect": ["GET {{baseUrl}}/users/{{id}}", "POST {{baseUrl}}/users"] }
+          ]
+        },
+        "ktor-client": {
+          "name": "Ktor client",
+          "docs": "https://ktor.io/docs/client-requests.html",
+          "imports": ["io.ktor.client"],
+          "routes": [".{method}(\"{route}\""],
+          "path_params": ["dollar"],
+          "body": ["setBody({var})"],
+          "examples": [
+            { "code": "import io.ktor.client.*\nsuspend fun f() = client.get(\"https://ktor.io/docs/$page\")", "expect": ["GET https://ktor.io/docs/{{page}}"] }
+          ]
+        },
+        "retrofit": {
+          "name": "Retrofit (Kotlin)",
+          "docs": "https://square.github.io/retrofit/",
+          "imports": ["retrofit2"],
+          "routes": ["@{method}(\"{path}\")"],
+          "path_params": ["braces"],
+          "query": ["@Query(\"{name}\") {_}: {type}"],
+          "headers": ["@Header(\"{name}\")"],
+          "body": ["@Body {_}: {type}"],
+          "examples": [
+            { "code": "import retrofit2.http.*\ninterface Api {\n  @POST(\"/users\")\n  suspend fun create(@Body user: User): User\n}", "expect": ["POST {{baseUrl}}/users"] }
+          ]
+        },
+        "jax-rs": {
+          "name": "JAX-RS (Quarkus Kotlin)",
+          "docs": "https://quarkus.io/guides/kotlin",
+          "imports": ["jakarta.ws.rs", "javax.ws.rs"],
+          "prefix": ["@Path(\"{path}\")"],
+          "routes": ["@{method} @Path(\"{path}\")", "@Path(\"{path}\") @{method}", "@{method}"],
+          "path_params": ["braces"],
+          "query": ["@QueryParam(\"{name}\") {_}: {type}"],
+          "headers": ["@HeaderParam(\"{name}\")"],
+          "examples": [
+            { "code": "import jakarta.ws.rs.*\n@Path(\"/hello\")\nclass Hello {\n  @GET\n  fun hello() = \"hi\"\n}", "expect": ["GET {{baseUrl}}/hello"] }
+          ]
+        }
+      }
+    },
+    "dart": {
+      "name": "Dart / Flutter",
+      "zed": ["Dart"],
+      "extensions": ["dart"],
+      "decorators": ["@"],
+      "class_keywords": ["class", "mixin", "extension"],
+      "definitions": ["^{type} {handler}(", "^static {type} {handler}("],
+      "variables": ["{type} {var}", "final {type} {var}", "{var} = {type}("],
+      "models": {
+        "declarations": ["class {type}"],
+        "block": "braces",
+        "modifiers": ["final", "late", "required", "const"],
+        "fields": ["{type} {name}"]
+      },
+      "frameworks": {
+        "dio": {
+          "name": "Dio",
+          "docs": "https://pub.dev/packages/dio",
+          "imports": ["package:dio/"],
+          "routes": [".{method}{generic}(\"{route}\""],
+          "path_params": ["dollar", "braces"],
+          "query": ["queryParameters: {keys}"],
+          "headers": ["headers: {keys}"],
+          "body": ["data: {keys}", "data: {var}.toJson()", "data: jsonEncode({keys})", "data: FormData.fromMap({keys})"],
+          "examples": [
+            {
+              "code": "import 'package:dio/dio.dart';\nfinal a = _dio.post<Map<String, dynamic>>('/auth/login', data: {});\nfinal b = dio.get('/users/$id');",
+              "expect": ["POST {{baseUrl}}/auth/login", "GET {{baseUrl}}/users/{{id}}"]
+            }
+          ]
+        },
+        "http": {
+          "name": "package:http",
+          "docs": "https://pub.dev/packages/http",
+          "imports": ["package:http/"],
+          "routes": [
+            ".{method}(Uri.parse(\"{path}\")",
+            { "pattern": ".{method}(Uri.https(\"{host}\", \"{path}\"", "url": "https://{host}{path}" },
+            { "pattern": ".{method}(Uri.http(\"{host}\", \"{path}\"", "url": "http://{host}{path}" }
+          ],
+          "path_params": ["dollar"],
+          "query": ["Uri.https(\"{host}\", \"{path}\", {keys}"],
+          "headers": ["headers: {keys}"],
+          "body": ["body: jsonEncode({keys})", "body: jsonEncode({var}.toJson())", "body: {var}.toJson()", "body: {keys}"],
+          "examples": [
+            {
+              "code": "import 'package:http/http.dart' as http;\nf() => http.put(Uri.parse('$baseUrl/items/${item.id}'));\ng() => http.delete(Uri.https('api.example.com', '/v1/tasks/$id'));",
+              "expect": ["PUT {{baseUrl}}/items/{{id}}", "DELETE https://api.example.com/v1/tasks/{{id}}"]
+            }
+          ]
+        },
+        "retrofit": {
+          "name": "retrofit.dart",
+          "docs": "https://pub.dev/packages/retrofit",
+          "imports": ["package:retrofit/"],
+          "routes": ["@{method}(\"{path}\")"],
+          "path_params": ["braces"],
+          "query": ["@Query(\"{name}\") {type} {_}", "@Queries() {type} {_}"],
+          "headers": ["@Header(\"{name}\")"],
+          "body": ["@Body() {type} {_}"],
+          "examples": [
+            {
+              "code": "import 'package:retrofit/retrofit.dart';\nabstract class TaskApi {\n  @GET('/tasks/{id}')\n  Future<Task> getTask(@Path('id') String id);\n  @POST('/tasks')\n  Future<Task> create(@Body() Task task);\n}",
+              "expect": ["GET {{baseUrl}}/tasks/{{id}}", "POST {{baseUrl}}/tasks"]
+            }
+          ]
+        },
+        "chopper": {
+          "name": "Chopper",
+          "docs": "https://pub.dev/packages/chopper",
+          "imports": ["package:chopper/"],
+          "prefix": ["@ChopperApi(baseUrl: \"{path}\")"],
+          "routes": ["@{method}(path: \"{path}\")", "@{method}()"],
+          "path_params": ["braces"],
+          "query": ["@Query(\"{name}\") {type} {_}", "@Query() {type} {name}"],
+          "headers": ["@Header(\"{name}\")"],
+          "body": ["@Body() {type} {_}"],
+          "examples": [
+            {
+              "code": "import 'package:chopper/chopper.dart';\n@ChopperApi(baseUrl: '/todos')\nabstract class TodosService extends ChopperService {\n  @Get(path: '/{id}')\n  Future<Response> getTodo(@Path() String id);\n  @Post()\n  Future<Response> create(@Body() Todo todo);\n}",
+              "expect": ["GET {{baseUrl}}/todos/{{id}}", "POST {{baseUrl}}/todos"]
+            }
+          ]
+        },
+        "shelf_router": {
+          "name": "shelf_router",
+          "docs": "https://pub.dev/packages/shelf_router",
+          "imports": ["package:shelf_router/"],
+          "routes": [".{method}(\"{route}\"", "@Route.{method}(\"{route}\")"],
+          "path_params": ["angle"],
+          "query": ["url.queryParameters[\"{name}\"]"],
+          "headers": ["headers[\"{name}\"]"],
+          "examples": [
+            { "code": "import 'package:shelf_router/shelf_router.dart';\nvoid main() {\n  app.get('/hello/<name>', h);\n}", "expect": ["GET {{baseUrl}}/hello/{{name}}"] }
+          ]
+        }
+      }
+    },
+    "typescript": {
+      "name": "TypeScript / JavaScript",
+      "zed": ["TypeScript", "TSX", "JavaScript"],
+      "extensions": ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts"],
+      "decorators": ["@"],
+      "class_keywords": ["class"],
+      "definitions": ["function {handler}(", "const {handler} = (", "const {handler} = async (", "let {handler} = (", "^async {handler}(", "^{handler}(...) {{"],
+      "handler_refs": [", {handler})", ", {handler});"],
+      "variables": ["{var}: {type}", "const {var} = new {type}("],
+      "models": {
+        "declarations": ["interface {type}", "type {type} =", "class {type}"],
+        "block": "braces",
+        "modifiers": ["readonly", "public", "private", "protected", "declare"],
+        "fields": ["{name}?: {type}"]
+      },
+      "frameworks": {
+        "express": {
+          "name": "Express",
+          "docs": "https://expressjs.com/en/guide/routing.html",
+          "imports": ["express"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["req.query.{name}", "req.query[\"{name}\"]", "const {keys} = req.query"],
+          "headers": ["req.header(\"{name}\")", "req.get(\"{name}\")", "req.headers[\"{name}\"]", "req.headers.{name}"],
+          "body": ["req.body.{name}", "const {keys} = req.body", "let {keys} = req.body", "req.body as {type}"],
+          "examples": [
+            { "code": "import express from 'express';\napp.get('/users/:id', (req, res) => {});\nrouter.post(\"/users\", create);", "expect": ["GET {{baseUrl}}/users/{{id}}", "POST {{baseUrl}}/users"] }
+          ]
+        },
+        "fastify": {
+          "name": "Fastify",
+          "docs": "https://fastify.dev/docs/latest/Reference/Routes/",
+          "imports": ["fastify"],
+          "routes": ["{_}.{method}{generic}(\"{route}\"", "{_}.route({{ method: \"{method}\", url: \"{route}\""],
+          "path_params": ["colon"],
+          "query": ["Querystring: {type}", "request.query.{name}"],
+          "headers": ["Headers: {type}", "request.headers[\"{name}\"]"],
+          "body": ["Body: {type}", "request.body.{name}"],
+          "examples": [
+            { "code": "import Fastify from 'fastify';\nfastify.post<{ Body: User }>('/users', h);\nfastify.route({\n  method: 'PUT',\n  url: '/users/:id',\n});", "expect": ["POST {{baseUrl}}/users", "PUT {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "hono": {
+          "name": "Hono",
+          "docs": "https://hono.dev/docs/api/routing",
+          "imports": ["hono"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["c.req.query(\"{name}\")"],
+          "headers": ["c.req.header(\"{name}\")"],
+          "body": ["c.req.json<{type}>()", "const {keys} = await c.req.json()"],
+          "examples": [
+            { "code": "import { Hono } from 'hono';\napp.get('/posts/:id', (c) => c.text('x'));", "expect": ["GET {{baseUrl}}/posts/{{id}}"] }
+          ]
+        },
+        "koa": {
+          "name": "Koa router",
+          "docs": "https://github.com/koajs/router",
+          "imports": ["@koa/router", "koa-router"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["ctx.query.{name}"],
+          "headers": ["ctx.get(\"{name}\")"],
+          "body": ["ctx.request.body.{name}", "const {keys} = ctx.request.body"],
+          "examples": [
+            { "code": "const Router = require('@koa/router');\nrouter.del('/x');\nrouter.put('/users/:id', h);", "expect": ["PUT {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "nestjs": {
+          "name": "NestJS",
+          "docs": "https://docs.nestjs.com/controllers",
+          "imports": ["@nestjs/common"],
+          "prefix": ["@Controller(\"{path}\")"],
+          "routes": ["@{method}(\"{path}\")", "@{method}()"],
+          "path_params": ["colon"],
+          "query": ["@Query(\"{name}\") {_}: {type}", "@Query() {_}: {type}"],
+          "headers": ["@Headers(\"{name}\")"],
+          "body": ["@Body() {_}: {type}", "@Body(\"{name}\")"],
+          "auth": ["@UseGuards", "@ApiBearerAuth"],
+          "examples": [
+            { "code": "import { Controller, Get, Post } from '@nestjs/common';\n@Controller('cats')\nexport class CatsController {\n  @Get(':id')\n  findOne() {}\n  @Post()\n  create() {}\n}", "expect": ["GET {{baseUrl}}/cats/{{id}}", "POST {{baseUrl}}/cats"] }
+          ]
+        },
+        "axios": {
+          "name": "Axios",
+          "docs": "https://axios-http.com/docs/api_intro",
+          "imports": ["axios"],
+          "routes": ["axios.{method}{generic}(\"{path}\"", "{_}.{method}{generic}(\"{route}\"", "axios({{ method: \"{method}\", url: \"{path}\""],
+          "path_params": ["dollar", "colon"],
+          "query": ["params: {keys}"],
+          "headers": ["headers: {keys}"],
+          "body": [".{method}{generic}(\"{path}\", {keys}", ".{method}{generic}(\"{path}\", {var}", "data: {keys}"],
+          "examples": [
+            { "code": "import axios from 'axios';\naxios.post('/api/login', { email, password });\napi.get<User>(`/users/${id}`);", "expect": ["POST {{baseUrl}}/api/login", "GET {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "angular": {
+          "name": "Angular HttpClient",
+          "docs": "https://angular.dev/guide/http/making-requests",
+          "imports": ["@angular/common/http"],
+          "routes": ["this.{_}.{method}{generic}(\"{path}\"", "this.{_}.{method}{generic}(`{path}`"],
+          "path_params": ["dollar"],
+          "body": [".{method}{generic}(\"{path}\", {var}"],
+          "headers": ["headers: {keys}"],
+          "examples": [
+            { "code": "import { HttpClient } from '@angular/common/http';\nget() { return this.http.get<Hero[]>('/api/heroes'); }", "expect": ["GET {{baseUrl}}/api/heroes"] }
+          ]
+        },
+        "fetch": {
+          "name": "fetch",
+          "docs": "https://developer.mozilla.org/docs/Web/API/Fetch_API",
+          "routes": ["fetch(\"{path}\", {{ method: \"{method}\"", "fetch(\"{path}\"...method: \"{method}\"", "fetch(\"{path}\""],
+          "path_params": ["dollar"],
+          "headers": ["headers: {keys}"],
+          "body": ["body: JSON.stringify({keys})", "body: JSON.stringify({var})"],
+          "examples": [
+            { "code": "await fetch(`https://api.example.com/orders/${orderId}`, { method: \"DELETE\" });\nfetch('/api/me');", "expect": ["DELETE https://api.example.com/orders/{{orderId}}", "GET {{baseUrl}}/api/me"] }
+          ]
+        }
+      }
+    },
+    "python": {
+      "name": "Python",
+      "zed": ["Python"],
+      "extensions": ["py"],
+      "decorators": ["@"],
+      "class_keywords": ["class"],
+      "definitions": ["def {handler}("],
+      "variables": ["{var}: {type}", "{var} = {type}("],
+      "models": {
+        "declarations": ["class {type}"],
+        "block": "indent",
+        "modifiers": [],
+        "fields": ["{name}: {type}"]
+      },
+      "frameworks": {
+        "fastapi": {
+          "name": "FastAPI",
+          "docs": "https://fastapi.tiangolo.com/tutorial/first-steps/",
+          "imports": ["fastapi"],
+          "prefix": ["APIRouter(...prefix=\"{path}\""],
+          "prefix_scope": "file",
+          "routes": ["@{_}.{method}(\"{path}\"", "@{_}.api_route(\"{path}\"...methods=[\"{method}\""],
+          "path_params": ["braces"],
+          "headers": ["{name}: {type} = Header(", "{name}: {type} | None = Header(", "{name}: Annotated[{type}, Header("],
+          "header_case": "kebab",
+          "ignore": ["{name}: {type} = Depends(", "{name}: Annotated[...Depends(", "{name}: Request", "{name}: Response", "{name}: BackgroundTasks", "{name}: Session", "{name}: AsyncSession", "{name}: WebSocket"],
+          "params": ["{name}: {type} = Query(", "{name}: {type} | None =", "{name}: {type} =", "{name}: {type},", "{name}: {type})"],
+          "body": ["{_}: {type} = Body("],
+          "auth": ["Depends(get_current_user", "OAuth2PasswordBearer", "HTTPBearer", "Security("],
+          "examples": [
+            { "code": "from fastapi import FastAPI\n@app.get(\"/items/{item_id}\")\ndef read(item_id: int): ...\n@router.post('/items')\nasync def create(): ...", "expect": ["GET {{baseUrl}}/items/{{item_id}}", "POST {{baseUrl}}/items"] }
+          ]
+        },
+        "flask": {
+          "name": "Flask",
+          "docs": "https://flask.palletsprojects.com/en/stable/quickstart/#routing",
+          "imports": ["flask"],
+          "prefix": ["Blueprint(...url_prefix=\"{path}\""],
+          "prefix_scope": "file",
+          "routes": ["@{_}.route(\"{path}\"...methods=[\"{method}\"", "@{_}.route(\"{path}\"", "@{_}.{method}(\"{path}\""],
+          "path_params": ["angle"],
+          "query": ["request.args.get(\"{name}\"", "request.args[\"{name}\"]"],
+          "headers": ["request.headers.get(\"{name}\"", "request.headers[\"{name}\"]"],
+          "body": ["request.json[\"{name}\"]", "request.json.get(\"{name}\"", "request.get_json()[\"{name}\"]", "request.form[\"{name}\"]", "request.form.get(\"{name}\""],
+          "auth": ["@login_required", "@jwt_required"],
+          "examples": [
+            { "code": "from flask import Flask\n@app.route(\"/a/<int:id>\", methods=[\"PUT\"])\ndef a(id): ...\n@app.route('/b')\ndef b(): ...", "expect": ["PUT {{baseUrl}}/a/{{id}}", "GET {{baseUrl}}/b"] }
+          ]
+        },
+        "django": {
+          "name": "Django URLconf",
+          "docs": "https://docs.djangoproject.com/en/stable/topics/http/urls/",
+          "imports": ["django.urls"],
+          "routes": ["path(\"{path}\", {handler}", "re_path(\"{path}\""],
+          "path_params": ["angle"],
+          "examples": [
+            { "code": "from django.urls import path\nurlpatterns = [\n    path(\"articles/<int:year>/\", views.year_archive),\n]", "expect": ["GET {{baseUrl}}/articles/{{year}}/"] }
+          ]
+        },
+        "http-clients": {
+          "name": "requests / httpx / aiohttp",
+          "docs": "https://requests.readthedocs.io/",
+          "imports": ["requests", "httpx", "aiohttp"],
+          "routes": ["{_}.{method}(\"{route}\"", "{_}.{method}(f\"{path}\""],
+          "path_params": ["braces"],
+          "query": ["params={keys}"],
+          "headers": ["headers={keys}"],
+          "body": ["json={keys}", "json={var}", "data={keys}"],
+          "examples": [
+            { "code": "import requests\nr = requests.post(\"https://e.com/api\", json={\"a\": 1})", "expect": ["POST https://e.com/api"] }
+          ]
+        }
+      }
+    },
+    "go": {
+      "name": "Go",
+      "zed": ["Go"],
+      "extensions": ["go"],
+      "decorators": [],
+      "class_keywords": [],
+      "definitions": ["func {handler}(", "func ({_} *{_}) {handler}(", "func ({_} {_}) {handler}("],
+      "handler_refs": [", {handler})", ", {_}.{handler})"],
+      "variables": ["var {var} {type}", "{var} := {type}{{", "{var} := &{type}{{"],
+      "models": {
+        "declarations": ["type {type} struct"],
+        "block": "braces",
+        "modifiers": [],
+        "fields": ["{_} {type} `json:\"{name}", "{name} {type}"]
+      },
+      "frameworks": {
+        "gorilla-mux": {
+          "name": "gorilla/mux",
+          "docs": "https://github.com/gorilla/mux",
+          "imports": ["github.com/gorilla/mux"],
+          "routes": ["HandleFunc(\"{route}\", {handler}).Methods(\"{method}\""],
+          "path_params": ["braces"],
+          "query": ["URL.Query().Get(\"{name}\")"],
+          "headers": ["Header.Get(\"{name}\")"],
+          "body": ["Decode(&{var})"],
+          "examples": [
+            { "code": "import \"github.com/gorilla/mux\"\nr.HandleFunc(\"/products/{key}\", h).Methods(\"PUT\")", "expect": ["PUT {{baseUrl}}/products/{{key}}"] }
+          ]
+        },
+        "net-http": {
+          "name": "net/http (server and client)",
+          "docs": "https://pkg.go.dev/net/http",
+          "imports": ["net/http"],
+          "routes": [
+            "HandleFunc(\"{method} {route}\", {handler}",
+            "Handle(\"{method} {route}\"",
+            "HandleFunc(\"{route}\", {handler}",
+            "http.{method}(\"{route}\"",
+            "http.NewRequest(\"{method}\", \"{path}\"",
+            "http.NewRequestWithContext({_}, \"{method}\", \"{path}\"",
+            "http.NewRequest(http.Method{method}, \"{path}\""
+          ],
+          "path_params": ["braces"],
+          "query": ["URL.Query().Get(\"{name}\")", "FormValue(\"{name}\")"],
+          "headers": ["Header.Get(\"{name}\")", "Header.Set(\"{name}\""],
+          "body": ["Decode(&{var})", "json.Unmarshal({_}, &{var})"],
+          "examples": [
+            { "code": "import \"net/http\"\nmux.HandleFunc(\"POST /orders\", createOrder)\nmux.HandleFunc(\"/health\", health)\nreq, _ := http.NewRequest(http.MethodDelete, \"https://api.x.io/v1/a\", nil)", "expect": ["POST {{baseUrl}}/orders", "GET {{baseUrl}}/health", "DELETE https://api.x.io/v1/a"] }
+          ]
+        },
+        "gin": {
+          "name": "Gin",
+          "docs": "https://gin-gonic.com/docs/examples/",
+          "imports": ["github.com/gin-gonic/gin"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["c.Query(\"{name}\")", "c.DefaultQuery(\"{name}\"", "c.GetQuery(\"{name}\")"],
+          "headers": ["c.GetHeader(\"{name}\")"],
+          "body": ["ShouldBindJSON(&{var})", "BindJSON(&{var})", "ShouldBind(&{var})"],
+          "examples": [
+            { "code": "import \"github.com/gin-gonic/gin\"\nr.POST(\"/login\", login)\nv1.GET(\"/users/:id\", get)", "expect": ["POST {{baseUrl}}/login", "GET {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "echo": {
+          "name": "Echo",
+          "docs": "https://echo.labstack.com/docs/routing",
+          "imports": ["github.com/labstack/echo"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["c.QueryParam(\"{name}\")"],
+          "headers": ["Header.Get(\"{name}\")"],
+          "body": ["c.Bind({var})", "c.Bind(&{var})"],
+          "examples": [
+            { "code": "import \"github.com/labstack/echo/v4\"\ne.PUT(\"/users/:id\", updateUser)", "expect": ["PUT {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "chi": {
+          "name": "chi",
+          "docs": "https://go-chi.io/#/pages/routing",
+          "imports": ["github.com/go-chi/chi"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["braces"],
+          "query": ["URL.Query().Get(\"{name}\")"],
+          "headers": ["Header.Get(\"{name}\")"],
+          "body": ["Decode(&{var})"],
+          "examples": [
+            { "code": "import \"github.com/go-chi/chi/v5\"\nr.Get(\"/articles/{articleID}\", getArticle)", "expect": ["GET {{baseUrl}}/articles/{{articleID}}"] }
+          ]
+        },
+        "fiber": {
+          "name": "Fiber",
+          "docs": "https://docs.gofiber.io/guide/routing",
+          "imports": ["github.com/gofiber/fiber"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["colon"],
+          "query": ["c.Query(\"{name}\"", "c.QueryParser(&{var})"],
+          "headers": ["c.Get(\"{name}\")"],
+          "body": ["c.BodyParser(&{var})"],
+          "examples": [
+            { "code": "import \"github.com/gofiber/fiber/v2\"\napp.Delete(\"/api/:id\", h)", "expect": ["DELETE {{baseUrl}}/api/{{id}}"] }
+          ]
+        }
+      }
+    },
+    "rust": {
+      "name": "Rust",
+      "zed": ["Rust"],
+      "extensions": ["rs"],
+      "decorators": ["#["],
+      "class_keywords": [],
+      "definitions": ["fn {handler}(", "fn {handler}<"],
+      "variables": ["let {var}: {type}", "{var}: {type}"],
+      "models": {
+        "declarations": ["struct {type}"],
+        "block": "braces",
+        "modifiers": ["pub(crate)", "pub"],
+        "fields": ["{name}: {type}"]
+      },
+      "frameworks": {
+        "axum": {
+          "name": "axum",
+          "docs": "https://docs.rs/axum/latest/axum/routing/struct.Router.html#method.route",
+          "imports": ["axum"],
+          "routes": [".route(\"{route}\", {method}({_}::{handler})", ".route(\"{route}\", {method}({handler})"],
+          "path_params": ["braces", "colon"],
+          "query": ["Query<{type}>"],
+          "headers": ["headers.get(\"{name}\")"],
+          "body": ["Json<{type}>", "Form<{type}>"],
+          "auth": ["TypedHeader<Authorization"],
+          "examples": [
+            { "code": "use axum::{routing::{get, post}, Router};\nlet app = Router::new()\n    .route(\"/users\", post(create_user))\n    .route(\"/users/{id}\", get(handlers::get_user));", "expect": ["POST {{baseUrl}}/users", "GET {{baseUrl}}/users/{{id}}"] }
+          ]
+        },
+        "actix-web": {
+          "name": "actix-web",
+          "docs": "https://actix.rs/docs/url-dispatch/",
+          "imports": ["actix_web"],
+          "routes": ["#[{method}(\"{path}\"", "#[route(\"{path}\"...method = \"{method}\"", ".route(\"{route}\", web::{method}().to({handler})", "web::resource(\"{route}\").route(web::{method}()"],
+          "path_params": ["braces"],
+          "query": ["web::Query<{type}>", "Query<{type}>"],
+          "headers": ["headers().get(\"{name}\")"],
+          "body": ["web::Json<{type}>", "Json<{type}>", "web::Form<{type}>"],
+          "examples": [
+            { "code": "use actix_web::{get, web};\n#[get(\"/hello/{name}\")]\nasync fn hello() {}\nApp::new().route(\"/users\", web::post().to(create));", "expect": ["GET {{baseUrl}}/hello/{{name}}", "POST {{baseUrl}}/users"] }
+          ]
+        },
+        "rocket": {
+          "name": "Rocket",
+          "docs": "https://rocket.rs/guide/v0.5/requests/",
+          "imports": ["rocket"],
+          "routes": ["#[{method}(\"{path}\"", "#[route({method}, uri = \"{path}\""],
+          "path_params": ["angle"],
+          "body": ["Json<{type}>", "Form<{type}>"],
+          "examples": [
+            { "code": "use rocket::serde::json::Json;\n#[post(\"/todo/<id>\", data = \"<todo>\")]\nfn new(id: u32) {}", "expect": ["POST {{baseUrl}}/todo/{{id}}"] }
+          ]
+        },
+        "reqwest": {
+          "name": "reqwest",
+          "docs": "https://docs.rs/reqwest/latest/reqwest/",
+          "imports": ["reqwest"],
+          "routes": ["reqwest::{method}(\"{route}\")", "{_}.{method}(\"{route}\")", "{_}.{method}(format!(\"{path}\""],
+          "path_params": ["braces"],
+          "query": [".query(&[(\"{name}\""],
+          "headers": [".header(\"{name}\""],
+          "body": [".json(&{var})"],
+          "auth": [".bearer_auth("],
+          "examples": [
+            { "code": "use reqwest;\nlet r = client.post(\"https://httpbin.org/post\").json(&body).send().await?;", "expect": ["POST https://httpbin.org/post"] }
+          ]
+        }
+      }
+    },
+    "php": {
+      "name": "PHP",
+      "zed": ["PHP"],
+      "extensions": ["php"],
+      "decorators": ["#["],
+      "class_keywords": ["class"],
+      "definitions": ["function {handler}("],
+      "variables": ["{type} ${var}"],
+      "models": {
+        "declarations": ["class {type}"],
+        "block": "braces",
+        "modifiers": ["public", "private", "protected", "readonly"],
+        "fields": ["{type} ${name}", "${name}"]
+      },
+      "frameworks": {
+        "laravel": {
+          "name": "Laravel",
+          "docs": "https://laravel.com/docs/routing",
+          "imports": ["Illuminate", "Route::"],
+          "routes": ["Route::{method}(\"{path}\"", "Route::match([\"{method}\"...\"{path}\""],
+          "path_params": ["braces"],
+          "query": ["$request->query(\"{name}\""],
+          "headers": ["$request->header(\"{name}\""],
+          "body": ["->validate({keys}", "$request->input(\"{name}\"", "$request->post(\"{name}\""],
+          "auth": ["auth:sanctum", "auth:api", "middleware(\"auth"],
+          "examples": [
+            { "code": "<?php\nRoute::get('/posts', [PostController::class, 'index']);\nRoute::patch('/posts/{post}', fn () => 1);", "expect": ["GET {{baseUrl}}/posts", "PATCH {{baseUrl}}/posts/{{post}}"] }
+          ]
+        },
+        "symfony": {
+          "name": "Symfony",
+          "docs": "https://symfony.com/doc/current/routing.html",
+          "imports": ["Symfony\\Component\\Routing"],
+          "prefix": ["#[Route(\"{path}\")]"],
+          "routes": ["#[Route(\"{path}\"...methods: [\"{method}\"", "#[Route(\"{path}\"", "@Route(\"{path}\"...methods={{\"{method}\"", "@Route(\"{path}\""],
+          "path_params": ["braces"],
+          "query": ["$request->query->get(\"{name}\""],
+          "headers": ["$request->headers->get(\"{name}\""],
+          "body": ["$request->request->get(\"{name}\"", "#[MapRequestPayload] {type} ${_}"],
+          "examples": [
+            { "code": "<?php\nuse Symfony\\Component\\Routing\\Attribute\\Route;\n#[Route('/blog')]\nclass BlogController {\n  #[Route('/{slug}', methods: ['GET'])]\n  public function show() {}\n}", "expect": ["GET {{baseUrl}}/blog/{{slug}}"] }
+          ]
+        },
+        "slim": {
+          "name": "Slim",
+          "docs": "https://www.slimframework.com/docs/v4/objects/routing.html",
+          "imports": ["Slim\\"],
+          "routes": ["{_}->{method}(\"{route}\""],
+          "path_params": ["braces"],
+          "query": ["getQueryParams()[\"{name}\"]"],
+          "headers": ["getHeaderLine(\"{name}\")"],
+          "body": ["getParsedBody()[\"{name}\"]"],
+          "examples": [
+            { "code": "<?php\nuse Slim\\Factory\\AppFactory;\n$app->post('/books/{id}', function ($req, $res) {});", "expect": ["POST {{baseUrl}}/books/{{id}}"] }
+          ]
+        },
+        "guzzle": {
+          "name": "Guzzle",
+          "docs": "https://docs.guzzlephp.org/en/stable/quickstart.html",
+          "imports": ["GuzzleHttp"],
+          "routes": ["{_}->request(\"{method}\", \"{path}\"", "{_}->{method}(\"{route}\""],
+          "path_params": ["braces"],
+          "query": ["\"query\" => {keys}"],
+          "headers": ["\"headers\" => {keys}"],
+          "body": ["\"json\" => {keys}", "\"form_params\" => {keys}"],
+          "examples": [
+            { "code": "<?php\nuse GuzzleHttp\\Client;\n$r = $client->request('POST', 'https://httpbin.org/post', ['json' => ['a' => 1]]);", "expect": ["POST https://httpbin.org/post"] }
+          ]
+        }
+      }
+    },
+    "ruby": {
+      "name": "Ruby",
+      "zed": ["Ruby"],
+      "extensions": ["rb"],
+      "decorators": [],
+      "class_keywords": ["class", "module"],
+      "definitions": ["def {handler}"],
+      "frameworks": {
+        "rails": {
+          "name": "Rails routes",
+          "docs": "https://guides.rubyonrails.org/routing.html",
+          "imports": ["routes.draw"],
+          "routes": ["^{method} \"{path}\""],
+          "path_params": ["colon"],
+          "examples": [
+            { "code": "Rails.application.routes.draw do\n  get 'photos/:id', to: 'photos#show'\n  post \"/photos\", to: \"photos#create\"\nend", "expect": ["GET {{baseUrl}}/photos/{{id}}", "POST {{baseUrl}}/photos"] }
+          ]
+        },
+        "sinatra": {
+          "name": "Sinatra",
+          "docs": "https://sinatrarb.com/intro.html",
+          "imports": ["sinatra"],
+          "routes": ["^{method} \"{route}\""],
+          "path_params": ["colon"],
+          "query": ["params[:{name}]", "params[\"{name}\"]"],
+          "examples": [
+            { "code": "require 'sinatra'\nget '/hello/:name' do\nend", "expect": ["GET {{baseUrl}}/hello/{{name}}"] }
+          ]
+        },
+        "http-clients": {
+          "name": "Faraday / HTTParty",
+          "docs": "https://lostisland.github.io/faraday/",
+          "imports": ["faraday", "httparty"],
+          "routes": ["{_}.{method}(\"{route}\""],
+          "path_params": ["dollar"],
+          "query": ["query: {keys}"],
+          "headers": ["headers: {keys}"],
+          "body": ["body: {keys}"],
+          "examples": [
+            { "code": "require 'httparty'\nHTTParty.get('https://api.stackexchange.com/2.2/questions')", "expect": ["GET https://api.stackexchange.com/2.2/questions"] }
+          ]
+        }
+      }
+    },
+    "csharp": {
+      "name": "C#",
+      "zed": ["C#"],
+      "extensions": ["cs"],
+      "decorators": ["["],
+      "class_keywords": ["class", "record", "interface", "struct"],
+      "definitions": ["^public {type} {handler}(", "^public async {type} {handler}(", "^private {type} {handler}("],
+      "variables": ["{type} {var}"],
+      "models": {
+        "declarations": ["record {type}", "class {type}", "struct {type}"],
+        "block": "braces",
+        "modifiers": ["public", "private", "protected", "internal", "required", "readonly", "virtual"],
+        "fields": ["{type} {name}"]
+      },
+      "frameworks": {
+        "aspnet-mvc": {
+          "name": "ASP.NET Core controllers",
+          "docs": "https://learn.microsoft.com/aspnet/core/mvc/controllers/routing",
+          "imports": ["Microsoft.AspNetCore.Mvc"],
+          "prefix": ["[Route(\"{path}\")]"],
+          "controller_token": "[controller]",
+          "routes": ["[Http{method}(\"{path}\"", "[Route(\"{path}\")] [Http{method}]", "[Http{method}]"],
+          "path_params": ["braces"],
+          "query": ["[FromQuery(Name = \"{name}\")]", "[FromQuery] {type} {name}"],
+          "headers": ["[FromHeader(Name = \"{name}\")]", "[FromHeader] {type} {name}"],
+          "body": ["[FromBody] {type} {_}"],
+          "auth": ["[Authorize"],
+          "examples": [
+            { "code": "using Microsoft.AspNetCore.Mvc;\n[Route(\"api/[controller]\")]\npublic class UsersController : ControllerBase {\n  [HttpGet(\"{id}\")]\n  public User Get(int id) {}\n  [HttpPost]\n  public void Create() {}\n}", "expect": ["GET {{baseUrl}}/api/Users/{{id}}", "POST {{baseUrl}}/api/Users"] }
+          ]
+        },
+        "minimal-api": {
+          "name": "ASP.NET Core minimal APIs",
+          "docs": "https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis",
+          "imports": [".Map"],
+          "routes": [".Map{method}(\"{path}\""],
+          "path_params": ["braces"],
+          "query": ["[FromQuery] {type} {name}"],
+          "headers": ["[FromHeader(Name = \"{name}\")]"],
+          "body": ["[FromBody] {type} {_}"],
+          "examples": [
+            { "code": "var app = builder.Build();\napp.MapPost(\"/todos\", (Todo todo) => todo);\napp.MapGet(\"/todos/{id}\", (int id) => id);", "expect": ["POST {{baseUrl}}/todos", "GET {{baseUrl}}/todos/{{id}}"] }
+          ]
+        },
+        "refit": {
+          "name": "Refit",
+          "docs": "https://github.com/reactiveui/refit",
+          "imports": ["Refit"],
+          "routes": ["[{method}(\"{path}\")]"],
+          "path_params": ["braces"],
+          "headers": ["[Header(\"{name}\")]"],
+          "body": ["[Body] {type} {_}"],
+          "examples": [
+            { "code": "using Refit;\npublic interface IGitHubApi {\n  [Get(\"/users/{user}\")]\n  Task<User> GetUser(string user);\n}", "expect": ["GET {{baseUrl}}/users/{{user}}"] }
+          ]
+        },
+        "httpclient": {
+          "name": "HttpClient",
+          "docs": "https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient",
+          "imports": ["HttpClient", "System.Net.Http"],
+          "routes": [".{method}Async(\"{route}\"", ".{method}FromJsonAsync{generic}(\"{route}\"", ".{method}AsJsonAsync(\"{route}\"", "new HttpRequestMessage(HttpMethod.{method}, \"{path}\""],
+          "path_params": ["braces"],
+          "headers": ["DefaultRequestHeaders.Add(\"{name}\""],
+          "examples": [
+            { "code": "using System.Net.Http;\nvar r = await client.GetFromJsonAsync<Todo>(\"https://jsonplaceholder.typicode.com/todos/1\");", "expect": ["GET https://jsonplaceholder.typicode.com/todos/1"] }
+          ]
+        }
+      }
+    },
+    "*": {
+      "name": "Any language",
+      "zed": [],
+      "extensions": ["*"],
+      "frameworks": {
+        "url-literal": {
+          "name": "Absolute URL literals (code action only, no lens)",
+          "routes": [
+            { "pattern": "\"https://{path}\"", "url": "https://{path}", "weak": true },
+            { "pattern": "\"http://{path}\"", "url": "http://{path}", "weak": true }
+          ],
+          "path_params": ["dollar", "braces"],
+          "examples": [
+            { "code": "const BASE = \"https://api.example.com/v2\";", "expect": ["GET https://api.example.com/v2"] }
+          ]
+        }
+      }
+    }
+  }
+}
