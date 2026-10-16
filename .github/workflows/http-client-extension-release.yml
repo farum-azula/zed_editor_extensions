@@ -4,7 +4,7 @@ name: http-client-extension-release
 # has to do: it downloads the asset matching its own version from the release this publishes.
 # Tag a release with the version in http-client-extension/extension.toml:
 #
-#     git tag http-client-extension-v0.2.1 && git push origin http-client-extension-v0.2.1
+#     git tag http-client-extension-v0.2.2 && git push origin http-client-extension-v0.2.2
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build, e.g. http-client-extension-v0.2.1
+        description: Existing tag to build, e.g. http-client-extension-v0.2.2
         required: true
 
 permissions:

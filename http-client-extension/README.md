@@ -992,8 +992,8 @@ publishes the prebuilt runners the extension downloads. It runs on a tag named a
 Intel and ARM, to the release:
 
 ```sh
-git tag http-client-extension-v0.2.1
-git push origin http-client-extension-v0.2.1
+git tag http-client-extension-v0.2.2
+git push origin http-client-extension-v0.2.2
 ```
 
 The workflow refuses a tag that disagrees with `extension.toml`.
@@ -1037,3 +1037,7 @@ Run the request with `# @name login` first.
 
 **TLS errors for local servers with a self-signed certificate.**
 System root certificates are used; add your CA to the system store.
+
+## License
+
+[MIT](LICENSE)

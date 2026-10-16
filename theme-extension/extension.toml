@@ -1,0 +1,7 @@
+id = "farum-azula-theme"
+name = "Farum Azula Themes"
+description = "Two dark themes: an opaque one built on VScode Dark Plus, and a transparent one built on Transparent Prism - Frost."
+version = "0.1.0"
+schema_version = 1
+authors = ["Farum-Azula"]
+repository = "https://github.com/farum-azula/zed_editor_extensions"
