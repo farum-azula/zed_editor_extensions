@@ -1,4 +1,3 @@
-
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -48,8 +47,7 @@ impl Context {
                 .responses
                 .get(req)
                 .ok_or_else(|| format!("no stored response for request `{req}` — run it first"))?;
-            return response_value(resp, path)
-                .ok_or_else(|| format!("`{name}` not found in stored response"));
+            return response_value(resp, path).ok_or_else(|| format!("`{name}` not found in stored response"));
         }
         Err(format!("unknown variable `{{{{{name}}}}}`"))
     }
@@ -74,10 +72,8 @@ fn dynamic_var(name: &str) -> Result<String, String> {
         "timestamp" => chrono::Utc::now().timestamp().to_string(),
         "isoTimestamp" => chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "randomInt" | "random.integer" => {
-            let nums: Vec<i64> = arg
-                .split(|c: char| c == ',' || c.is_whitespace())
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
+            let nums: Vec<i64> =
+                arg.split(|c: char| c == ',' || c.is_whitespace()).filter_map(|s| s.trim().parse().ok()).collect();
             let (lo, hi) = match nums.as_slice() {
                 [a, b] if a < b => (*a, *b),
                 _ => (0, 1000),
@@ -215,29 +211,5 @@ impl Environments {
             }
         }
         out
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolves_nested_and_responses() {
-        let mut vars = HashMap::new();
-        vars.insert("host".into(), "localhost:{{port}}".into());
-        vars.insert("port".into(), "8080".into());
-        let mut responses = serde_json::Map::new();
-        responses.insert(
-            "login".into(),
-            serde_json::json!({"status": 200, "headers": {"X-Id": "7"}, "body": {"data": {"items": [{"token": "abc"}]}}}),
-        );
-        let ctx = Context { vars, responses };
-        assert_eq!(ctx.resolve("http://{{host}}/x").unwrap(), "http://localhost:8080/x");
-        assert_eq!(ctx.resolve("{{login.response.body.data.items[0].token}}").unwrap(), "abc");
-        assert_eq!(ctx.resolve("{{login.response.body.$.data.items[0].token}}").unwrap(), "abc");
-        assert_eq!(ctx.resolve("{{login.response.headers.x-id}}").unwrap(), "7");
-        assert_eq!(ctx.resolve("{{$uuid}}").unwrap().len(), 36);
-        assert!(ctx.resolve("{{missing}}").is_err());
     }
 }

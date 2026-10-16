@@ -29,6 +29,23 @@
 use regex::Regex;
 use std::collections::HashMap;
 
+/// The regex each placeholder expands to, or `None` if the name is not a placeholder.
+fn class_of(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "method" => r"(?i:get|post|put|delete|patch|head|options)",
+        "path" => r#"[^"'`\n]*"#,
+        "route" => r#"(?:/|https?://)[^"'`\n]*"#,
+        "host" => r#"[^"'`\n/]+"#,
+        "name" => r"[A-Za-z_$][\w$-]*",
+        "type" => r"(?:\[\]|\*|&|map\[[^\]\n]*\])*[\w.$]+(?:<[^()=;{}\n]*>|\[[^\]\n]*\])?(?:\[\])*\??",
+        "var" | "handler" | "_" => r"[A-Za-z_$][\w$]*",
+        "keys" => r"(?:<[^>\n]*>\s*)?(?:\{[^{}]*\}|\[[^\[\]]*\])",
+        "generic" => r"(?:<[^()\n]*>)?",
+        _ => return None,
+    })
+}
+
+/// Placeholder names, for error messages.
 pub const PLACEHOLDERS: &[&str] =
     &["method", "path", "route", "host", "name", "type", "var", "handler", "keys", "generic", "_"];
 
@@ -72,7 +89,7 @@ impl Matcher {
         Ok(Some(Self { re, alts }))
     }
 
-    #[cfg(test)]
+    /// Compiles a single pattern.
     pub fn one(pattern: &str, bind: &[(&str, &str)]) -> Result<Option<Self>, String> {
         Self::new(&[pattern.to_string()], bind)
     }
@@ -133,7 +150,7 @@ fn tokenize(p: &str) -> Result<Vec<Tok>, String> {
                 Some(n) => (n.to_string(), true),
                 None => (inner, false),
             };
-            if !PLACEHOLDERS.contains(&name.as_str()) {
+            if class_of(&name).is_none() {
                 return Err(format!("unknown placeholder `{{{name}}}`, expected one of {PLACEHOLDERS:?}"));
             }
             out.push(Tok::Ph(name, optional));
@@ -196,18 +213,7 @@ fn compile(p: &str, alt: usize, bind: &[(&str, &str)]) -> Result<(String, Vec<St
                 let body = if let Some((_, v)) = bind.iter().find(|(k, _)| k == name) {
                     regex::escape(v)
                 } else {
-                    let class = match name.as_str() {
-                        "method" => r"(?i:get|post|put|delete|patch|head|options)",
-                        "path" => r#"[^"'`\n]*"#,
-                        "route" => r#"(?:/|https?://)[^"'`\n]*"#,
-                        "host" => r#"[^"'`\n/]+"#,
-                        "name" => r"[A-Za-z_$][\w$-]*",
-                        "type" => r"(?:\[\]|\*|&|map\[[^\]\n]*\])*[\w.$]+(?:<[^()=;{}\n]*>|\[[^\]\n]*\])?(?:\[\])*\??",
-                        "var" | "handler" | "_" => r"[A-Za-z_$][\w$]*",
-                        "keys" => r"(?:<[^>\n]*>\s*)?(?:\{[^{}]*\}|\[[^\[\]]*\])",
-                        "generic" => r"(?:<[^()\n]*>)?",
-                        _ => unreachable!(),
-                    };
+                    let class = class_of(name).expect("validated by tokenize");
                     if name == "_" || name == "generic" || names.contains(name) {
                         format!("(?:{class})")
                     } else {
@@ -258,63 +264,4 @@ pub fn keys_of(literal: &str) -> Vec<String> {
         .map(|p| p.split([':', '=']).next().unwrap_or("").trim().trim_start_matches("...").to_string())
         .filter(|k| !k.is_empty() && k.chars().all(|c| is_word(c) || c == '$'))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn caps(p: &str, text: &str) -> Option<HashMap<String, String>> {
-        Matcher::one(p, &[]).unwrap().unwrap().first(text).map(|h| h.caps)
-    }
-
-    #[test]
-    fn placeholders() {
-        let c = caps(r#"@{method}Mapping("{path}")"#, r#"  @GetMapping( "/users/{id}" )"#).unwrap();
-        assert_eq!(c["method"], "Get");
-        assert_eq!(c["path"], "/users/{id}");
-        assert!(caps(r#"@{method}Mapping"#, "@RequestMapping").is_none());
-        let c = caps(r#".{method}{generic}("{route}""#, "_dio.post<Map<String, dynamic>>('/auth', data: x)").unwrap();
-        assert_eq!((c["method"].as_str(), c["route"].as_str()), ("post", "/auth"));
-        assert!(caps(r#".{method}("{route}""#, r#"map.get("key")"#).is_none());
-        let c = caps("@RequestParam {type} {name}", "@RequestParam  Map<String, Integer> filters,").unwrap();
-        assert_eq!((c["type"].as_str(), c["name"].as_str()), ("Map<String, Integer>", "filters"));
-    }
-
-    #[test]
-    fn first_listed_pattern_wins() {
-        let m = Matcher::new(
-            &[r#"@RequestParam(..."{name}"...) {type} {_}"#.into(), "@RequestParam(...) {type} {name}".into()],
-            &[],
-        )
-        .unwrap()
-        .unwrap();
-        let hits: Vec<_> = m
-            .hits(r#"@RequestParam(defaultValue = "0") int page, @RequestParam(value = "q") String query"#)
-            .map(|h| (h.alt, h.get("name").unwrap().to_string()))
-            .collect();
-        // `"0"` is not a name, so the second pattern takes `page`; `...` must not run into the next `(...)`.
-        assert_eq!(hits, vec![(1, "page".into()), (0, "q".into())]);
-    }
-
-    #[test]
-    fn string_prefixes() {
-        assert_eq!(caps(r#".{method}Async("{route}""#, r#"_client.DeleteAsync($"/todos/{id}")"#).unwrap()["route"], "/todos/{id}");
-        assert_eq!(caps(r#"{_}.{method}("{route}""#, r#"requests.get(f"/users/{id}")"#).unwrap()["route"], "/users/{id}");
-        assert!(caps(r#""{path}""#, r#""abc""#).is_some());
-    }
-
-    #[test]
-    fn keys() {
-        assert_eq!(keys_of("{'email': e, 'password': p}"), vec!["email", "password"]);
-        assert_eq!(keys_of("<String, int>{'page': 1}"), vec!["page"]);
-        assert_eq!(keys_of("{ name, email: mail, ...rest }"), vec!["name", "email", "rest"]);
-        assert_eq!(keys_of("['title' => 'required', 'body' => 'x']"), vec!["title", "body"]);
-    }
-
-    #[test]
-    fn errors() {
-        assert!(Matcher::one("{nope}", &[]).is_err());
-        assert!(Matcher::one("{name", &[]).is_err());
-    }
 }

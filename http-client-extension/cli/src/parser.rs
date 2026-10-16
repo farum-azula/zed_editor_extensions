@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, Default)]
 pub struct Request {
     pub name: Option<String>,
@@ -13,7 +12,7 @@ pub struct Request {
     pub no_redirect: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Body {
     Inline(String),
     File(String),
@@ -25,9 +24,7 @@ pub struct HttpFile {
     pub requests: Vec<Request>,
 }
 
-const METHODS: &[&str] = &[
-    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT",
-];
+const METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"];
 
 fn is_separator(line: &str) -> bool {
     line.trim_start().starts_with("###")
@@ -44,7 +41,8 @@ fn comment_text(line: &str) -> &str {
     t.trim()
 }
 
-fn parse_var_decl(line: &str) -> Option<(String, String)> {
+/// Parses an `@name = value` declaration.
+pub fn parse_var_decl(line: &str) -> Option<(String, String)> {
     let t = line.trim();
     let rest = t.strip_prefix('@')?;
     let (name, value) = rest.split_once('=')?;
@@ -89,12 +87,7 @@ fn parse_section(
     title: Option<String>,
     vars: &mut Vec<(String, String)>,
 ) -> Option<Request> {
-    let mut req = Request {
-        title,
-        start_line: s.max(1),
-        end_line: e,
-        ..Default::default()
-    };
+    let mut req = Request { title, start_line: s.max(1), end_line: e, ..Default::default() };
 
     let mut i = s;
     while i < e {
@@ -199,32 +192,4 @@ fn parse_section(
         req.body = Some(Body::Inline(body_lines.join("\n")));
     }
     Some(req)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_sections() {
-        let src = "@host = http://localhost\n\n### Get users\n# @name users\nGET {{host}}/users\nAccept: application/json\n\n###\nPOST {{host}}/users\nContent-Type: application/json\n\n{\"a\": 1}\n\n> {%\n client.log(1)\n%}\n";
-        let f = parse(src);
-        assert_eq!(f.variables, vec![("host".into(), "http://localhost".into())]);
-        assert_eq!(f.requests.len(), 2);
-        assert_eq!(f.requests[0].name.as_deref(), Some("users"));
-        assert_eq!(f.requests[0].title.as_deref(), Some("Get users"));
-        assert_eq!(f.requests[0].headers.len(), 1);
-        assert_eq!(f.requests[1].method, "POST");
-        match &f.requests[1].body {
-            Some(Body::Inline(b)) => assert_eq!(b, "{\"a\": 1}"),
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn multiline_url_and_no_method() {
-        let f = parse("https://example.com/api\n    ?a=1\n    &b=2\n");
-        assert_eq!(f.requests[0].method, "GET");
-        assert_eq!(f.requests[0].url, "https://example.com/api?a=1&b=2");
-    }
 }

@@ -1,21 +1,17 @@
-mod catalog;
-mod endpoint;
-mod infer;
-mod lsp;
-mod parser;
-mod pattern;
-mod vars;
+//! Command-line entry points: argument parsing and the `run` / `list` / `envs` / `new` /
+//! `detect` / `frameworks` commands.
 
-use parser::{Body, HttpFile, Request};
+use crate::parser::{self, Body, HttpFile, Request};
+use crate::vars::{Context, Environments};
+use crate::{catalog, endpoint, lsp, vars};
 use serde_json::Value;
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
-use vars::{Context, Environments};
 
-const USAGE: &str = "\
+pub const USAGE: &str = "\
 zed-http — IntelliJ-style .http file runner
 
 USAGE:
@@ -50,8 +46,8 @@ struct Opts {
     timeout: u64,
 }
 
-fn parse_args() -> Result<Opts, String> {
-    let mut args = std::env::args().skip(1);
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Opts, String> {
+    let mut args = args.peekable();
     let mut o = Opts { timeout: 60, ..Default::default() };
     o.command = args.next().ok_or(USAGE)?;
     if matches!(o.command.as_str(), "-h" | "--help" | "help") {
@@ -79,52 +75,58 @@ fn parse_args() -> Result<Opts, String> {
     Ok(o)
 }
 
-fn main() -> ExitCode {
-    if std::env::args().nth(1).as_deref() == Some("lsp") {
+/// Runs one command and converts its exit code. `args` are the arguments after the program name.
+pub fn run_main(args: Vec<String>) -> ExitCode {
+    ExitCode::from(run_args(args))
+}
+
+/// Runs one command, returning the process exit code: 0 ok, 1 request failed, 2 usage/IO error.
+pub fn run_args(args: Vec<String>) -> u8 {
+    if args.first().map(String::as_str) == Some("lsp") {
         lsp::serve();
-        return ExitCode::SUCCESS;
+        return 0;
     }
-    if std::env::args().nth(1).as_deref() == Some("new") {
-        return match new_endpoint(std::env::args().skip(2)) {
-            Ok(()) => ExitCode::SUCCESS,
+    if args.first().map(String::as_str) == Some("new") {
+        return match new_endpoint(args.into_iter().skip(1)) {
+            Ok(()) => 0,
             Err(e) => {
                 eprintln!("{RED}error:{RESET} {e}");
-                ExitCode::from(2)
+                2
             }
         };
     }
-    if std::env::args().nth(1).as_deref() == Some("frameworks") {
-        return match frameworks(std::env::args().nth(2)) {
-            Ok(()) => ExitCode::SUCCESS,
+    if args.first().map(String::as_str) == Some("frameworks") {
+        return match frameworks(args.into_iter().nth(1)) {
+            Ok(()) => 0,
             Err(e) => {
                 eprintln!("{RED}error:{RESET} {e}");
-                ExitCode::from(2)
+                2
             }
         };
     }
-    if std::env::args().nth(1).as_deref() == Some("detect") {
-        return match detect(std::env::args().skip(2)) {
-            Ok(true) => ExitCode::SUCCESS,
-            Ok(false) => ExitCode::from(1),
+    if args.first().map(String::as_str) == Some("detect") {
+        return match detect(args.into_iter().skip(1)) {
+            Ok(true) => 0,
+            Ok(false) => 1,
             Err(e) => {
                 eprintln!("{RED}error:{RESET} {e}");
-                ExitCode::from(2)
+                2
             }
         };
     }
-    let opts = match parse_args() {
+    let opts = match parse_args(args.into_iter()) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("{e}");
-            return ExitCode::from(2);
+            return 2;
         }
     };
     match run(opts) {
-        Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::from(1),
+        Ok(true) => 0,
+        Ok(false) => 1,
         Err(e) => {
             eprintln!("{RED}error:{RESET} {e}");
-            ExitCode::from(2)
+            2
         }
     }
 }
@@ -154,10 +156,7 @@ fn run(o: Opts) -> Result<bool, String> {
             let env = envs.select(o.env.as_deref())?;
             let selected = select_requests(&file, &o)?;
             let store_path = dir.join(".zed-http").join("responses.json");
-            let mut ctx = Context {
-                vars: envs.vars(env.as_deref()),
-                responses: load_store(&store_path),
-            };
+            let mut ctx = Context { vars: envs.vars(env.as_deref()), responses: load_store(&store_path) };
             ctx.vars.extend(file.variables.iter().cloned());
 
             if let Some(e) = &env {
@@ -290,7 +289,7 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     let text = String::from_utf8_lossy(&bytes);
     let json: Option<Value> = serde_json::from_slice(&bytes).ok();
     let pretty = match (&json, o.raw) {
-        (Some(j), false) => serde_json::to_string_pretty(j).unwrap_or_else(|_| text.to_string()),
+        (Some(j), false) => serde_json::to_string_pretty(j).expect("a parsed JSON value re-serializes"),
         _ => text.to_string(),
     };
     if is_textual(&content_type) || json.is_some() {
@@ -344,7 +343,8 @@ fn resolve_body(ctx: &Context, body: &str, dir: &Path) -> Result<String, String>
     Ok(out.join("\n"))
 }
 
-fn expand_basic_auth(v: &str) -> String {
+/// Encodes `Basic user password` / `Basic user:password`; other values are passed through.
+pub fn expand_basic_auth(v: &str) -> String {
     use base64::Engine;
     if let Some(rest) = v.strip_prefix("Basic ") {
         let parts: Vec<&str> = rest.split_whitespace().collect();
@@ -356,7 +356,8 @@ fn expand_basic_auth(v: &str) -> String {
     v.to_string()
 }
 
-fn is_textual(ct: &str) -> bool {
+/// Whether a response of this content type should be printed as text.
+pub fn is_textual(ct: &str) -> bool {
     ct.starts_with("text/")
         || ["json", "xml", "javascript", "html", "yaml", "x-www-form-urlencoded", "graphql"]
             .iter()
@@ -364,7 +365,8 @@ fn is_textual(ct: &str) -> bool {
         || ct.is_empty()
 }
 
-fn extension_for(ct: &str, is_json: bool) -> &'static str {
+/// File extension for a saved response.
+pub fn extension_for(ct: &str, is_json: bool) -> &'static str {
     if is_json {
         "json"
     } else if ct.contains("html") {
@@ -384,20 +386,20 @@ fn extension_for(ct: &str, is_json: bool) -> &'static str {
     }
 }
 
-fn sanitize(s: &str) -> String {
+/// Makes a request name safe to use as a file name.
+pub fn sanitize(s: &str) -> String {
     s.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect()
 }
 
-fn unique_path(p: &Path) -> PathBuf {
+/// `report.json` → `report-1.json` while the path is taken.
+pub fn unique_path(p: &Path) -> PathBuf {
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("response");
     let ext = p.extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
-    (1..)
-        .map(|i| p.with_file_name(format!("{stem}-{i}{ext}")))
-        .find(|c| !c.exists())
-        .unwrap()
+    (1..).map(|i| p.with_file_name(format!("{stem}-{i}{ext}"))).find(|c| !c.exists()).unwrap()
 }
 
-fn human_size(n: usize) -> String {
+/// Formats a byte count as B / KB / MB.
+pub fn human_size(n: usize) -> String {
     match n {
         n if n < 1024 => format!("{n} B"),
         n if n < 1024 * 1024 => format!("{:.1} KB", n as f64 / 1024.0),
@@ -405,20 +407,17 @@ fn human_size(n: usize) -> String {
     }
 }
 
-fn load_store(path: &Path) -> serde_json::Map<String, Value> {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+/// Reads the stored responses; a missing or unparsable file yields an empty store.
+pub fn load_store(path: &Path) -> serde_json::Map<String, Value> {
+    fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
 }
 
-fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
+/// Writes the stored responses, creating the directory; failures are ignored.
+pub fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
     if let Some(p) = path.parent() {
         let _ = fs::create_dir_all(p);
     }
-    if let Ok(s) = serde_json::to_string_pretty(store) {
-        let _ = fs::write(path, s);
-    }
+    let _ = fs::write(path, serde_json::to_string_pretty(store).unwrap_or_default());
 }
 
 /// `zed-http new`: creates `<root>/.zed/http/endpoints/<name>.http` from a template.
@@ -453,7 +452,7 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     }
     let root = match root.filter(|p| !p.as_os_str().is_empty()) {
         Some(r) => r,
-        None => std::env::current_dir().map_err(|e| e.to_string())?,
+        None => std::env::current_dir().unwrap_or_default(),
     };
     let method = match method {
         Some(m) => m,
@@ -497,13 +496,11 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     if endpoint::find_request(&existing, &name).is_some() {
         println!("{YELLOW}exists:{RESET} {name} in {}", path.display());
     } else {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        std::io::Write::write_all(&mut f, endpoint::append_text(&existing, &text).as_bytes())
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let appended =
+            fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| {
+                std::io::Write::write_all(&mut f, endpoint::append_text(&existing, &text).as_bytes())
+            });
+        appended.map_err(|e| format!("{}: {e}", path.display()))?;
     }
     println!("{GREEN}saved:{RESET} {}", path.display());
 
@@ -515,14 +512,26 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 fn prompt(label: &str, default: &str) -> Result<String, String> {
-    use std::io::{IsTerminal, Write};
-    if !std::io::stdin().is_terminal() {
+    use std::io::IsTerminal;
+    let tty = std::io::stdin().is_terminal();
+    prompt_from(label, default, tty, &mut std::io::stdin().lock(), &mut std::io::stdout())
+}
+
+/// Asks for a value; without a terminal (CI, an editor task, an agent) the default is used.
+pub fn prompt_from(
+    label: &str,
+    default: &str,
+    is_terminal: bool,
+    input: &mut dyn BufRead,
+    out: &mut dyn Write,
+) -> Result<String, String> {
+    if !is_terminal {
         return Ok(default.into());
     }
-    print!("{BOLD}{label}{RESET} {DIM}[{default}]{RESET}: ");
-    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    write!(out, "{BOLD}{label}{RESET} {DIM}[{default}]{RESET}: ").map_err(|e| e.to_string())?;
+    out.flush().map_err(|e| e.to_string())?;
     let mut line = String::new();
-    std::io::stdin().read_line(&mut line).map_err(|e| e.to_string())?;
+    input.read_line(&mut line).map_err(|e| e.to_string())?;
     let line = line.trim();
     Ok(if line.is_empty() { default.into() } else { line.into() })
 }
@@ -532,9 +541,7 @@ fn detect(mut args: impl Iterator<Item = String>) -> Result<bool, String> {
     let (mut file, mut only) = (None, None);
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--line" | "-l" => {
-                only = Some(args.next().and_then(|v| v.parse::<usize>().ok()).ok_or("invalid --line")?)
-            }
+            "--line" | "-l" => only = Some(args.next().and_then(|v| v.parse::<usize>().ok()).ok_or("invalid --line")?),
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
             s => file = Some(s.to_string()),
         }

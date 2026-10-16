@@ -1,0 +1,130 @@
+name: http-client-extension
+
+# CI for the HTTP Client extension. Runs only when this extension changes, so other extensions
+# in this repository are unaffected; each extension has its own workflow named after its directory.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - http-client-extension/**
+      - .github/workflows/http-client-extension.yml
+  pull_request:
+    paths:
+      - http-client-extension/**
+      - .github/workflows/http-client-extension.yml
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+defaults:
+  run:
+    working-directory: http-client-extension
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: http-client-extension/cli
+      - name: Format
+        working-directory: http-client-extension/cli
+        run: cargo fmt --check
+      - name: Clippy
+        working-directory: http-client-extension/cli
+        run: cargo clippy --all-targets
+      - name: Test
+        working-directory: http-client-extension/cli
+        run: cargo test
+
+  coverage:
+    name: Coverage (100% of lines and functions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: http-client-extension/cli
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Measure coverage
+        working-directory: http-client-extension/cli
+        run: |
+          cargo llvm-cov --ignore-filename-regex 'tests/' \
+            --fail-under-lines 100 --fail-under-functions 100 \
+            --lcov --output-path lcov.info
+      - name: Summary
+        if: always()
+        working-directory: http-client-extension/cli
+        run: |
+          {
+            echo '```'
+            cargo llvm-cov report --ignore-filename-regex 'tests/' --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: http-client-extension/cli/lcov.info
+          if-no-files-found: warn
+
+  extension:
+    name: WebAssembly build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: http-client-extension
+      - name: Build
+        run: cargo build --release --target wasm32-wasip2
+      - name: Check that the manifests agree on the version
+        run: |
+          python3 - <<'PY'
+          import re
+          def version(path):
+              return re.search(r'(?m)^version = "([^"]+)"', open(path).read()).group(1)
+          versions = {p: version(p) for p in ["extension.toml", "Cargo.toml", "cli/Cargo.toml"]}
+          assert len(set(versions.values())) == 1, f"versions differ: {versions}"
+          print("version", next(iter(versions.values())))
+          PY
+
+  catalog:
+    name: Framework catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate frameworks.json against its schema
+        run: |
+          pip install --quiet jsonschema
+          python3 - <<'PY'
+          import json, jsonschema
+          schema = json.load(open("frameworks.schema.json"))
+          catalog = json.load(open("frameworks.json"))
+          jsonschema.Draft7Validator.check_schema(schema)
+          errors = sorted(jsonschema.Draft7Validator(schema).iter_errors(catalog), key=lambda e: list(e.path))
+          for e in errors:
+              print("/".join(str(p) for p in e.path), "->", e.message)
+          assert not errors, f"{len(errors)} schema errors"
+          languages = catalog["languages"]
+          frameworks = sum(len(l["frameworks"]) for l in languages.values())
+          print(f"{len(languages)} languages, {frameworks} frameworks: valid")
+          PY

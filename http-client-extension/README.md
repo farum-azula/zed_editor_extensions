@@ -1,7 +1,12 @@
 # HTTP Client for Zed
 
 An HTTP client for the [Zed](https://zed.dev) editor, modeled on the built-in HTTP Client in IntelliJ IDEA.
-Write requests in `.http` / `.rest` files, click ▶ next to a request, and the response appears in Zed's terminal.
+
+- **Run requests.** Write them in `.http` / `.rest` files and click the **▶ run button in the gutter**
+  (the left margin, next to the request line); the response appears in Zed's terminal.
+- **Generate requests from your code.** In a route or HTTP client call in 48 supported frameworks,
+  click the **🌐 Generate .http request** lens above the line and get a ready request, with query
+  parameters, headers and a JSON body filled in from the handler and its models.
 
 The file format is compatible with IntelliJ IDEA / WebStorm / PhpStorm and largely with VS Code REST Client,
 so existing `.http` files and `http-client.env.json` can be used unchanged.
@@ -68,7 +73,9 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
   - outline panel (`cmd+shift+o`) listing the file's requests;
   - `#` and `//` comments (`cmd+/`), auto-closing of brackets and quotes;
   - **go to variable definition** via `cmd+click` / `F12`, and a hover showing the value.
-- A **▶ button on every request** and Zed tasks to run one or all requests in a file.
+- A **▶ run button in the gutter of every request**, plus Zed tasks to run one or all requests in a file.
+- A **🌐 Generate .http request** lens above every route or HTTP call in your code
+  (see [Generating a Request from Code](#generating-a-request-from-code)).
 - The **`zed-http`** runner:
   - any HTTP method, headers, body, multi-line URLs;
   - file variables, environments (`http-client.env.json` + private file), `$shared`;
@@ -87,10 +94,10 @@ The Zed extension API does not allow adding custom panels or windows, so the pro
 
 | Part | Where | What it does |
 |---|---|---|
-| Zed extension | `extension.toml`, `languages/http/`, `src/lib.rs` | Registers the HTTP language, tree-sitter grammar, highlighting, outline, ▶ buttons, tasks, and starts the language server |
+| Zed extension | `extension.toml`, `languages/http/`, `src/lib.rs` | Registers the HTTP language, tree-sitter grammar, highlighting, outline, gutter ▶ buttons, tasks, and starts the language server |
 | `zed-http` CLI | `cli/` | Executes requests (`zed-http run`) and acts as a language server (`zed-http lsp`) for variable navigation and hover |
 
-When you click ▶, Zed runs the task:
+When you click the gutter ▶ in a `.http` file, Zed runs the task:
 
 ```sh
 zed-http run "<file path>" --line <line number>
@@ -112,7 +119,7 @@ When a `.http` file is opened, Zed starts `zed-http lsp`, which handles "go to d
 
 ```sh
 git clone <this repository>
-cd zed-editor-http-client-extension
+cd http-client-extension
 cargo install --path cli
 ```
 
@@ -165,7 +172,7 @@ Content-Type: application/json
 }
 ```
 
-Click ▶ to the left of `GET`, and the terminal shows:
+Click the ▶ in the gutter next to the `GET` line, and the terminal shows:
 
 ```
 GET https://httpbin.org/get?client=zed
@@ -190,7 +197,7 @@ A more complete example is in [`examples/requests.http`](examples/requests.http)
 
 | Method | What runs |
 |---|---|
-| ▶ next to the method | This request |
+| ▶ in the gutter next to the method | This request |
 | `task: spawn` → "HTTP: GET …" | The request under the cursor |
 | `task: spawn` → "HTTP: run all requests in …" | All requests in the file, in order |
 | `task: rerun` | Repeat the last run |
@@ -611,11 +618,12 @@ and, optionally, a keyboard shortcut in the keymap:
 
 ## Generating a Request from Code
 
-Every route or HTTP client call in your code gets a clickable **🌐 Generate .http request** lens above it.
+Every route or HTTP client call in your code gets a clickable **🌐 Generate .http request** lens
+above the line (a code lens, not a gutter button).
 One click appends a full request to `.zed/http/endpoints/<source file>.http`
 (`server.ts` → `server.ts.http`, `UserController.java` → `UserController.java.http`) and opens it at that request.
 Once a request is generated, its lens turns into **🔗 Open <source file>.http** and jumps to it.
-The lens uses colour emoji (🌐 / 🔗), so it keeps its own colour and doesn't look like the ▶ that runs tasks.
+The lens uses colour emoji (🌐 / 🔗) so it is not mistaken for the ▶ that runs requests and tasks.
 The same actions are available from `cmd+.` on the line.
 
 Code lenses are off by default in Zed. Enable them in `settings.json`:
@@ -736,7 +744,7 @@ uses it for completion and validation while you edit.
 
   ```json
   {
-    "$schema": "https://raw.githubusercontent.com/farum-azula/zed_editor_extensions/main/zed-editor-http-client-extension/frameworks.schema.json",
+    "$schema": "https://raw.githubusercontent.com/farum-azula/zed_editor_extensions/main/http-client-extension/frameworks.schema.json",
     "languages": {
       "dart": {
         "frameworks": {
@@ -823,12 +831,15 @@ Run `zed: open keymap` and add:
 │   ├── highlights.scm          highlighting
 │   ├── injections.scm          JSON / XML / GraphQL in the body
 │   ├── outline.scm             request list in the outline
-│   ├── runnables.scm           ▶ buttons
+│   ├── runnables.scm           ▶ gutter run buttons
 │   └── tasks.json              run tasks
 ├── cli/
 │   ├── Cargo.toml
+│   ├── tests/                  integration tests (commands, requests, LSP, binary, units)
 │   └── src/
-│       ├── main.rs             arguments, request execution, output, new/detect
+│       ├── main.rs             the binary: a thin wrapper around the library
+│       ├── lib.rs              the library behind the binary, so tests can drive it
+│       ├── cli.rs              arguments, request execution, output, new/detect
 │       ├── catalog.rs          loads frameworks.json, finds routes, infers requests
 │       ├── pattern.rs          the pattern language of frameworks.json
 │       ├── endpoint.rs         .http request rendering and files
@@ -858,12 +869,14 @@ Grammar: [rest-nvim/tree-sitter-http](https://github.com/rest-nvim/tree-sitter-h
 
 ```sh
 cd cli
-cargo test
+cargo test                 # unit and integration tests
+cargo fmt                  # rustfmt.toml: max_width = 120
+cargo clippy --all-targets
 cargo run -- list ../examples/requests.http
 cargo run -- run ../examples/requests.http --all
 ```
 
-Check the WASM build:
+Check the WASM build of the extension itself:
 
 ```sh
 cargo build --release --target wasm32-wasip2
@@ -874,6 +887,48 @@ Extension load logs: `zed: open log`.
 
 To update the grammar, change `commit` in `extension.toml` and verify that the nodes
 used in the `.scm` files (`request`, `method`, `target_url`, `header`, `variable`, …) haven't been renamed.
+
+### Tests
+
+`cli/src` is the whole runner and language server; the thin `src/lib.rs` of the extension is a WASM
+component for Zed and is only compile-checked. Everything else is covered:
+
+| Test target | What it covers |
+|---|---|
+| `tests/commands.rs` | `list`, `envs`, `detect`, `frameworks`, `new` and every argument error |
+| `tests/run_requests.rs` | request execution against a local HTTP server: headers, bodies, files, redirects, chaining, timeouts, exit codes |
+| `tests/lsp_protocol.rs` | the language server over a pipe: lenses, code actions, commands, definition, hover, malformed input |
+| `tests/lsp_env_selection.rs` | `HTTP_CLIENT_ENV`, in its own process so the variable cannot leak |
+| `tests/binary.rs` | the compiled `zed-http` binary, including a full LSP session over stdio |
+| `tests/unit_*.rs` | one file per module: patterns, catalog, parser, variables, request rendering |
+
+The library is only built once (`[lib] test = false`), so coverage is measured on a single build.
+Coverage is enforced at **100% of lines and functions**:
+
+```sh
+cargo install cargo-llvm-cov
+cargo llvm-cov --ignore-filename-regex 'tests/' --fail-under-lines 100 --fail-under-functions 100
+```
+
+Region coverage is lower and is not gated: it counts the error branch of every `?` on an I/O call
+that cannot fail in a test.
+
+### Continuous integration
+
+Each extension in the repository has its own workflow, so they are built and gated independently.
+[`.github/workflows/http-client-extension.yml`](../.github/workflows/http-client-extension.yml) —
+named after this extension's directory — runs on pushes and pull requests that touch it. Other
+extensions in the repository have their own workflow and are unaffected.
+
+| Job | What it does |
+|---|---|
+| `test` | `cargo fmt --check`, `cargo clippy --all-targets` and `cargo test` on Linux and macOS, warnings denied |
+| `coverage` | `cargo llvm-cov` with the 100% gate; publishes `lcov.info` and a summary |
+| `extension` | builds the extension for `wasm32-wasip2` and checks that `extension.toml`, `Cargo.toml` and `cli/Cargo.toml` agree on the version |
+| `catalog` | validates [`frameworks.json`](frameworks.json) against [`frameworks.schema.json`](frameworks.schema.json) |
+
+Each job is scoped to `http-client-extension/`, and the `paths` filter keeps the workflow from
+running when another extension changes.
 
 ## Limitations
 
@@ -887,11 +942,11 @@ used in the `.scm` files (`request`, `method`, `target_url`, `header`, `variable
 
 ## Troubleshooting
 
-**No ▶ buttons.**
+**No ▶ in the gutter of a `.http` file.**
 Check that the file language in the bottom right is **HTTP**. If not, reinstall the extension and check `zed: open log`.
 The buttons also require `"gutter": { "runnables": true }` to be enabled (it is by default).
 
-**▶ is there, but the "HTTP: …" task isn't offered.**
+**The ▶ is there, but the "HTTP: …" task isn't offered.**
 Copy `languages/http/tasks.json` to the project's `.zed/tasks.json` (or the global `~/.config/zed/tasks.json`).
 
 **`cmd+click` on a variable does nothing.**

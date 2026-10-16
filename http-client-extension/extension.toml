@@ -1,6 +1,6 @@
 id = "http-client"
 name = "HTTP Client"
-description = "IntelliJ IDEA-style HTTP client: .http/.rest files with highlighting, environments, variables and ▶ run buttons."
+description = "IntelliJ IDEA-style HTTP client: run .http/.rest requests from the gutter, and generate them from routes and HTTP calls in 48 frameworks."
 version = "0.2.0"
 schema_version = 1
 authors = ["Farum-Azula"]
