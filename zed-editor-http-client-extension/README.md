@@ -1,133 +1,135 @@
 # HTTP Client for Zed
 
-HTTP-клиент для редактора [Zed](https://zed.dev) в стиле встроенного HTTP Client из IntelliJ IDEA.
-Пишете запросы в файлах `.http` / `.rest`, нажимаете ▶ рядом с запросом — ответ появляется в терминале Zed.
+An HTTP client for the [Zed](https://zed.dev) editor, modeled on the built-in HTTP Client in IntelliJ IDEA.
+Write requests in `.http` / `.rest` files, click ▶ next to a request, and the response appears in Zed's terminal.
 
-Формат файлов совместим с IntelliJ IDEA / WebStorm / PhpStorm и в большой степени с VS Code REST Client,
-поэтому существующие `.http`-файлы и `http-client.env.json` можно использовать без изменений.
+The file format is compatible with IntelliJ IDEA / WebStorm / PhpStorm and largely with VS Code REST Client,
+so existing `.http` files and `http-client.env.json` can be used unchanged.
 
 ---
 
-## Содержание
+## Contents
 
-- [Возможности](#возможности)
-- [Как это устроено](#как-это-устроено)
-- [Требования](#требования)
-- [Установка](#установка)
-- [Быстрый старт](#быстрый-старт)
-- [Запуск запросов](#запуск-запросов)
-- [Синтаксис .http-файлов](#синтаксис-http-файлов)
-- [Переменные](#переменные)
-- [Окружения](#окружения)
-- [Навигация по переменным](#навигация-по-переменным)
-- [Цепочки запросов](#цепочки-запросов)
-- [Тело запроса](#тело-запроса)
-- [Работа с ответом](#работа-с-ответом)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Running Requests](#running-requests)
+- [.http File Syntax](#http-file-syntax)
+- [Variables](#variables)
+- [Environments](#environments)
+- [Variable Navigation](#variable-navigation)
+- [Request Chaining](#request-chaining)
+- [Request Body](#request-body)
+- [Working with Responses](#working-with-responses)
 - [CLI zed-http](#cli-zed-http)
-- [Горячие клавиши](#горячие-клавиши)
-- [Структура проекта](#структура-проекта)
-- [Разработка](#разработка)
-- [Ограничения](#ограничения)
-- [Решение проблем](#решение-проблем)
+- [New Endpoint](#new-endpoint)
+- [Generating a Request from Code](#generating-a-request-from-code)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Limitations](#limitations)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Возможности
+## Features
 
-- Язык **HTTP** для файлов `.http` и `.rest`:
-  - подсветка методов, URL, заголовков, переменных `{{...}}`, версий HTTP, разделителей `###`;
-  - подсветка JSON, XML и GraphQL внутри тела запроса;
-  - outline-панель (`cmd+shift+o`) со списком запросов файла;
-  - комментарии `#` и `//` (`cmd+/`), автозакрытие скобок и кавычек;
-  - **переход к определению переменной** по `cmd+click` / `F12` и подсказка со значением при наведении.
-- Кнопка **▶ у каждого запроса** и задачи Zed для запуска одного или всех запросов файла.
-- Раннер **`zed-http`**:
-  - любые HTTP-методы, заголовки, тело, многострочные URL;
-  - переменные файла, окружения (`http-client.env.json` + приватный файл), `$shared`;
-  - динамические переменные: `$uuid`, `$timestamp`, `$isoTimestamp`, `$randomInt`, `$random.*`, `$processEnv.*`;
-  - именованные запросы и ссылки на тело, заголовки и статус предыдущих ответов;
-  - тело из файла (`< ./file.json`), подстановка файлов внутрь тела (multipart);
-  - сохранение ответа в файл (`>>` и `>>!`);
-  - сокращённая запись Basic-авторизации;
-  - отключение редиректов (`# @no-redirect`);
-  - цветной вывод: статус, время, размер, заголовки, отформатированный JSON;
-  - автосохранение каждого ответа в `.zed-http/` для просмотра в Zed.
+- **HTTP** language for `.http` and `.rest` files:
+  - highlighting of methods, URLs, headers, `{{...}}` variables, HTTP versions, `###` separators;
+  - JSON, XML, and GraphQL highlighting inside the request body;
+  - outline panel (`cmd+shift+o`) listing the file's requests;
+  - `#` and `//` comments (`cmd+/`), auto-closing of brackets and quotes;
+  - **go to variable definition** via `cmd+click` / `F12`, and a hover showing the value.
+- A **▶ button on every request** and Zed tasks to run one or all requests in a file.
+- The **`zed-http`** runner:
+  - any HTTP method, headers, body, multi-line URLs;
+  - file variables, environments (`http-client.env.json` + private file), `$shared`;
+  - dynamic variables: `$uuid`, `$timestamp`, `$isoTimestamp`, `$randomInt`, `$random.*`, `$processEnv.*`;
+  - named requests and references to the body, headers, and status of previous responses;
+  - body from a file (`< ./file.json`), file inclusion inside the body (multipart);
+  - saving the response to a file (`>>` and `>>!`);
+  - shorthand Basic authorization;
+  - disabling redirects (`# @no-redirect`);
+  - colored output: status, time, size, headers, formatted JSON;
+  - auto-saving every response to `.zed-http/` for viewing in Zed.
 
-## Как это устроено
+## How It Works
 
-API расширений Zed не позволяет добавлять собственные панели и окна, поэтому проект состоит из двух частей:
+The Zed extension API does not allow adding custom panels or windows, so the project consists of two parts:
 
-| Часть | Где | Что делает |
+| Part | Where | What it does |
 |---|---|---|
-| Расширение Zed | `extension.toml`, `languages/http/`, `src/lib.rs` | Регистрирует язык HTTP, грамматику tree-sitter, подсветку, outline, кнопки ▶, задачи и запускает language server |
-| CLI `zed-http` | `cli/` | Выполняет запросы (`zed-http run`) и работает как language server (`zed-http lsp`) для перехода к переменным и hover |
+| Zed extension | `extension.toml`, `languages/http/`, `src/lib.rs` | Registers the HTTP language, tree-sitter grammar, highlighting, outline, ▶ buttons, tasks, and starts the language server |
+| `zed-http` CLI | `cli/` | Executes requests (`zed-http run`) and acts as a language server (`zed-http lsp`) for variable navigation and hover |
 
-При нажатии ▶ Zed запускает задачу:
+When you click ▶, Zed runs the task:
 
 ```sh
-zed-http run "<путь к файлу>" --line <номер строки>
+zed-http run "<file path>" --line <line number>
 ```
 
-Раннер находит запрос, в который попадает строка, выполняет его и выводит результат во встроенном терминале.
+The runner finds the request containing that line, executes it, and prints the result in the built-in terminal.
 
-При открытии `.http`-файла Zed запускает `zed-http lsp` — он отвечает на «перейти к определению» и hover.
+When a `.http` file is opened, Zed starts `zed-http lsp`, which handles "go to definition" and hover.
 
-## Требования
+## Requirements
 
-- Zed (актуальная версия с поддержкой задач и runnables);
-- Rust toolchain (`cargo`) — для сборки раннера и dev-расширения;
-- macOS или Linux (Windows должен работать, но не проверялся).
+- Zed (a recent version with support for tasks and runnables);
+- Rust toolchain (`cargo`) to build the runner and the dev extension;
+- macOS or Linux (Windows should work but is untested).
 
-## Установка
+## Installation
 
-### 1. Раннер
+### 1. Runner
 
 ```sh
-git clone <этот репозиторий>
+git clone <this repository>
 cd zed-editor-http-client-extension
 cargo install --path cli
 ```
 
-Бинарь `zed-http` попадёт в `~/.cargo/bin`. Проверьте, что этот каталог есть в `PATH`:
+The `zed-http` binary is installed to `~/.cargo/bin`. Make sure that directory is in your `PATH`:
 
 ```sh
 zed-http --help
 ```
 
-> Zed запускает задачи через вашу оболочку. Если команда не находится внутри Zed,
-> убедитесь, что `~/.cargo/bin` добавлен в `PATH` в `~/.zshrc` / `~/.bashrc`, а не только в текущей сессии.
+> Zed runs tasks through your shell. If the command isn't found inside Zed,
+> make sure `~/.cargo/bin` is added to `PATH` in `~/.zshrc` / `~/.bashrc`, not just in the current session.
 
-### 2. Расширение
+### 2. Extension
 
-1. Откройте Zed.
+1. Open Zed.
 2. Command palette (`cmd+shift+p`) → **`zed: install dev extension`**.
-3. Выберите корневую папку этого репозитория.
+3. Select the root folder of this repository.
 
-Zed скомпилирует WASM-часть расширения (нужен `rustup`; target `wasm32-wasip2` Zed установит сам)
-и грамматику tree-sitter-http. После этого файлы `.http` и `.rest` открываются как язык **HTTP**,
-а внизу появляется language server **zed-http**.
+Zed compiles the WASM part of the extension (requires `rustup`; Zed installs the `wasm32-wasip2` target itself)
+and the tree-sitter-http grammar. After that, `.http` and `.rest` files open as the **HTTP** language,
+and the **zed-http** language server appears at the bottom.
 
-### Обновление
+### Updating
 
 ```sh
 git pull
 cargo install --path cli --force
 ```
 
-В Zed: `zed: extensions` → у dev-расширения нажмите **Rebuild**.
+In Zed: `zed: extensions` → click **Rebuild** on the dev extension.
 
-## Быстрый старт
+## Quick Start
 
-Создайте `api.http`:
+Create `api.http`:
 
 ```http
 @baseUrl = https://httpbin.org
 
-### Получить данные
+### Get data
 GET {{baseUrl}}/get?client=zed
 Accept: application/json
 
-### Создать запись
+### Create a record
 POST {{baseUrl}}/post
 Content-Type: application/json
 
@@ -137,7 +139,7 @@ Content-Type: application/json
 }
 ```
 
-Нажмите ▶ слева от `GET` — в терминале появится:
+Click ▶ to the left of `GET`, and the terminal shows:
 
 ```
 GET https://httpbin.org/get?client=zed
@@ -155,20 +157,20 @@ content-type: application/json
 saved: ./.zed-http/line-3.json
 ```
 
-Более полный пример — в [`examples/requests.http`](examples/requests.http) и
+A more complete example is in [`examples/requests.http`](examples/requests.http) and
 [`examples/http-client.env.json`](examples/http-client.env.json).
 
-## Запуск запросов
+## Running Requests
 
-| Способ | Что выполняется |
+| Method | What runs |
 |---|---|
-| ▶ рядом с методом | Этот запрос |
-| `task: spawn` → «HTTP: GET …» | Запрос под курсором |
-| `task: spawn` → «HTTP: run all requests in …» | Все запросы файла по порядку |
-| `task: rerun` | Повтор последнего запуска |
-| Горячая клавиша (см. [ниже](#горячие-клавиши)) | Ближайший к курсору запрос |
+| ▶ next to the method | This request |
+| `task: spawn` → "HTTP: GET …" | The request under the cursor |
+| `task: spawn` → "HTTP: run all requests in …" | All requests in the file, in order |
+| `task: rerun` | Repeat the last run |
+| Keyboard shortcut (see [below](#keyboard-shortcuts)) | The request nearest the cursor |
 
-Из терминала:
+From the terminal:
 
 ```sh
 zed-http run api.http --line 7
@@ -176,30 +178,30 @@ zed-http run api.http --name login
 zed-http run api.http --all --env prod
 ```
 
-## Синтаксис .http-файлов
+## .http File Syntax
 
-### Структура запроса
+### Request Structure
 
 ```http
-### Необязательное название
-# @name имяЗапроса
-МЕТОД URL [HTTP/версия]
-Заголовок: значение
-Заголовок: значение
+### Optional title
+# @name requestName
+METHOD URL [HTTP/version]
+Header: value
+Header: value
 
-тело запроса
+request body
 ```
 
-- Запросы разделяются строкой, начинающейся с `###`. Текст после `###` — название запроса.
-- Метод необязателен: строка `https://example.com` означает `GET`.
-- Поддерживаемые методы: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `TRACE`, `CONNECT`.
-- Если в URL нет схемы, подставляется `http://`.
-- Версия (`HTTP/1.1`, `HTTP/2`) в конце строки допустима и игнорируется.
-- Заголовки идут сразу после строки запроса, тело — после пустой строки.
+- Requests are separated by a line starting with `###`. Text after `###` is the request title.
+- The method is optional: a line `https://example.com` means `GET`.
+- Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `TRACE`, `CONNECT`.
+- If the URL has no scheme, `http://` is assumed.
+- A version (`HTTP/1.1`, `HTTP/2`) at the end of the line is allowed and ignored.
+- Headers follow the request line directly; the body comes after an empty line.
 
-### Многострочный URL
+### Multi-line URL
 
-Строки продолжения начинаются с отступа и склеиваются без пробелов:
+Continuation lines are indented and joined without spaces:
 
 ```http
 GET https://api.example.com/search
@@ -208,28 +210,28 @@ GET https://api.example.com/search
     &sort=desc
 ```
 
-### Комментарии
+### Comments
 
 ```http
-# комментарий
-// тоже комментарий
+# comment
+// also a comment
 ```
 
-Комментарии между заголовками пропускаются.
+Comments between headers are skipped.
 
-### Директивы
+### Directives
 
-| Директива | Значение |
+| Directive | Meaning |
 |---|---|
-| `# @name login` | Имя запроса: для `--name` и ссылок на ответ |
-| `# @no-redirect` | Не следовать редиректам 3xx |
+| `# @name login` | Request name: for `--name` and response references |
+| `# @no-redirect` | Do not follow 3xx redirects |
 
-## Переменные
+## Variables
 
-Переменные подставляются через `{{имя}}` в URL, заголовках, теле и путях к файлам.
-Пробелы внутри скобок допустимы: `{{ host }}`. Значения переменных тоже могут содержать переменные.
+Variables are substituted via `{{name}}` in the URL, headers, body, and file paths.
+Spaces inside the braces are allowed: `{{ host }}`. Variable values can themselves contain variables.
 
-### Переменные файла
+### File Variables
 
 ```http
 @host = api.example.com
@@ -238,40 +240,40 @@ GET https://api.example.com/search
 GET {{baseUrl}}/users
 ```
 
-Переменные файла действуют на весь файл и **перекрывают** значения из окружения.
+File variables apply to the whole file and **override** environment values.
 
-### Динамические переменные
+### Dynamic Variables
 
-| Переменная | Результат |
+| Variable | Result |
 |---|---|
 | `{{$uuid}}`, `{{$random.uuid}}` | UUID v4 |
-| `{{$timestamp}}` | Unix-время в секундах |
-| `{{$isoTimestamp}}` | Время UTC в ISO 8601, например `2026-10-16T11:01:53.123Z` |
-| `{{$randomInt}}` | Целое число 0–999 |
-| `{{$randomInt 1 100}}`, `{{$random.integer 1 100}}` | Целое число в диапазоне `[1, 100)` |
-| `{{$random.float}}` | Дробное число от 0 до 1 |
-| `{{$random.alphabetic 8}}` | 8 случайных букв |
-| `{{$random.alphanumeric 12}}` | 12 случайных букв и цифр |
-| `{{$random.hexadecimal 16}}` | 16 hex-символов |
-| `{{$processEnv.TOKEN}}`, `{{$env.TOKEN}}` | Переменная окружения ОС `TOKEN` |
+| `{{$timestamp}}` | Unix time in seconds |
+| `{{$isoTimestamp}}` | UTC time in ISO 8601, e.g. `2026-10-16T11:01:53.123Z` |
+| `{{$randomInt}}` | Integer 0–999 |
+| `{{$randomInt 1 100}}`, `{{$random.integer 1 100}}` | Integer in the range `[1, 100)` |
+| `{{$random.float}}` | Float between 0 and 1 |
+| `{{$random.alphabetic 8}}` | 8 random letters |
+| `{{$random.alphanumeric 12}}` | 12 random letters and digits |
+| `{{$random.hexadecimal 16}}` | 16 hex characters |
+| `{{$processEnv.TOKEN}}`, `{{$env.TOKEN}}` | OS environment variable `TOKEN` |
 
-Каждая подстановка генерирует новое значение.
+Each substitution generates a new value.
 
-### Порядок поиска
+### Lookup Order
 
-1. Динамические переменные (`$...`).
-2. Переменные файла (`@name = ...`).
-3. Выбранное окружение (приватный файл поверх публичного).
-4. Блок `$shared`.
-5. Ссылки на сохранённые ответы (`name.response...`).
+1. Dynamic variables (`$...`).
+2. File variables (`@name = ...`).
+3. The selected environment (private file over public).
+4. The `$shared` block.
+5. References to stored responses (`name.response...`).
 
-Неизвестная переменная — ошибка, запрос не отправляется.
+An unknown variable is an error; the request is not sent.
 
-## Окружения
+## Environments
 
-Файлы ищутся в каталоге `.http`-файла, затем выше по дереву до первого найденного.
+Files are searched in the `.http` file's directory (and its `.zed/http/`), then up the tree until the first match.
 
-**`http-client.env.json`** — коммитится в репозиторий:
+**`http-client.env.json`** is committed to the repository:
 
 ```json
 {
@@ -287,7 +289,7 @@ GET {{baseUrl}}/users
 }
 ```
 
-**`http-client.private.env.json`** — секреты, добавьте в `.gitignore`:
+**`http-client.private.env.json`** holds secrets; add it to `.gitignore`:
 
 ```json
 {
@@ -296,20 +298,20 @@ GET {{baseUrl}}/users
 }
 ```
 
-Значения из приватного файла объединяются с публичным и перекрывают его. `$shared` доступен во всех окружениях.
-Числа и boolean преобразуются в строки.
+Values from the private file are merged with the public one and override it. `$shared` is available in all environments.
+Numbers and booleans are converted to strings.
 
-### Выбор окружения
+### Selecting an Environment
 
-По приоритету:
+By priority:
 
-1. Флаг `--env prod`.
-2. Переменная `HTTP_CLIENT_ENV`.
-3. `dev`, `local` или `development`, если есть.
-4. Первое окружение в файле.
+1. The `--env prod` flag.
+2. The `HTTP_CLIENT_ENV` variable.
+3. `dev`, `local`, or `development`, if present.
+4. The first environment in the file.
 
-Выбранное окружение печатается первой строкой вывода. Чтобы задачи Zed использовали другое окружение,
-задайте переменную в настройках (`zed: open settings`):
+The selected environment is printed on the first line of output. To make Zed tasks use a different environment,
+set the variable in settings (`zed: open settings`):
 
 ```json
 {
@@ -319,93 +321,93 @@ GET {{baseUrl}}/users
 }
 ```
 
-Или для отдельного проекта — в `.zed/settings.json`.
+Or per project in `.zed/settings.json`.
 
-Список окружений:
+List environments:
 
 ```sh
 zed-http envs api.http
 ```
 
-## Навигация по переменным
+## Variable Navigation
 
-`cmd+click` (или `F12`, `editor: go to definition`) по любой `{{переменной}}`:
+`cmd+click` (or `F12`, `editor: go to definition`) on any `{{variable}}`:
 
-| Что под курсором | Куда переходит |
+| Under the cursor | Goes to |
 |---|---|
-| `{{token}}`, объявленная в файле через `@token = ...` | На строку `@token` |
-| `{{baseUrl}}` из окружения | На ключ `"baseUrl"` в `http-client.env.json` / `http-client.private.env.json` |
-| `{{login.response.body.token}}` | На `# @name login` |
-| `{{$uuid}}` и другие динамические | Никуда |
+| `{{token}}` declared in the file via `@token = ...` | The `@token` line |
+| `{{baseUrl}}` from an environment | The `"baseUrl"` key in `http-client.env.json` / `http-client.private.env.json` |
+| `{{login.response.body.token}}` | `# @name login` |
+| `{{$uuid}}` and other dynamic variables | Nowhere |
 
-Для переменных окружения сначала показываются определения в **текущем окружении** и в `$shared`.
-Если переменная есть и в публичном, и в приватном файле, Zed покажет оба места списком.
-Если в текущем окружении её нет — показываются все окружения, где она объявлена.
+For environment variables, definitions in the **current environment** and in `$shared` are shown first.
+If a variable exists in both the public and private files, Zed shows both locations as a list.
+If it isn't in the current environment, all environments where it is declared are shown.
 
-Переменная файла перекрывает окружение, поэтому при совпадении имён переход идёт на `@var`.
+A file variable overrides the environment, so when names match, navigation goes to `@var`.
 
-При наведении на переменную показывается её итоговое значение (с подставленными вложенными переменными) и источник:
+Hovering a variable shows its resolved value (with nested variables substituted) and its source:
 
 ```
 baseUrl · environment `dev`
 https://httpbin.org
 ```
 
-Для ссылок на ответы значение берётся из `.zed-http/responses.json`; если запрос ещё не выполнялся, hover об этом скажет.
-Для динамических переменных показывается пример значения.
+For response references, the value is taken from `.zed-http/responses.json`; if the request hasn't run yet, the hover says so.
+For dynamic variables, a sample value is shown.
 
-Текущее окружение для навигации определяется так же, как для запуска (`HTTP_CLIENT_ENV`, затем `dev`/`local`).
-После смены `HTTP_CLIENT_ENV` перезапустите сервер: `editor: restart language server`.
+The current environment for navigation is determined the same way as for running (`HTTP_CLIENT_ENV`, then `dev`/`local`).
+After changing `HTTP_CLIENT_ENV`, restart the server: `editor: restart language server`.
 
-## Цепочки запросов
+## Request Chaining
 
-Ответы именованных запросов сохраняются, и на них можно ссылаться в следующих запросах:
+Responses of named requests are stored and can be referenced in subsequent requests:
 
 ```http
-### Логин
+### Login
 # @name login
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 { "user": "admin", "password": "{{password}}" }
 
-### Профиль
+### Profile
 GET {{baseUrl}}/me
 Authorization: Bearer {{login.response.body.accessToken}}
 ```
 
-| Выражение | Значение |
+| Expression | Value |
 |---|---|
-| `{{login.response.body}}` | Всё тело |
-| `{{login.response.body.data.token}}` | Поле JSON по пути |
-| `{{login.response.body.$.data.token}}` | То же, в стиле JSONPath |
-| `{{login.response.body.items[0].id}}` | Элемент массива |
-| `{{login.response.headers.Location}}` | Заголовок (регистр неважен) |
-| `{{login.response.status}}` | Код статуса |
+| `{{login.response.body}}` | The whole body |
+| `{{login.response.body.data.token}}` | JSON field by path |
+| `{{login.response.body.$.data.token}}` | Same, JSONPath style |
+| `{{login.response.body.items[0].id}}` | Array element |
+| `{{login.response.headers.Location}}` | Header (case-insensitive) |
+| `{{login.response.status}}` | Status code |
 
-Ответы хранятся в `.zed-http/responses.json` рядом с `.http`-файлом и **переживают перезапуск**:
-достаточно один раз выполнить `login`, после чего остальные запросы можно запускать по отдельности.
-Если ссылка указывает на ещё не выполненный запрос, раннер сообщит об этом.
+Responses are stored in `.zed-http/responses.json` next to the `.http` file and **survive restarts**:
+run `login` once, and the other requests can then be run individually.
+If a reference points to a request that hasn't run yet, the runner reports it.
 
-Запросы без `@name` сохраняются под ключом `line-<номер строки>`.
+Requests without `@name` are stored under the key `line-<line number>`.
 
-## Тело запроса
+## Request Body
 
-### Встроенное тело
+### Inline Body
 
-Всё после пустой строки до следующего `###`. Пустые строки в конце обрезаются.
+Everything after the empty line up to the next `###`. Trailing empty lines are trimmed.
 
 ```http
 POST {{baseUrl}}/items
 Content-Type: application/json
 
 {
-  "title": "Новая задача",
+  "title": "New task",
   "createdAt": "{{$isoTimestamp}}"
 }
 ```
 
-### Тело из файла
+### Body from File
 
 ```http
 POST {{baseUrl}}/upload
@@ -414,7 +416,7 @@ Content-Type: application/json
 < ./payloads/item.json
 ```
 
-Путь считается от каталога `.http`-файла. Файл отправляется как есть (байты), переменные в нём не подставляются.
+The path is relative to the `.http` file's directory. The file is sent as is (bytes); variables in it are not substituted.
 
 ### Form URL-encoded
 
@@ -427,7 +429,7 @@ user=admin&password={{password}}
 
 ### Multipart
 
-Строки вида `< ./file` внутри тела заменяются содержимым файла:
+Lines of the form `< ./file` inside the body are replaced with the file's contents:
 
 ```http
 POST {{baseUrl}}/upload
@@ -445,42 +447,42 @@ Content-Disposition: form-data; name="file"; filename="report.txt"
 --WebAppBoundary--
 ```
 
-Подставляются только текстовые файлы; для бинарных загрузок используйте тело целиком из файла.
+Only text files are inlined; for binary uploads, use a whole-body file.
 
-### Авторизация
+### Authorization
 
 ```http
 GET {{baseUrl}}/secure
 Authorization: Basic {{user}} {{password}}
 ```
 
-`Basic user password` и `Basic user:password` автоматически кодируются в Base64.
-Уже закодированное значение передаётся без изменений. `Bearer` и прочие схемы — как есть.
+`Basic user password` and `Basic user:password` are automatically Base64-encoded.
+An already encoded value is passed through unchanged. `Bearer` and other schemes are sent as is.
 
-## Работа с ответом
+## Working with Responses
 
-### Вывод
+### Output
 
-- строка запроса и отправленные заголовки;
-- версия HTTP, статус (зелёный 2xx, жёлтый 3xx, красный 4xx/5xx), время, размер;
-- заголовки ответа;
-- тело: JSON форматируется с отступами (`--raw` — без форматирования), текст выводится как есть,
-  для бинарных данных — только размер и тип.
+- the request line and sent headers;
+- HTTP version, status (green 2xx, yellow 3xx, red 4xx/5xx), time, size;
+- response headers;
+- body: JSON is pretty-printed (`--raw` disables formatting), text is printed as is,
+  for binary data only the size and type are shown.
 
-### Автосохранение
+### Auto-save
 
-Каждый ответ пишется в `.zed-http/<имя или line-N>.<ext>` рядом с `.http`-файлом.
-Расширение выбирается по `Content-Type`: `json`, `html`, `xml`, `yaml`, `png`, `jpg`, `txt`, `bin`.
-Путь в терминале кликабельный (`cmd+click`) — ответ откроется в Zed с подсветкой и поиском.
+Every response is written to `.zed-http/<name or line-N>.<ext>` next to the `.http` file.
+The extension is chosen by `Content-Type`: `json`, `html`, `xml`, `yaml`, `png`, `jpg`, `txt`, `bin`.
+The path in the terminal is clickable (`cmd+click`); the response opens in Zed with highlighting and search.
 
-Добавьте в `.gitignore`:
+Add to `.gitignore`:
 
 ```gitignore
 .zed-http/
 http-client.private.env.json
 ```
 
-### Перенаправление в файл
+### Redirecting to a File
 
 ```http
 GET {{baseUrl}}/report.csv
@@ -488,22 +490,22 @@ GET {{baseUrl}}/report.csv
 >> ./out/report.csv
 ```
 
-| Запись | Поведение |
+| Syntax | Behavior |
 |---|---|
-| `>> path` | Если файл есть, создаётся `report-1.csv`, `report-2.csv`, … |
-| `>>! path` | Файл перезаписывается |
+| `>> path` | If the file exists, `report-1.csv`, `report-2.csv`, … is created |
+| `>>! path` | The file is overwritten |
 
-Каталоги создаются автоматически.
+Directories are created automatically.
 
-### Код возврата
+### Exit Code
 
-| Код | Значение |
+| Code | Meaning |
 |---|---|
-| `0` | Все запросы вернули статус < 400 |
-| `1` | Хотя бы один запрос вернул 4xx/5xx или упал |
-| `2` | Ошибка аргументов, файла, переменных или окружения |
+| `0` | All requests returned status < 400 |
+| `1` | At least one request returned 4xx/5xx or failed |
+| `2` | Argument, file, variable, or environment error |
 
-Удобно для CI и скриптов: `zed-http run smoke.http --all --env staging`.
+Handy for CI and scripts: `zed-http run smoke.http --all --env staging`.
 
 ## CLI zed-http
 
@@ -511,25 +513,114 @@ GET {{baseUrl}}/report.csv
 zed-http run <file.http> [--line N | --name NAME | --all] [--env ENV] [--raw] [--timeout SECS]
 zed-http list <file.http>
 zed-http envs <file.http>
+zed-http new [ROOT] [--name NAME] [--method METHOD] [--url URL] [--from FILE:LINE] [--no-open]
+zed-http detect <file> [--line N]
 zed-http lsp
 ```
 
-| Команда / флаг | Описание |
+| Command / flag | Description |
 |---|---|
-| `run` | Выполнить запросы |
-| `list` | Показать запросы: строка, метод, URL, имя |
-| `envs` | Показать доступные окружения |
-| `lsp` | Language server по stdio (запускается Zed автоматически) |
-| `-l`, `--line N` | Запрос, содержащий строку `N` (нумерация с 1) |
-| `-n`, `--name NAME` | Запрос по `@name` или названию после `###` |
-| `-a`, `--all` | Все запросы файла по порядку |
-| `-e`, `--env ENV` | Окружение |
-| `--raw` | Не форматировать JSON |
-| `--timeout SECS` | Таймаут запроса, по умолчанию 60 с |
+| `run` | Execute requests |
+| `list` | List requests: line, method, URL, name |
+| `envs` | List available environments |
+| `new` | Create an endpoint `ROOT/.zed/http/endpoints/<name>.http` from a template (see [New Endpoint](#new-endpoint)) |
+| `detect` | Find endpoints in source code: `line<TAB>method<TAB>URL` (exit code 1 if none) |
+| `--from FILE:LINE` | (`new`) take the method and URL from an endpoint in source code |
+| `--no-open` | (`new`) don't open the file in Zed |
+| `lsp` | Language server over stdio (started by Zed automatically) |
+| `-l`, `--line N` | The request containing line `N` (1-based) |
+| `-n`, `--name NAME` | Request by `@name` or by the title after `###` |
+| `-a`, `--all` | All requests in the file, in order |
+| `-e`, `--env ENV` | Environment |
+| `--raw` | Don't format JSON |
+| `--timeout SECS` | Request timeout, 60 s by default |
 
-## Горячие клавиши
+## New Endpoint
 
-`zed: open keymap` и добавьте:
+The **`http: new endpoint`** task (`task: spawn`) prompts in the terminal for the method, URL, and name,
+creates `.zed/http/endpoints/<name>.http`, and opens it in Zed (if the `zed` CLI is in `PATH`).
+
+```
+.zed/
+├── settings.json, tasks.json     committed as usual
+└── http/                         not committed (own .gitignore containing *)
+    ├── http-client.env.json      created with a dev profile if no environments exist yet
+    ├── http-client.private.env.json
+    └── endpoints/*.http
+```
+
+There's no need to touch the project's `.gitignore`. `http-client.env.json` is searched up the directories from the `.http` file,
+at each level first in the directory itself, then in its `.zed/http/`. So profiles from `.zed/http/`
+are also visible to the project's regular `.http` files.
+
+Extension tasks are only visible when a `.http` file is open. To make the command available everywhere,
+add it to `~/.config/zed/tasks.json`:
+
+```json
+[
+  {
+    "label": "http: new endpoint",
+    "command": "zed-http",
+    "args": ["new", "\"$ZED_WORKTREE_ROOT\""],
+    "use_new_terminal": true,
+    "reveal": "always",
+    "hide": "on_success"
+  }
+]
+```
+
+and, optionally, a keyboard shortcut in the keymap:
+
+```json
+{ "bindings": { "cmd-alt-n": ["task::Spawn", { "task_name": "http: new endpoint" }] } }
+```
+
+## Generating a Request from Code
+
+Place the cursor on a line with an endpoint in your code, press `cmd+.`, and choose
+**HTTP: generate request …**. A `.zed/http/endpoints/<method-path>.http` file is created from a template.
+
+| Language / framework | Example line |
+|---|---|
+| Dart / Flutter: dio, http, retrofit, shelf_router | `dio.post<Map>('/auth/login')`, `http.get(Uri.parse('$baseUrl/users/$id'))`, `Uri.https('host', '/x')`, `@GET('/tasks/{id}')`, `router.get('/hello/<name>', h)` |
+| Spring / NestJS (with class prefix) | `@GetMapping("/{id}")`, `@RequestMapping(value="/x", method=RequestMethod.PUT)`, `@Get(':id')` |
+| Express, Fastify, Hono, Koa | `app.get('/users/:id', …)` |
+| FastAPI, Flask | `@app.post("/items/{id}")`, `@app.route("/a/<int:id>", methods=["PUT"])` |
+| Gin, Echo, Chi, net/http | `r.POST("/items", h)`, `http.HandleFunc("DELETE /x/{id}", h)` |
+| actix, rocket, axum | `#[get("/hello/{name}")]`, `.route("/users", post(h))` |
+| Laravel | `Route::patch('/p/{id}', …)` |
+| HTTP clients | `fetch(url, { method: "DELETE" })`, `requests.get("https://…")`, any `https://…` literal |
+
+Path parameters (`{id}`, `:id`, `<id>`, `<int:id>`, `$id`, `${user.id}`) become `{{id}}`,
+and relative paths get the `{{baseUrl}}` prefix. Detection is line-based, using regular expressions:
+a path assembled from variables elsewhere won't be found.
+
+The `zed-http` server attaches to Dart, JavaScript, TypeScript, TSX, Python, Go, Rust, Java, Kotlin, PHP, Ruby, and C#,
+and runs alongside the language's main language server. If `cmd+.` doesn't show the action, check
+that `language_servers` for the language doesn't list servers without `"..."`.
+
+### For AI Agents
+
+The non-interactive CLI suits agents: without a terminal, no prompts are shown and defaults are used.
+
+```sh
+zed-http detect lib/api/auth_api.dart                     # 12	POST	{{baseUrl}}/auth/login
+zed-http new . --from lib/api/auth_api.dart:12 --no-open  # creates .zed/http/endpoints/post-auth-login.http
+zed-http new . -m GET -u '{{baseUrl}}/users/{{id}}' -n get-user --no-open
+```
+
+To let the Zed agent know about this, add to the project's `.rules` (or `AGENTS.md` / `CLAUDE.md`):
+
+```md
+HTTP requests to the project's API are stored in `.zed/http/endpoints/*.http` (IntelliJ HTTP Client format, not committed).
+For a new endpoint: `zed-http new . --from <file>:<line> --no-open`, then fill in the body/headers.
+Find endpoints in a file: `zed-http detect <file>`. Run: `zed-http run <file.http> --name <name> --env dev`.
+Profiles: `.zed/http/http-client.env.json`.
+```
+
+## Keyboard Shortcuts
+
+Run `zed: open keymap` and add:
 
 ```json
 [
@@ -542,37 +633,38 @@ zed-http lsp
 ]
 ```
 
-`cmd-enter` выполняет запрос под курсором, фокус остаётся в редакторе.
+`cmd-enter` runs the request under the cursor; focus stays in the editor.
 
-## Структура проекта
+## Project Structure
 
 ```
 .
-├── extension.toml              манифест расширения, грамматика, language server
-├── Cargo.toml                  WASM-часть расширения
-├── src/lib.rs                  запуск `zed-http lsp` из Zed
+├── extension.toml              extension manifest, grammar, language server
+├── Cargo.toml                  WASM part of the extension
+├── src/lib.rs                  launches `zed-http lsp` from Zed
 ├── languages/http/
-│   ├── config.toml             расширения файлов, комментарии, скобки
-│   ├── highlights.scm          подсветка
-│   ├── injections.scm          JSON / XML / GraphQL в теле
-│   ├── outline.scm             список запросов в outline
-│   ├── runnables.scm           кнопки ▶
-│   └── tasks.json              задачи запуска
+│   ├── config.toml             file extensions, comments, brackets
+│   ├── highlights.scm          highlighting
+│   ├── injections.scm          JSON / XML / GraphQL in the body
+│   ├── outline.scm             request list in the outline
+│   ├── runnables.scm           ▶ buttons
+│   └── tasks.json              run tasks
 ├── cli/
 │   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs             аргументы, выполнение запросов, вывод
-│       ├── lsp.rs              language server: definition, hover
-│       ├── parser.rs           разбор .http-файлов
-│       └── vars.rs             переменные, окружения, ссылки на ответы
+│       ├── main.rs             arguments, request execution, output, new/detect
+│       ├── endpoint.rs         endpoint detection in code, .http templates
+│       ├── lsp.rs              language server: definition, hover, code action
+│       ├── parser.rs           .http file parsing
+│       └── vars.rs             variables, environments, response references
 └── examples/
     ├── requests.http
     └── http-client.env.json
 ```
 
-Грамматика: [rest-nvim/tree-sitter-http](https://github.com/rest-nvim/tree-sitter-http), коммит указан в `extension.toml`.
+Grammar: [rest-nvim/tree-sitter-http](https://github.com/rest-nvim/tree-sitter-http); the commit is pinned in `extension.toml`.
 
-## Разработка
+## Development
 
 ```sh
 cd cli
@@ -581,52 +673,52 @@ cargo run -- list ../examples/requests.http
 cargo run -- run ../examples/requests.http --all
 ```
 
-Проверить сборку WASM-части:
+Check the WASM build:
 
 ```sh
 cargo build --release --target wasm32-wasip2
 ```
 
-После изменения `src/lib.rs` или файлов в `languages/http/` нажмите **Rebuild** у dev-расширения в `zed: extensions`.
-Логи загрузки расширения: `zed: open log`.
+After changing `src/lib.rs` or files in `languages/http/`, click **Rebuild** on the dev extension in `zed: extensions`.
+Extension load logs: `zed: open log`.
 
-Чтобы обновить грамматику, поменяйте `commit` в `extension.toml` и проверьте, что узлы,
-используемые в `.scm`-файлах (`request`, `method`, `target_url`, `header`, `variable`, …), не переименованы.
+To update the grammar, change `commit` in `extension.toml` and verify that the nodes
+used in the `.scm` files (`request`, `method`, `target_url`, `header`, `variable`, …) haven't been renamed.
 
-## Ограничения
+## Limitations
 
-- JavaScript-обработчики (`> {% ... %}`, `> ./handler.js`) и pre-request скрипты пропускаются.
-  Для передачи данных между запросами используйте `{{name.response...}}`.
-- Нет UI-переключателя окружений — только `HTTP_CLIENT_ENV` или `--env`.
-- Ответ показывается в терминале, а не в отдельной панели (ограничение API расширений Zed).
-- Нет поддержки WebSocket, gRPC, GraphQL-подписок и `HTTP/2`-специфики; GraphQL-запросы отправляйте как `POST` с JSON.
-- Нет cookie-jar между запросами — передавайте `Cookie` вручную или через `{{name.response.headers.Set-Cookie}}`.
-- Значения `$processEnv` берутся из окружения терминала Zed.
+- JavaScript handlers (`> {% ... %}`, `> ./handler.js`) and pre-request scripts are skipped.
+  To pass data between requests, use `{{name.response...}}`.
+- No UI environment switcher; only `HTTP_CLIENT_ENV` or `--env`.
+- The response is shown in the terminal, not in a separate panel (a Zed extension API limitation).
+- No support for WebSocket, gRPC, GraphQL subscriptions, or `HTTP/2`-specific features; send GraphQL queries as `POST` with JSON.
+- No cookie jar between requests; pass `Cookie` manually or via `{{name.response.headers.Set-Cookie}}`.
+- `$processEnv` values come from the Zed terminal's environment.
 
-## Решение проблем
+## Troubleshooting
 
-**Нет кнопок ▶.**
-Проверьте, что внизу справа язык файла — **HTTP**. Если нет — переустановите расширение и посмотрите `zed: open log`.
-Кнопки также требуют включённого `"gutter": { "runnables": true }` (по умолчанию включено).
+**No ▶ buttons.**
+Check that the file language in the bottom right is **HTTP**. If not, reinstall the extension and check `zed: open log`.
+The buttons also require `"gutter": { "runnables": true }` to be enabled (it is by default).
 
-**▶ есть, но задача «HTTP: …» не предлагается.**
-Скопируйте `languages/http/tasks.json` в `.zed/tasks.json` проекта (или в глобальный `~/.config/zed/tasks.json`).
+**▶ is there, but the "HTTP: …" task isn't offered.**
+Copy `languages/http/tasks.json` to the project's `.zed/tasks.json` (or the global `~/.config/zed/tasks.json`).
 
-**`cmd+click` по переменной ничего не делает.**
-Проверьте, что `zed-http` новой версии в `PATH` (`zed-http lsp` не должен ругаться на неизвестную команду),
-затем `editor: restart language server`. Ошибки сервера видны в `dev: open language server logs`.
-Без `zed-http` в `PATH` расширение не сможет запустить сервер — подсветка работает, переходы нет.
+**`cmd+click` on a variable does nothing.**
+Check that a recent `zed-http` is in `PATH` (`zed-http lsp` shouldn't complain about an unknown command),
+then run `editor: restart language server`. Server errors are visible in `dev: open language server logs`.
+Without `zed-http` in `PATH`, the extension can't start the server: highlighting works, navigation doesn't.
 
 **`zed-http: command not found`.**
-`~/.cargo/bin` не в `PATH` оболочки, которую запускает Zed. Добавьте его в `~/.zshrc` и перезапустите Zed,
-либо укажите в `tasks.json` полный путь: `"command": "/Users/<you>/.cargo/bin/zed-http"`.
+`~/.cargo/bin` isn't in the `PATH` of the shell Zed launches. Add it to `~/.zshrc` and restart Zed,
+or specify the full path in `tasks.json`: `"command": "/Users/<you>/.cargo/bin/zed-http"`.
 
 **`unknown variable {{baseUrl}}`.**
-Не найден `http-client.env.json` или в выбранном окружении нет переменной. Проверьте `zed-http envs file.http`
-и строку `environment: ...` в начале вывода.
+`http-client.env.json` wasn't found, or the selected environment lacks the variable. Check `zed-http envs file.http`
+and the `environment: ...` line at the start of the output.
 
 **`no stored response for request 'login'`.**
-Сначала выполните запрос с `# @name login`.
+Run the request with `# @name login` first.
 
-**Ошибки TLS для локальных серверов с самоподписанным сертификатом.**
-Используются системные корневые сертификаты; добавьте свой CA в системное хранилище.
+**TLS errors for local servers with a self-signed certificate.**
+System root certificates are used; add your CA to the system store.

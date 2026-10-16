@@ -1,3 +1,4 @@
+mod endpoint;
 mod lsp;
 mod parser;
 mod vars;
@@ -18,6 +19,8 @@ USAGE:
     zed-http run <file.http> [--line N | --name NAME | --all] [--env ENV] [--raw] [--timeout SECS]
     zed-http list <file.http>
     zed-http envs <file.http>
+    zed-http new [ROOT] [--name NAME] [--method METHOD] [--url URL] [--from FILE:LINE] [--no-open]
+    zed-http detect <file> [--line N]
     zed-http lsp
 
 The environment can also be set with the HTTP_CLIENT_ENV variable.
@@ -76,6 +79,25 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("lsp") {
         lsp::serve();
         return ExitCode::SUCCESS;
+    }
+    if std::env::args().nth(1).as_deref() == Some("new") {
+        return match new_endpoint(std::env::args().skip(2)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{RED}error:{RESET} {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    if std::env::args().nth(1).as_deref() == Some("detect") {
+        return match detect(std::env::args().skip(2)) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(1),
+            Err(e) => {
+                eprintln!("{RED}error:{RESET} {e}");
+                ExitCode::from(2)
+            }
+        };
     }
     let opts = match parse_args() {
         Ok(o) => o,
@@ -384,4 +406,115 @@ fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
     if let Ok(s) = serde_json::to_string_pretty(store) {
         let _ = fs::write(path, s);
     }
+}
+
+/// `zed-http new`: creates `<root>/.zed/http/endpoints/<name>.http` from a template.
+/// `.zed/http/` gets its own `.gitignore` with `*`, so nothing there is ever committed,
+/// while the rest of `.zed/` (settings, tasks) stays shareable.
+fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let (mut root, mut name, mut method, mut url, mut open) = (None, None, None, None, true);
+    while let Some(a) = args.next() {
+        let mut val = |n: &str| args.next().ok_or_else(|| format!("{n} requires a value"));
+        match a.as_str() {
+            "--name" | "-n" => name = Some(val("--name")?),
+            "--method" | "-m" => method = Some(val("--method")?),
+            "--url" | "-u" => url = Some(val("--url")?),
+            "--no-open" => open = false,
+            "--from" => {
+                let from = val("--from")?;
+                let (file, line) = from.rsplit_once(':').ok_or("--from expects FILE:LINE")?;
+                let line: usize = line.parse().map_err(|_| "invalid line in --from")?;
+                let src = fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+                let ep = endpoint::detect(&src, line.saturating_sub(1))
+                    .ok_or_else(|| format!("no HTTP endpoint found at {from}"))?;
+                method.get_or_insert(ep.method);
+                url.get_or_insert(ep.url);
+            }
+            s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
+            s => root = Some(PathBuf::from(s)),
+        }
+    }
+    let root = match root.filter(|p| !p.as_os_str().is_empty()) {
+        Some(r) => r,
+        None => std::env::current_dir().map_err(|e| e.to_string())?,
+    };
+    let method = match method {
+        Some(m) => m,
+        None => prompt("Method", "GET")?,
+    }
+    .to_uppercase();
+    let url = match url {
+        Some(u) => u,
+        None => prompt("URL", "{{baseUrl}}/")?,
+    };
+    let default_name = endpoint::default_name(&method, &url);
+    let name = match name {
+        Some(n) => n,
+        None => prompt("Name", &default_name)?,
+    };
+    let name = Some(endpoint::slug(&name)).filter(|s| !s.is_empty()).unwrap_or_else(|| "endpoint".into());
+
+    let base = root.join(vars::ZED_HTTP_DIR);
+    let dir = base.join("endpoints");
+    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let ignore = base.join(".gitignore");
+    if !ignore.exists() {
+        fs::write(&ignore, "*\n").map_err(|e| format!("{}: {e}", ignore.display()))?;
+    }
+    if vars::find_env_dir(&dir).is_none() {
+        let env = base.join("http-client.env.json");
+        fs::write(&env, endpoint::DEFAULT_ENV).map_err(|e| format!("{}: {e}", env.display()))?;
+        println!("{GREEN}created:{RESET} {}", env.display());
+    }
+
+    let path = endpoint::free_path(&dir, &name);
+    let text = endpoint::template(&method, &url, &name);
+    fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    println!("{GREEN}created:{RESET} {}", path.display());
+
+    // Open in Zed if its CLI is available; otherwise the printed path is cmd+clickable.
+    if open {
+        let _ = std::process::Command::new("zed").arg(&path).status();
+    }
+    Ok(())
+}
+
+fn prompt(label: &str, default: &str) -> Result<String, String> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Ok(default.into());
+    }
+    print!("{BOLD}{label}{RESET} {DIM}[{default}]{RESET}: ");
+    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).map_err(|e| e.to_string())?;
+    let line = line.trim();
+    Ok(if line.is_empty() { default.into() } else { line.into() })
+}
+
+/// `zed-http detect`: prints `LINE<TAB>METHOD<TAB>URL` for endpoints found in a source file.
+fn detect(mut args: impl Iterator<Item = String>) -> Result<bool, String> {
+    let (mut file, mut only) = (None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--line" | "-l" => {
+                only = Some(args.next().and_then(|v| v.parse::<usize>().ok()).ok_or("invalid --line")?)
+            }
+            s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
+            s => file = Some(s.to_string()),
+        }
+    }
+    let file = file.ok_or_else(|| format!("missing <file>\n\n{USAGE}"))?;
+    let src = fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
+    let mut found = false;
+    for i in 0..src.lines().count() {
+        if only.is_some_and(|l| l != i + 1) {
+            continue;
+        }
+        if let Some(ep) = endpoint::detect(&src, i) {
+            println!("{}\t{}\t{}", i + 1, ep.method, ep.url);
+            found = true;
+        }
+    }
+    Ok(found)
 }

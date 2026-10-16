@@ -136,11 +136,18 @@ fn response_value(resp: &Value, path: &str) -> Option<String> {
     })
 }
 
+/// Project-local config dir: `<root>/.zed/http/`.
+pub const ZED_HTTP_DIR: &str = ".zed/http";
+
+/// Walks up from `start`; at each level checks the dir itself, then its `.zed/http/`.
 pub fn find_env_dir(start: &Path) -> Option<PathBuf> {
+    let has_env = |d: &Path| d.join("http-client.env.json").exists() || d.join("http-client.private.env.json").exists();
     let mut dir = Some(start);
     while let Some(d) = dir {
-        if d.join("http-client.env.json").exists() || d.join("http-client.private.env.json").exists() {
-            return Some(d.to_path_buf());
+        for c in [d.to_path_buf(), d.join(ZED_HTTP_DIR)] {
+            if has_env(&c) {
+                return Some(c);
+            }
         }
         dir = d.parent();
     }

@@ -1,5 +1,6 @@
+use crate::endpoint;
 use crate::parser;
-use crate::vars::{find_env_dir, Context, Environments};
+use crate::vars::{find_env_dir, Context, Environments, ZED_HTTP_DIR};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -10,19 +11,27 @@ pub fn serve() {
     let stdin = io::stdin();
     let mut input = stdin.lock();
     let mut docs: HashMap<String, String> = HashMap::new();
+    let mut root: Option<PathBuf> = None;
     while let Some(msg) = read_message(&mut input) {
         let id = msg.get("id").cloned();
         let method = msg.get("method").and_then(Value::as_str).unwrap_or_default();
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         let result = match method {
-            "initialize" => Some(json!({
+            "initialize" => {
+                root = params["workspaceFolders"][0]["uri"]
+                    .as_str()
+                    .or(params["rootUri"].as_str())
+                    .and_then(uri_to_path);
+                Some(json!({
                 "capabilities": {
                     "textDocumentSync": 1,
                     "definitionProvider": true,
-                    "hoverProvider": true
+                    "hoverProvider": true,
+                    "codeActionProvider": true
                 },
                 "serverInfo": { "name": "zed-http" }
-            })),
+                }))
+            }
             "shutdown" => Some(Value::Null),
             "exit" => return,
             "textDocument/didOpen" => {
@@ -49,6 +58,7 @@ pub fn serve() {
                 }
                 None
             }
+            "textDocument/codeAction" => Some(code_actions(&docs, &params, root.as_deref())),
             "textDocument/definition" => Some(with_variable(&docs, &params, definition).unwrap_or(Value::Null)),
             "textDocument/hover" => Some(with_variable(&docs, &params, hover).unwrap_or(Value::Null)),
             _ => None,
@@ -107,6 +117,9 @@ fn with_variable(
     f: fn(&Target) -> Option<Value>,
 ) -> Option<Value> {
     let uri = params["textDocument"]["uri"].as_str()?;
+    if !is_http_file(uri) {
+        return None;
+    }
     let line = params["position"]["line"].as_u64()? as usize;
     let character = params["position"]["character"].as_u64()? as usize;
     let text = docs.get(uri)?;
@@ -114,6 +127,55 @@ fn with_variable(
     let path = uri_to_path(uri)?;
     let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
     f(&Target { path, dir, text, name })
+}
+
+fn is_http_file(uri: &str) -> bool {
+    uri.ends_with(".http") || uri.ends_with(".rest")
+}
+
+/// "Generate .http request" for an endpoint on the cursor line in any source file.
+/// The edit creates `.zed/http/endpoints/<name>.http` (plus `.gitignore` and a default env if missing).
+fn code_actions(docs: &HashMap<String, String>, params: &Value, root: Option<&Path>) -> Value {
+    let actions = (|| {
+        let uri = params["textDocument"]["uri"].as_str()?;
+        if is_http_file(uri) {
+            return None;
+        }
+        let text = docs.get(uri)?;
+        let line = params["range"]["start"]["line"].as_u64()? as usize;
+        let ep = endpoint::detect(text, line)?;
+        let file = uri_to_path(uri)?;
+        let root = root
+            .map(Path::to_path_buf)
+            .or_else(|| file.parent().map(Path::to_path_buf))?;
+        let base = root.join(ZED_HTTP_DIR);
+        let dir = base.join("endpoints");
+        let name = endpoint::default_name(&ep.method, &ep.url);
+        let target = endpoint::free_path(&dir, &name);
+
+        let mut changes = Vec::new();
+        let mut create = |path: &Path, text: &str| {
+            let uri = path_to_uri(path);
+            changes.push(json!({ "kind": "create", "uri": uri, "options": { "ignoreIfExists": true } }));
+            changes.push(json!({
+                "textDocument": { "uri": uri, "version": null },
+                "edits": [{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "newText": text }]
+            }));
+        };
+        if !base.join(".gitignore").exists() {
+            create(&base.join(".gitignore"), "*\n");
+        }
+        if find_env_dir(&dir).is_none() {
+            create(&base.join("http-client.env.json"), endpoint::DEFAULT_ENV);
+        }
+        create(&target, &endpoint::template(&ep.method, &ep.url, &name));
+        Some(json!([{
+            "title": format!("HTTP: generate request {} {}", ep.method, ep.url),
+            "kind": "refactor",
+            "edit": { "documentChanges": changes }
+        }]))
+    })();
+    actions.unwrap_or_else(|| json!([]))
 }
 
 fn variable_at(line: &str, utf16_col: usize) -> Option<String> {
