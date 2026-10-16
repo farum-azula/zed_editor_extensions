@@ -56,10 +56,6 @@ fn result(out: &[Value], id: u32) -> Value {
         .clone()
 }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 03f87f7b2e022493b09db2154a1a1495baaa27f3
 const HTTP_FILE: &str = "\
 @token = local-token
 
