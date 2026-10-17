@@ -72,7 +72,9 @@ def main():
     device = parser.parse_args().device
     dart, flutter = shutil.which("dart"), shutil.which("flutter")
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # On Windows the app may still be quitting when the checks end, and a running app's files
+    # cannot be deleted: leave those to the OS rather than fail checks that passed.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         app = Path(tmp) / "reload_check"
         create = [flutter, "create", "--empty", "--project-name", "reload_check", str(app)]
         platforms = {"ios-simulator": "ios", "android": "android", "web": "web", desktop: desktop}
