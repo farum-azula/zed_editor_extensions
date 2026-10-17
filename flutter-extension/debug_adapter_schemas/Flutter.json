@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Flutter Debug Adapter Configuration",
+  "description": "Runs a Flutter app under Flutter's debug adapter, hot reloading it when a .dart file under lib/ is saved.",
+  "type": "object",
+  "properties": {
+    "adapter": {
+      "type": "string",
+      "enum": [
+        "Flutter"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "description": "Name of this debug configuration",
+      "examples": [
+        "Flutter",
+        "Flutter (Chrome)"
+      ]
+    },
+    "request": {
+      "type": "string",
+      "enum": [
+        "launch",
+        "attach"
+      ],
+      "description": "Launch the app, or attach to one that runs already",
+      "default": "launch"
+    },
+    "program": {
+      "type": "string",
+      "description": "The entry point, relative to cwd",
+      "default": "lib/main.dart",
+      "examples": [
+        "lib/main.dart",
+        "lib/main_dev.dart"
+      ]
+    },
+    "cwd": {
+      "type": "string",
+      "description": "The Flutter project's directory; the worktree root by default"
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "ios-simulator",
+        "android",
+        "web",
+        "macos",
+        "windows",
+        "linux"
+      ],
+      "description": "The kind of device to run on: a running one is picked, or an iOS Simulator or Android emulator started; ignored when deviceId or toolArgs name a device"
+    },
+    "deviceId": {
+      "type": "string",
+      "description": "The device to run on (`flutter devices`), passed as `-d <deviceId>`; Flutter picks one when unset",
+      "examples": [
+        "macos",
+        "chrome",
+        "emulator-5554"
+      ]
+    },
+    "flutterMode": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "profile",
+        "release"
+      ],
+      "description": "The build mode; hot reload and hot restart work in debug mode",
+      "default": "debug"
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Arguments passed to the app",
+      "default": []
+    },
+    "toolArgs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Arguments passed to `flutter run` (e.g. --flavor dev, --dart-define=KEY=VALUE)",
+      "default": []
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Environment variables for the Flutter tool"
+    },
+    "vmServiceUri": {
+      "type": "string",
+      "description": "The VM service URI to attach to (attach requests)"
+    },
+    "useFvm": {
+      "type": "boolean",
+      "description": "Run Flutter and Dart through fvm",
+      "default": false
+    },
+    "hotReloadOnSave": {
+      "type": "boolean",
+      "description": "Hot reload when a .dart file under lib/ is saved",
+      "default": true
+    }
+  },
+  "required": [
+    "adapter"
+  ]
+}

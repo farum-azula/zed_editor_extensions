@@ -1,14 +1,19 @@
-"""Checks snippets/dart.json:
+"""Checks tool/snippets.json, the snippets that the flutter-tools language server offers, each with
+an edit that adds the imports it needs when the file does not have them:
 
 1. no two snippets, and no snippet and a Dart language server snippet, share a prefix;
 2. every body parses the way Zed parses snippets (a `$` not starting a tab stop breaks the whole
    snippet, so a Dart `$` must be written `\\$`);
 3. every occurrence of a tab stop has the same default text, so that accepting a default fills all
    of them (an occurrence without one would stay empty);
-4. every snippet, expanded with its defaults and put where it is meant to be typed (see
-   snippet_contexts.json), is Dart that `dart analyze` finds no errors in.
+4. every snippet, expanded with its defaults and put where it is meant to be typed (its `context`),
+   is Dart that `flutter analyze` finds no errors in with its `imports` and no others, and with no
+   fewer: the imports are found by trying, in order, none, one Dart library, one Flutter library,
+   and a Flutter library with a Dart one, first in a file with no Flutter in it, then in a Flutter
+   widget's State.
 
     python3 tests/check_snippets.py            # needs `flutter` in PATH
+    python3 tests/check_snippets.py --update   # writes the imports found into tool/snippets.json
 """
 
 import json
@@ -20,8 +25,7 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SNIPPETS = HERE.parent / "snippets" / "dart.json"
-CONTEXTS = HERE / "snippet_contexts.json"
+SNIPPETS = HERE.parent / "tool" / "snippets.json"
 
 # Prefixes of the Dart language server's own snippets, which these must not repeat.
 DART_LSP_PREFIXES = {
@@ -29,17 +33,34 @@ DART_LSP_PREFIXES = {
     "switch", "try", "while", "do", "test", "group",
 }
 
-PREAMBLE = """\
-import 'dart:async';
-import 'dart:developer';
+ASYNC = "dart:async"
+DEVELOPER = "dart:developer"
+FOUNDATION = "package:flutter/foundation.dart"
+WIDGETS = "package:flutter/widgets.dart"
+MATERIAL = "package:flutter/material.dart"
+CUPERTINO = "package:flutter/cupertino.dart"
+TEST = "package:flutter_test/flutter_test.dart"
 
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-"""
-
-# Where each kind of snippet is typed. `@@` is replaced by the expanded snippet.
-CONTEXTS_SOURCE = {
+# Where each kind of snippet is typed, in a file with no Flutter in it and in a Flutter one. `@@` is
+# replaced by the expanded snippet.
+PLAIN = {
     "top": "@@\n",
+    "member": """\
+abstract class _Host {
+  String _name = '';
+
+@@
+}
+""",
+    "statement": """\
+Future<void> run(Object? value, List<String> items, Object error, StackTrace stackTrace) async {
+@@
+}
+""",
+    "expr": "Object run() => @@;\n",
+}
+
+FLUTTER = {
     "member": """\
 abstract class _Host extends State<StatefulWidget> with SingleTickerProviderStateMixin {
   String _name = '';
@@ -49,7 +70,13 @@ abstract class _Host extends State<StatefulWidget> with SingleTickerProviderStat
 """,
     "statement": """\
 abstract class _Host extends State<StatefulWidget> {
-  Future<void> run(BuildContext context, Object? value, List<String> items) async {
+  Future<void> run(
+    BuildContext context,
+    Object? value,
+    List<String> items,
+    Object error,
+    StackTrace stackTrace,
+  ) async {
 @@
   }
 }
@@ -69,14 +96,11 @@ abstract class _Host extends State<StatefulWidget> with SingleTickerProviderStat
   }
 }
 """,
-    "expr": """\
-Object run(BuildContext context) => @@;
-""",
-    "test": """\
-void main() {
-@@
+    "expr": "Object run(BuildContext context) => @@;\n",
 }
-""",
+
+TESTS = {
+    "test": "void main() {\n@@\n}\n",
     "tester": """\
 void main() {
   testWidgets('host', (tester) async {
@@ -85,6 +109,14 @@ void main() {
 }
 """,
 }
+
+PLAIN_IMPORTS = [[], [ASYNC], [DEVELOPER], [FOUNDATION], [WIDGETS], [MATERIAL], [CUPERTINO]]
+FLUTTER_IMPORTS = [
+    [WIDGETS], [MATERIAL], [CUPERTINO], [WIDGETS, ASYNC], [MATERIAL, ASYNC], [WIDGETS, DEVELOPER],
+]
+TEST_IMPORTS = [[TEST], [TEST, WIDGETS], [TEST, MATERIAL]]
+
+CONTEXTS = {*PLAIN, *FLUTTER, *TESTS}
 
 PUBSPEC = """\
 name: snippet_check
@@ -164,9 +196,56 @@ def parse(source):
     return "".join(text), stops
 
 
+def candidates(context, expanded):
+    """The files a snippet typed in `context` may compile in, in the order of preference, with
+    the imports of each."""
+    result = []
+    if context in TESTS:
+        for imports in TEST_IMPORTS:
+            result.append((imports, TESTS[context]))
+    else:
+        if context in PLAIN:
+            result += [(imports, PLAIN[context]) for imports in PLAIN_IMPORTS]
+        if context in FLUTTER:
+            result += [(imports, FLUTTER[context]) for imports in FLUTTER_IMPORTS]
+    return [
+        (imports, "".join(f"import '{i}';\n" for i in imports) + "\n" + host.replace("@@", expanded))
+        for imports, host in result
+    ]
+
+
+def analyze(flutter, sources):
+    """Analyzes the files `sources` (a list of texts) in one project; returns, per file, its
+    errors."""
+    errors = [[] for _ in sources]
+    with tempfile.TemporaryDirectory() as project:
+        project = Path(project)
+        (project / "pubspec.yaml").write_text(PUBSPEC)
+        lib = project / "lib"
+        lib.mkdir()
+        for n, source in enumerate(sources):
+            (lib / f"snippet_{n}.dart").write_text(source)
+        subprocess.run([flutter, "pub", "get"], cwd=project, check=True, capture_output=True)
+        result = subprocess.run(
+            [flutter, "analyze", "--no-pub", "--no-fatal-infos", "--no-fatal-warnings", "lib"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+        )
+        lines = [l.strip() for l in result.stdout.splitlines() if l.strip().startswith("error")]
+        for line in lines:
+            m = re.search(r"snippet_(\d+)\.dart:\d+", line)
+            if not m:
+                raise SnippetError(f"flutter analyze: {line}")
+            errors[int(m.group(1))].append(line)
+        if result.returncode != 0 and not lines:
+            raise SnippetError(f"flutter analyze failed:\n{result.stdout}\n{result.stderr}")
+    return errors
+
+
 def main():
+    update = "--update" in sys.argv[1:]
     snippets = json.loads(SNIPPETS.read_text())
-    contexts = json.loads(CONTEXTS.read_text())
     failures = []
 
     prefixes = {}
@@ -177,14 +256,11 @@ def main():
             failures.append(f"prefix {prefix!r} is used by {names}")
         if prefix in DART_LSP_PREFIXES:
             failures.append(f"prefix {prefix!r} of {names} is a Dart language server snippet")
-    for name in contexts.keys() - snippets.keys():
-        failures.append(f"{name}: in snippet_contexts.json, but not a snippet")
 
-    sources = {}
+    tried = {}
     for name, snip in snippets.items():
-        context = contexts.get(name)
-        if context not in CONTEXTS_SOURCE:
-            failures.append(f"{name}: no context in snippet_contexts.json (one of {list(CONTEXTS_SOURCE)})")
+        if snip.get("context") not in CONTEXTS:
+            failures.append(f"{name}: its context must be one of {sorted(CONTEXTS)}")
             continue
         try:
             expanded, stops = parse("\n".join(snip["body"]))
@@ -194,40 +270,44 @@ def main():
         for index, defaults in stops.items():
             if index != 0 and len(set(defaults)) > 1:
                 failures.append(f"{name}: tab stop ${index} has different defaults {defaults}")
-        sources[name] = PREAMBLE + CONTEXTS_SOURCE[context].replace("@@", expanded)
+        tried[name] = candidates(snip["context"], expanded)
 
     flutter = shutil.which("flutter")
     if not flutter:
         failures.append("`flutter` is not in PATH, the snippets were not analyzed")
-    else:
-        with tempfile.TemporaryDirectory() as project:
-            project = Path(project)
-            (project / "pubspec.yaml").write_text(PUBSPEC)
-            lib = project / "lib"
-            lib.mkdir()
-            files = {}
-            for n, (name, source) in enumerate(sources.items()):
-                file = lib / f"snippet_{n}.dart"
-                file.write_text(source)
-                files[file.name] = name
-            subprocess.run([flutter, "pub", "get"], cwd=project, check=True, capture_output=True)
-            result = subprocess.run(
-                [flutter, "analyze", "--no-pub", "--no-fatal-infos", "--no-fatal-warnings", "lib"],
-                cwd=project,
-                capture_output=True,
-                text=True,
-            )
-            errors = [l for l in result.stdout.splitlines() if l.strip().startswith("error")]
-            for line in errors:
-                m = re.search(r"(snippet_\d+\.dart):(\d+)", line)
-                name = files.get(m.group(1)) if m else None
-                failures.append(f"{name}: {line.strip()}")
-            if result.returncode != 0 and not errors:
-                failures.append(f"flutter analyze failed:\n{result.stdout}\n{result.stderr}")
+        tried = {}
+    files = [(name, imports, source) for name, tries in tried.items() for imports, source in tries]
+    errors = analyze(flutter, [source for _, _, source in files]) if files else []
 
+    found = {}
+    for (name, imports, _), errs in zip(files, errors):
+        if not errs and name not in found:
+            found[name] = imports
+    for name in tried:
+        if name not in found:
+            first = next(errs for (n, _, _), errs in zip(files, errors) if n == name)
+            failures.append(f"{name}: compiles with none of the imports tried, e.g. {first[0]}")
+        elif update:
+            snip = snippets[name]
+            snip.pop("imports", None)
+            if found[name]:
+                # `imports` after `context`, before the body.
+                body = snip.pop("body")
+                snip["imports"] = found[name]
+                snip["body"] = body
+        elif snippets[name].get("imports", []) != found[name]:
+            failures.append(
+                f"{name}: needs the imports {found[name]}, not {snippets[name].get('imports', [])}"
+                " (run with --update)"
+            )
+
+    if update and not failures:
+        SNIPPETS.write_text(json.dumps(snippets, indent=2, ensure_ascii=False) + "\n")
+        print(f"wrote the imports into {SNIPPETS.name}")
     for failure in failures:
         print(f"FAIL  {failure}")
-    print(f"{len(snippets)} snippets, {len(failures)} problem(s)")
+    with_imports = sum(1 for s in snippets.values() if s.get("imports"))
+    print(f"{len(snippets)} snippets, {with_imports} with imports, {len(failures)} problem(s)")
     sys.exit(1 if failures else 0)
 
 

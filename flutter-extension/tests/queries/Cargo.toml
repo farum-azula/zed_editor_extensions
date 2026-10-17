@@ -1,0 +1,12 @@
+[package]
+name = "dart-queries-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tree-sitter = "0.25"
+streaming-iterator = "0.1"
+
+[build-dependencies]
+cc = "1"

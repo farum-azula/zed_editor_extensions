@@ -1,0 +1,18 @@
+# From the Dart extension (github.com/zed-extensions/dart, Apache-2.0), with `debuggers` added.
+name = "Dart"
+grammar = "dart"
+path_suffixes = ["dart"]
+line_comments = ["// ", "/// "]
+autoclose_before = ";:.,=}])>"
+brackets = [
+    { start = "{", end = "}", close = true, newline = true },
+    { start = "[", end = "]", close = true, newline = true },
+    { start = "(", end = ")", close = true, newline = true },
+    { start = "<", end = ">", close = false, newline = false},
+    { start = "\"", end = "\"", close = true, newline = false, not_in = ["string"] },
+    { start = "'", end = "'", close = true, newline = false, not_in = ["string"] },
+    { start = "/*", end = " */", close = true, newline = false, not_in = ["string", "comment"] },
+    { start = "`", end = "`", close = true, newline = false, not_in = ["string", "comment"] },
+]
+# Lets the debugger turn the "Flutter: run on ..." tasks into debug scenarios (src/lib.rs).
+debuggers = ["Flutter", "Dart"]

@@ -1,8 +1,36 @@
 id = "flutter-tools"
 name = "Flutter Tools"
-description = "Flutter and Dart snippets: widgets, layouts, builders, navigation, forms, animations and tests."
-version = "0.1.0"
+description = "Dart and Flutter: the Dart extension's language support, plus run and debug configurations for every platform, hot reload on save, hot restart, and snippets."
+version = "0.2.0"
 schema_version = 1
 authors = ["Farum-Azula"]
 repository = "https://github.com/farum-azula/zed_editor_extensions"
-snippets = ["./snippets/dart.json"]
+
+# The Dart language, its grammar, language server and debug adapter, as Zed's Dart extension
+# (github.com/zed-extensions/dart) provides them: the language's tasks are where Flutter's run
+# configurations go, and only the extension defining a language can add to them.
+[grammars.dart]
+repository = "https://github.com/UserNobody14/tree-sitter-dart"
+# Newer than the Dart extension's: Dart 3.12/3.13 syntax (primary constructors, concise
+# constructors) parses, so `class A({required this.x})` is no longer an error.
+commit = "3f0c7a8309d89927e7cc6bef39569c815fddb2e5"
+
+[language_servers.dart]
+name = "Dart LSP"
+language = "Dart"
+languages = ["Dart"]
+
+[debug_adapters.Dart]
+
+# Flutter's own debug adapter, behind a proxy that hot reloads the app when a .dart file is saved
+# and finds or starts the device of a scenario's `target`.
+[debug_adapters.Flutter]
+
+# Offers each "Flutter: run on <platform>" task in the debugger as "Flutter: debug on <platform>".
+[debug_locators.flutter]
+
+# The snippets (tool/snippets.json), as completions that add the imports they need; keeps
+# ~/.zed-flutter/flutter_run.dart, the runner of the run tasks, up to date.
+[language_servers.flutter-tools]
+name = "Flutter Tools"
+languages = ["Dart"]

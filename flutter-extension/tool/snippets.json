@@ -1,0 +1,2137 @@
+{
+   "Material app": {
+      "prefix": "mapp",
+      "description": "A MaterialApp with a home screen",
+      "context": "top",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "void main() => runApp(const ${1:App}());",
+         "",
+         "class ${1:App} extends StatelessWidget {",
+         "  const ${1:App}({super.key});",
+         "",
+         "  @override",
+         "  Widget build(BuildContext context) {",
+         "    return MaterialApp(",
+         "      title: '${2:Flutter App}',",
+         "      theme: ThemeData(colorSchemeSeed: ${3:Colors.blue}),",
+         "      home: ${4:const Placeholder()},",
+         "    );",
+         "  }",
+         "}"
+      ]
+   },
+   "Cupertino app": {
+      "prefix": "capp",
+      "description": "A CupertinoApp with a home screen",
+      "context": "top",
+      "imports": [
+         "package:flutter/cupertino.dart"
+      ],
+      "body": [
+         "void main() => runApp(const ${1:App}());",
+         "",
+         "class ${1:App} extends StatelessWidget {",
+         "  const ${1:App}({super.key});",
+         "",
+         "  @override",
+         "  Widget build(BuildContext context) {",
+         "    return CupertinoApp(",
+         "      title: '${2:Flutter App}',",
+         "      home: ${3:const Placeholder()},",
+         "    );",
+         "  }",
+         "}"
+      ]
+   },
+   "Async main": {
+      "prefix": "mna",
+      "description": "main() that initializes bindings before runApp",
+      "context": "top",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Future<void> main() async {",
+         "  WidgetsFlutterBinding.ensureInitialized();",
+         "  $0",
+         "  runApp(${1:const Placeholder()});",
+         "}"
+      ]
+   },
+   "ThemeData": {
+      "prefix": "thd",
+      "description": "A Material 3 ThemeData from a seed color",
+      "context": "expr",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "ThemeData(",
+         "  colorScheme: ColorScheme.fromSeed(",
+         "    seedColor: ${1:Colors.blue},",
+         "    brightness: Brightness.${2|light,dark|},",
+         "  ),",
+         ")"
+      ]
+   },
+   "Stateless widget with child": {
+      "prefix": "slc",
+      "description": "A StatelessWidget that wraps a child",
+      "context": "top",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "class ${1:MyWidget} extends StatelessWidget {",
+         "  const ${1:MyWidget}({super.key, required this.child});",
+         "",
+         "  final Widget child;",
+         "",
+         "  @override",
+         "  Widget build(BuildContext context) {",
+         "    return ${2:child};",
+         "  }",
+         "}"
+      ]
+   },
+   "Stateful widget with a parameter": {
+      "prefix": "sfp",
+      "description": "A StatefulWidget with a field read through widget.",
+      "context": "top",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "class ${1:MyWidget} extends StatefulWidget {",
+         "  const ${1:MyWidget}({super.key, required this.${3:value}});",
+         "",
+         "  final ${2:String} ${3:value};",
+         "",
+         "  @override",
+         "  State<${1:MyWidget}> createState() => _${1:MyWidget}State();",
+         "}",
+         "",
+         "class _${1:MyWidget}State extends State<${1:MyWidget}> {",
+         "  @override",
+         "  Widget build(BuildContext context) {",
+         "    return ${4:Text('\\${widget.${3:value}\\}')};",
+         "  }",
+         "}"
+      ]
+   },
+   "InheritedWidget": {
+      "prefix": "inh",
+      "description": "An InheritedWidget with of() and maybeOf()",
+      "context": "top",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "class ${1:MyScope} extends InheritedWidget {",
+         "  const ${1:MyScope}({super.key, required this.${3:data}, required super.child});",
+         "",
+         "  final ${2:String} ${3:data};",
+         "",
+         "  static ${1:MyScope}? maybeOf(BuildContext context) =>",
+         "      context.dependOnInheritedWidgetOfExactType<${1:MyScope}>();",
+         "",
+         "  static ${1:MyScope} of(BuildContext context) {",
+         "    final scope = maybeOf(context);",
+         "    assert(scope != null, 'No ${1:MyScope} found in context');",
+         "    return scope!;",
+         "  }",
+         "",
+         "  @override",
+         "  bool updateShouldNotify(${1:MyScope} oldWidget) => ${3:data} != oldWidget.${3:data};",
+         "}"
+      ]
+   },
+   "ChangeNotifier": {
+      "prefix": "cn",
+      "description": "A ChangeNotifier with one notifying field",
+      "context": "top",
+      "imports": [
+         "package:flutter/foundation.dart"
+      ],
+      "body": [
+         "class ${1:Counter} extends ChangeNotifier {",
+         "  ${2:int} _${3:value} = ${4:0};",
+         "",
+         "  ${2:int} get ${3:value} => _${3:value};",
+         "",
+         "  set ${3:value}(${2:int} newValue) {",
+         "    if (newValue == _${3:value}) return;",
+         "    _${3:value} = newValue;",
+         "    notifyListeners();",
+         "  }",
+         "}"
+      ]
+   },
+   "CustomPainter": {
+      "prefix": "cpt",
+      "description": "A CustomPainter",
+      "context": "top",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "class ${1:MyPainter} extends CustomPainter {",
+         "  @override",
+         "  void paint(Canvas canvas, Size size) {",
+         "    final paint = Paint()..color = ${2:Colors.blue};",
+         "    $0",
+         "  }",
+         "",
+         "  @override",
+         "  bool shouldRepaint(covariant ${1:MyPainter} oldDelegate) => ${3:false};",
+         "}"
+      ]
+   },
+   "CustomClipper": {
+      "prefix": "ccl",
+      "description": "A CustomClipper<Path>",
+      "context": "top",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "class ${1:MyClipper} extends CustomClipper<Path> {",
+         "  @override",
+         "  Path getClip(Size size) {",
+         "    return Path()",
+         "      ..lineTo(0, size.height)",
+         "      ..lineTo(size.width, size.height)",
+         "      ..lineTo(size.width, 0)",
+         "      ..close();",
+         "  }",
+         "",
+         "  @override",
+         "  bool shouldReclip(covariant ${1:MyClipper} oldClipper) => ${2:false};",
+         "}"
+      ]
+   },
+   "initState": {
+      "prefix": "ins",
+      "description": "Override initState",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "void initState() {",
+         "  super.initState();",
+         "  $0",
+         "}"
+      ]
+   },
+   "dispose": {
+      "prefix": "ds",
+      "description": "Override dispose",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "void dispose() {",
+         "  $0",
+         "  super.dispose();",
+         "}"
+      ]
+   },
+   "didChangeDependencies": {
+      "prefix": "dcd",
+      "description": "Override didChangeDependencies",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "void didChangeDependencies() {",
+         "  super.didChangeDependencies();",
+         "  $0",
+         "}"
+      ]
+   },
+   "didUpdateWidget": {
+      "prefix": "duw",
+      "description": "Override didUpdateWidget",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "void didUpdateWidget(covariant ${1:StatefulWidget} oldWidget) {",
+         "  super.didUpdateWidget(oldWidget);",
+         "  $0",
+         "}"
+      ]
+   },
+   "deactivate": {
+      "prefix": "dea",
+      "description": "Override deactivate",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "void deactivate() {",
+         "  $0",
+         "  super.deactivate();",
+         "}"
+      ]
+   },
+   "build": {
+      "prefix": "bld",
+      "description": "Override build",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "@override",
+         "Widget build(BuildContext context) {",
+         "  return ${1:const Placeholder()};",
+         "}"
+      ]
+   },
+   "AnimationController field": {
+      "prefix": "ac",
+      "description": "An AnimationController (the State needs a TickerProvider mixin; dispose it)",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "late final AnimationController _${1:animationController} = AnimationController(",
+         "  vsync: this,",
+         "  duration: const Duration(milliseconds: ${2:300}),",
+         ");"
+      ]
+   },
+   "TextEditingController field": {
+      "prefix": "tc",
+      "description": "A TextEditingController (dispose it)",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "final _${1:controller} = TextEditingController();"
+      ]
+   },
+   "ScrollController field": {
+      "prefix": "sc",
+      "description": "A ScrollController (dispose it)",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "final _${1:scrollController} = ScrollController();"
+      ]
+   },
+   "FocusNode field": {
+      "prefix": "fn",
+      "description": "A FocusNode (dispose it)",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "final _${1:focusNode} = FocusNode();"
+      ]
+   },
+   "Form key field": {
+      "prefix": "fk",
+      "description": "A GlobalKey<FormState>",
+      "context": "member",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "final _${1:formKey} = GlobalKey<FormState>();"
+      ]
+   },
+   "StreamController field": {
+      "prefix": "sctrl",
+      "description": "A broadcast StreamController (close it in dispose)",
+      "context": "member",
+      "imports": [
+         "dart:async"
+      ],
+      "body": [
+         "final _${1:controller} = StreamController<${2:int}>.broadcast();"
+      ]
+   },
+   "Getter": {
+      "prefix": "gt",
+      "description": "A getter",
+      "context": "member",
+      "body": [
+         "${1:String} get ${2:name} => ${3:_name};"
+      ]
+   },
+   "Setter": {
+      "prefix": "st",
+      "description": "A setter",
+      "context": "member",
+      "body": [
+         "set ${1:name}(${2:String} value) {",
+         "  ${3:_name} = value;",
+         "}"
+      ]
+   },
+   "setState": {
+      "prefix": "ss",
+      "description": "Call setState",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "setState(() {",
+         "  $0",
+         "});"
+      ]
+   },
+   "Return if unmounted": {
+      "prefix": "ifm",
+      "description": "Stop when the State is no longer mounted (after an await)",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "if (!mounted) return;"
+      ]
+   },
+   "Return if context unmounted": {
+      "prefix": "ifcm",
+      "description": "Stop when the BuildContext is no longer mounted (after an await)",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "if (!context.mounted) return;"
+      ]
+   },
+   "Navigator push": {
+      "prefix": "np",
+      "description": "Push a MaterialPageRoute",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Navigator.of(context).push(",
+         "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+         ");"
+      ]
+   },
+   "Navigator pushNamed": {
+      "prefix": "npn",
+      "description": "Push a named route",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Navigator.of(context).pushNamed('${1:/route}');"
+      ]
+   },
+   "Navigator pushReplacement": {
+      "prefix": "npr",
+      "description": "Replace the current route",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Navigator.of(context).pushReplacement(",
+         "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+         ");"
+      ]
+   },
+   "Navigator pushAndRemoveUntil": {
+      "prefix": "npa",
+      "description": "Push a route and remove all the others",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Navigator.of(context).pushAndRemoveUntil(",
+         "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+         "  (route) => false,",
+         ");"
+      ]
+   },
+   "Navigator pop": {
+      "prefix": "npo",
+      "description": "Pop the current route",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Navigator.of(context).pop($1);"
+      ]
+   },
+   "Navigator popUntil first": {
+      "prefix": "npu",
+      "description": "Pop back to the first route",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Navigator.of(context).popUntil((route) => route.isFirst);"
+      ]
+   },
+   "showDialog": {
+      "prefix": "sd",
+      "description": "Show an AlertDialog with cancel and confirm actions",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "final ${1:confirmed} = await showDialog<bool>(",
+         "  context: context,",
+         "  builder: (context) => AlertDialog(",
+         "    title: Text('${2:Title}'),",
+         "    content: Text('${3:Content}'),",
+         "    actions: [",
+         "      TextButton(",
+         "        onPressed: () => Navigator.of(context).pop(false),",
+         "        child: const Text('${4:Cancel}'),",
+         "      ),",
+         "      FilledButton(",
+         "        onPressed: () => Navigator.of(context).pop(true),",
+         "        child: const Text('${5:OK}'),",
+         "      ),",
+         "    ],",
+         "  ),",
+         ");"
+      ]
+   },
+   "showModalBottomSheet": {
+      "prefix": "sbs",
+      "description": "Show a modal bottom sheet",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "await showModalBottomSheet<${1:void}>(",
+         "  context: context,",
+         "  showDragHandle: true,",
+         "  builder: (context) => ${2:const Placeholder()},",
+         ");"
+      ]
+   },
+   "Show a SnackBar": {
+      "prefix": "ssb",
+      "description": "Show a SnackBar through the ScaffoldMessenger",
+      "context": "statement",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "ScaffoldMessenger.of(context).showSnackBar(",
+         "  SnackBar(content: Text('${1:Message}')),",
+         ");"
+      ]
+   },
+   "Post-frame callback": {
+      "prefix": "pfc",
+      "description": "Run code after the current frame",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "WidgetsBinding.instance.addPostFrameCallback((_) {",
+         "  $0",
+         "});"
+      ]
+   },
+   "Future.delayed": {
+      "prefix": "fd",
+      "description": "Wait for a duration",
+      "context": "statement",
+      "body": [
+         "await Future<void>.delayed(const Duration(milliseconds: ${1:300}));"
+      ]
+   },
+   "Timer": {
+      "prefix": "tm",
+      "description": "Start a Timer",
+      "context": "statement",
+      "imports": [
+         "dart:async"
+      ],
+      "body": [
+         "final ${1:timer} = Timer(const Duration(seconds: ${2:1}), () {",
+         "  $0",
+         "});"
+      ]
+   },
+   "Periodic Timer": {
+      "prefix": "tmp",
+      "description": "Start a periodic Timer",
+      "context": "statement",
+      "imports": [
+         "dart:async"
+      ],
+      "body": [
+         "final ${1:timer} = Timer.periodic(const Duration(seconds: ${2:1}), (timer) {",
+         "  $0",
+         "});"
+      ]
+   },
+   "Completer": {
+      "prefix": "cpl",
+      "description": "Create a Completer",
+      "context": "statement",
+      "imports": [
+         "dart:async"
+      ],
+      "body": [
+         "final ${1:completer} = Completer<${2:void}>();"
+      ]
+   },
+   "try / catch / finally": {
+      "prefix": "tcf",
+      "description": "try with catch and finally",
+      "context": "statement",
+      "imports": [
+         "package:flutter/foundation.dart"
+      ],
+      "body": [
+         "try {",
+         "  $0",
+         "} catch (error, stackTrace) {",
+         "  ${1:debugPrint('\\$error\\n\\$stackTrace');}",
+         "} finally {",
+         "  $2",
+         "}"
+      ]
+   },
+   "print": {
+      "prefix": "pr",
+      "description": "Print to the console",
+      "context": "statement",
+      "body": [
+         "print('${1:message}');"
+      ]
+   },
+   "log": {
+      "prefix": "log",
+      "description": "log() from dart:developer, shown in the debug console and DevTools",
+      "context": "statement",
+      "imports": [
+         "dart:developer"
+      ],
+      "body": [
+         "log('${1:message}', name: '${2:app}');"
+      ]
+   },
+   "log with error": {
+      "prefix": "loge",
+      "description": "log() of an error with its stack trace",
+      "context": "statement",
+      "imports": [
+         "dart:developer"
+      ],
+      "body": [
+         "log('${1:message}', name: '${2:app}', error: ${3:error}, stackTrace: ${4:stackTrace});"
+      ]
+   },
+   "debugPrint": {
+      "prefix": "logd",
+      "description": "debugPrint(), printed in debug builds only",
+      "context": "statement",
+      "imports": [
+         "package:flutter/foundation.dart"
+      ],
+      "body": [
+         "debugPrint('${1:message}');"
+      ]
+   },
+   "Unfocus": {
+      "prefix": "uf",
+      "description": "Dismiss the keyboard",
+      "context": "statement",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "FocusScope.of(context).unfocus();"
+      ]
+   },
+   "if-case": {
+      "prefix": "ifc",
+      "description": "Match a pattern",
+      "context": "statement",
+      "body": [
+         "if (${1:value} case ${2:final String text}) {",
+         "  $0",
+         "}"
+      ]
+   },
+   "forEach with index": {
+      "prefix": "fid",
+      "description": "Loop over a list with its indexes",
+      "context": "statement",
+      "body": [
+         "for (final (${1:index}, ${2:item}) in ${3:items}.indexed) {",
+         "  $0",
+         "}"
+      ]
+   },
+   "Scaffold": {
+      "prefix": "scf",
+      "description": "A Scaffold with an AppBar",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Scaffold(",
+         "  appBar: AppBar(title: Text('${1:Title}')),",
+         "  body: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "AppBar": {
+      "prefix": "ab",
+      "description": "An AppBar with actions",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "AppBar(",
+         "  title: Text('${1:Title}'),",
+         "  actions: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "Column": {
+      "prefix": "col",
+      "description": "A Column",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Column(",
+         "  mainAxisAlignment: MainAxisAlignment.${1|start,center,end,spaceBetween,spaceAround,spaceEvenly|},",
+         "  crossAxisAlignment: CrossAxisAlignment.${2|center,start,end,stretch|},",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "Row": {
+      "prefix": "row",
+      "description": "A Row",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Row(",
+         "  mainAxisAlignment: MainAxisAlignment.${1|start,center,end,spaceBetween,spaceAround,spaceEvenly|},",
+         "  crossAxisAlignment: CrossAxisAlignment.${2|center,start,end,stretch|},",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "Stack": {
+      "prefix": "stk",
+      "description": "A Stack",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Stack(",
+         "  alignment: Alignment.${1|topLeft,center,bottomCenter|},",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "Positioned": {
+      "prefix": "pos",
+      "description": "A Positioned child of a Stack",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Positioned(",
+         "  top: ${1:0},",
+         "  left: ${2:0},",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Center": {
+      "prefix": "cen",
+      "description": "A Center",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Center(child: ${1:const Placeholder()})"
+      ]
+   },
+   "Padding": {
+      "prefix": "pd",
+      "description": "Padding on all sides",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Padding(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Padding symmetric": {
+      "prefix": "pds",
+      "description": "Horizontal and vertical padding",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Padding(",
+         "  padding: const EdgeInsets.symmetric(horizontal: ${1:16}, vertical: ${2:8}),",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "SizedBox height": {
+      "prefix": "sbh",
+      "description": "Vertical space",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "const SizedBox(height: ${1:16})"
+      ]
+   },
+   "SizedBox width": {
+      "prefix": "sbw",
+      "description": "Horizontal space",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "const SizedBox(width: ${1:16})"
+      ]
+   },
+   "SizedBox": {
+      "prefix": "sbx",
+      "description": "A SizedBox with a child",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SizedBox(",
+         "  width: ${1:100},",
+         "  height: ${2:100},",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Container": {
+      "prefix": "ct",
+      "description": "A Container",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Container(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  color: ${2:Colors.white},",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Decorated Container": {
+      "prefix": "dct",
+      "description": "A Container with a rounded BoxDecoration",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Container(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  decoration: BoxDecoration(",
+         "    color: ${2:Colors.white},",
+         "    borderRadius: BorderRadius.circular(${3:12}),",
+         "  ),",
+         "  child: ${4:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Expanded": {
+      "prefix": "ex",
+      "description": "An Expanded",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Expanded(child: ${1:const Placeholder()})"
+      ]
+   },
+   "Flexible": {
+      "prefix": "fx",
+      "description": "A Flexible",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Flexible(",
+         "  flex: ${1:1},",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Align": {
+      "prefix": "al",
+      "description": "An Align",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Align(",
+         "  alignment: Alignment.${1|center,topLeft,topCenter,topRight,centerLeft,centerRight,bottomLeft,bottomCenter,bottomRight|},",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Wrap": {
+      "prefix": "wr",
+      "description": "A Wrap",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Wrap(",
+         "  spacing: ${1:8},",
+         "  runSpacing: ${2:8},",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "SafeArea": {
+      "prefix": "sa",
+      "description": "A SafeArea",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SafeArea(child: ${1:const Placeholder()})"
+      ]
+   },
+   "ClipRRect": {
+      "prefix": "crr",
+      "description": "Clip with rounded corners",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "ClipRRect(",
+         "  borderRadius: BorderRadius.circular(${1:12}),",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Card": {
+      "prefix": "cd",
+      "description": "A Card with padding",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Card(",
+         "  child: Padding(",
+         "    padding: const EdgeInsets.all(${1:16}),",
+         "    child: ${2:const Placeholder()},",
+         "  ),",
+         ")"
+      ]
+   },
+   "ListTile": {
+      "prefix": "lt",
+      "description": "A ListTile",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "ListTile(",
+         "  leading: ${1:const Icon(Icons.person)},",
+         "  title: Text('${2:Title}'),",
+         "  subtitle: Text('${3:Subtitle}'),",
+         "  trailing: ${4:const Icon(Icons.chevron_right)},",
+         "  onTap: () {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "Divider": {
+      "prefix": "dv",
+      "description": "A Divider",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "const Divider(height: ${1:1})"
+      ]
+   },
+   "CircularProgressIndicator": {
+      "prefix": "cpi",
+      "description": "A centered progress indicator",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "const Center(child: CircularProgressIndicator())"
+      ]
+   },
+   "Visibility": {
+      "prefix": "vis",
+      "description": "Show a child conditionally",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Visibility(",
+         "  visible: ${1:true},",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "ListView": {
+      "prefix": "lv",
+      "description": "A ListView of children",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "ListView(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "ListView.builder": {
+      "prefix": "lvb",
+      "description": "A lazily built ListView",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "ListView.builder(",
+         "  itemCount: ${1:items}.length,",
+         "  itemBuilder: (context, index) {",
+         "    final ${2:item} = ${1:items}[index];",
+         "    return ${3:Text('\\$${2:item}')};",
+         "  },",
+         ")"
+      ]
+   },
+   "ListView.separated": {
+      "prefix": "lvs",
+      "description": "A ListView with separators",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "ListView.separated(",
+         "  itemCount: ${1:items}.length,",
+         "  separatorBuilder: (context, index) => ${2:const Divider()},",
+         "  itemBuilder: (context, index) {",
+         "    final ${3:item} = ${1:items}[index];",
+         "    return ${4:Text('\\$${3:item}')};",
+         "  },",
+         ")"
+      ]
+   },
+   "GridView.builder": {
+      "prefix": "gvb",
+      "description": "A lazily built grid with a fixed column count",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "GridView.builder(",
+         "  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(",
+         "    crossAxisCount: ${1:2},",
+         "    mainAxisSpacing: ${2:8},",
+         "    crossAxisSpacing: ${2:8},",
+         "  ),",
+         "  itemCount: ${3:items}.length,",
+         "  itemBuilder: (context, index) {",
+         "    final ${4:item} = ${3:items}[index];",
+         "    return ${5:Text('\\$${4:item}')};",
+         "  },",
+         ")"
+      ]
+   },
+   "GridView.count": {
+      "prefix": "gvc",
+      "description": "A grid of children with a fixed column count",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "GridView.count(",
+         "  crossAxisCount: ${1:2},",
+         "  mainAxisSpacing: ${2:8},",
+         "  crossAxisSpacing: ${2:8},",
+         "  children: [",
+         "    $0",
+         "  ],",
+         ")"
+      ]
+   },
+   "SingleChildScrollView": {
+      "prefix": "scv",
+      "description": "A scrollable Column",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SingleChildScrollView(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  child: Column(",
+         "    children: [",
+         "      $0",
+         "    ],",
+         "  ),",
+         ")"
+      ]
+   },
+   "CustomScrollView": {
+      "prefix": "csv",
+      "description": "A CustomScrollView with an app bar and a list",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "CustomScrollView(",
+         "  slivers: [",
+         "    SliverAppBar(",
+         "      title: Text('${1:Title}'),",
+         "      floating: true,",
+         "    ),",
+         "    SliverList.builder(",
+         "      itemCount: ${2:items}.length,",
+         "      itemBuilder: (context, index) => ${3:Text('\\${${2:items}[index]\\}')},",
+         "    ),",
+         "  ],",
+         ")"
+      ]
+   },
+   "SliverList.builder": {
+      "prefix": "slb",
+      "description": "A lazily built sliver list",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SliverList.builder(",
+         "  itemCount: ${1:items}.length,",
+         "  itemBuilder: (context, index) => ${2:Text('\\${${1:items}[index]\\}')},",
+         ")"
+      ]
+   },
+   "SliverToBoxAdapter": {
+      "prefix": "sla",
+      "description": "A box widget inside a CustomScrollView",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SliverToBoxAdapter(child: ${1:const Placeholder()})"
+      ]
+   },
+   "SliverPadding": {
+      "prefix": "slp",
+      "description": "Padding around a sliver",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "SliverPadding(",
+         "  padding: const EdgeInsets.all(${1:16}),",
+         "  sliver: ${2:const SliverToBoxAdapter()},",
+         ")"
+      ]
+   },
+   "RefreshIndicator": {
+      "prefix": "ri",
+      "description": "Pull to refresh",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "RefreshIndicator(",
+         "  onRefresh: () async {",
+         "    $0",
+         "  },",
+         "  child: ${1:ListView()},",
+         ")"
+      ]
+   },
+   "PageView.builder": {
+      "prefix": "pvb",
+      "description": "A lazily built PageView",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "PageView.builder(",
+         "  itemCount: ${1:items}.length,",
+         "  itemBuilder: (context, index) => ${2:Text('\\${${1:items}[index]\\}')},",
+         ")"
+      ]
+   },
+   "Tabs": {
+      "prefix": "dtc",
+      "description": "A DefaultTabController with a TabBar and a TabBarView",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "DefaultTabController(",
+         "  length: ${1:2},",
+         "  child: Scaffold(",
+         "    appBar: AppBar(",
+         "      title: Text('${2:Title}'),",
+         "      bottom: const TabBar(",
+         "        tabs: [",
+         "          Tab(text: '${3:First}'),",
+         "          Tab(text: '${4:Second}'),",
+         "        ],",
+         "      ),",
+         "    ),",
+         "    body: const TabBarView(",
+         "      children: [",
+         "        ${5:Placeholder()},",
+         "        ${6:Placeholder()},",
+         "      ],",
+         "    ),",
+         "  ),",
+         ")"
+      ]
+   },
+   "Builder": {
+      "prefix": "bd",
+      "description": "A Builder for a new BuildContext",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Builder(",
+         "  builder: (context) {",
+         "    return ${1:const Placeholder()};",
+         "  },",
+         ")"
+      ]
+   },
+   "LayoutBuilder": {
+      "prefix": "lb",
+      "description": "Build from the parent constraints",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "LayoutBuilder(",
+         "  builder: (context, constraints) {",
+         "    if (constraints.maxWidth > ${1:600}) {",
+         "      return ${2:const Placeholder()};",
+         "    }",
+         "    return ${3:const Placeholder()};",
+         "  },",
+         ")"
+      ]
+   },
+   "FutureBuilder": {
+      "prefix": "ftb",
+      "description": "Build from a Future, with loading and error states",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "FutureBuilder<${1:String}>(",
+         "  future: ${2:future},",
+         "  builder: (context, snapshot) {",
+         "    if (snapshot.hasError) {",
+         "      return Text('\\${snapshot.error\\}');",
+         "    }",
+         "    if (!snapshot.hasData) {",
+         "      return const Center(child: CircularProgressIndicator());",
+         "    }",
+         "    final ${3:data} = snapshot.requireData;",
+         "    return ${4:Text('\\$${3:data}')};",
+         "  },",
+         ")"
+      ]
+   },
+   "StreamBuilder": {
+      "prefix": "stb",
+      "description": "Build from a Stream, with loading and error states",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "StreamBuilder<${1:String}>(",
+         "  stream: ${2:stream},",
+         "  builder: (context, snapshot) {",
+         "    if (snapshot.hasError) {",
+         "      return Text('\\${snapshot.error\\}');",
+         "    }",
+         "    if (!snapshot.hasData) {",
+         "      return const Center(child: CircularProgressIndicator());",
+         "    }",
+         "    final ${3:data} = snapshot.requireData;",
+         "    return ${4:Text('\\$${3:data}')};",
+         "  },",
+         ")"
+      ]
+   },
+   "ValueListenableBuilder": {
+      "prefix": "vlb",
+      "description": "Rebuild when a ValueListenable changes",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "ValueListenableBuilder<${1:int}>(",
+         "  valueListenable: ${2:notifier},",
+         "  builder: (context, value, child) {",
+         "    return ${3:Text('\\$value')};",
+         "  },",
+         ")"
+      ]
+   },
+   "ListenableBuilder": {
+      "prefix": "lnb",
+      "description": "Rebuild when a Listenable notifies",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "ListenableBuilder(",
+         "  listenable: ${1:notifier},",
+         "  builder: (context, child) {",
+         "    return ${2:const Placeholder()};",
+         "  },",
+         ")"
+      ]
+   },
+   "AnimatedBuilder": {
+      "prefix": "anb",
+      "description": "Rebuild on every animation tick",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "AnimatedBuilder(",
+         "  animation: ${1:_animationController},",
+         "  builder: (context, child) {",
+         "    return ${2:Opacity(opacity: ${1:_animationController}.value, child: child)};",
+         "  },",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Text": {
+      "prefix": "tx",
+      "description": "A Text with a theme style",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Text(",
+         "  '${1:Text}',",
+         "  style: Theme.of(context).textTheme.${2|bodyMedium,bodyLarge,bodySmall,titleLarge,titleMedium,titleSmall,headlineMedium,labelLarge|},",
+         ")"
+      ]
+   },
+   "Text.rich": {
+      "prefix": "rt",
+      "description": "Text with several styles",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Text.rich(",
+         "  TextSpan(",
+         "    text: '${1:Hello, }',",
+         "    children: [",
+         "      TextSpan(",
+         "        text: '${2:world}',",
+         "        style: const TextStyle(fontWeight: FontWeight.bold),",
+         "      ),",
+         "    ],",
+         "  ),",
+         ")"
+      ]
+   },
+   "Icon": {
+      "prefix": "ic",
+      "description": "An Icon",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "const Icon(Icons.${1:star}, size: ${2:24})"
+      ]
+   },
+   "Image.asset": {
+      "prefix": "img",
+      "description": "An image from the assets",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Image.asset(",
+         "  '${1:assets/images/image.png}',",
+         "  fit: BoxFit.${2|cover,contain,fill,fitWidth,fitHeight|},",
+         ")"
+      ]
+   },
+   "Image.network": {
+      "prefix": "imgn",
+      "description": "An image from the network, with loading and error states",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Image.network(",
+         "  '${1:https://example.com/image.png}',",
+         "  fit: BoxFit.${2|cover,contain,fill,fitWidth,fitHeight|},",
+         "  loadingBuilder: (context, child, progress) =>",
+         "      progress == null ? child : const Center(child: CircularProgressIndicator()),",
+         "  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),",
+         ")"
+      ]
+   },
+   "Hero": {
+      "prefix": "hr",
+      "description": "A Hero animation",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "Hero(",
+         "  tag: '${1:tag}',",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "GestureDetector": {
+      "prefix": "gd",
+      "description": "Detect taps",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "GestureDetector(",
+         "  onTap: () {",
+         "    $0",
+         "  },",
+         "  child: ${1:const Placeholder()},",
+         ")"
+      ]
+   },
+   "InkWell": {
+      "prefix": "iw",
+      "description": "A tappable area with a ripple",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "InkWell(",
+         "  onTap: () {",
+         "    $0",
+         "  },",
+         "  borderRadius: BorderRadius.circular(${1:12}),",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "ElevatedButton": {
+      "prefix": "eb",
+      "description": "An ElevatedButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "ElevatedButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  child: Text('${1:Button}'),",
+         ")"
+      ]
+   },
+   "FilledButton": {
+      "prefix": "flb",
+      "description": "A FilledButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "FilledButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  child: Text('${1:Button}'),",
+         ")"
+      ]
+   },
+   "OutlinedButton": {
+      "prefix": "ob",
+      "description": "An OutlinedButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "OutlinedButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  child: Text('${1:Button}'),",
+         ")"
+      ]
+   },
+   "TextButton": {
+      "prefix": "tb",
+      "description": "A TextButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "TextButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  child: Text('${1:Button}'),",
+         ")"
+      ]
+   },
+   "IconButton": {
+      "prefix": "ib",
+      "description": "An IconButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "IconButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  tooltip: '${1:Tooltip}',",
+         "  icon: const Icon(Icons.${2:add}),",
+         ")"
+      ]
+   },
+   "FloatingActionButton": {
+      "prefix": "fab",
+      "description": "A FloatingActionButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "FloatingActionButton(",
+         "  onPressed: () {",
+         "    $0",
+         "  },",
+         "  tooltip: '${1:Add}',",
+         "  child: const Icon(Icons.${2:add}),",
+         ")"
+      ]
+   },
+   "TextField": {
+      "prefix": "tf",
+      "description": "A TextField with a controller",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "TextField(",
+         "  controller: ${1:_controller},",
+         "  decoration: const InputDecoration(",
+         "    labelText: '${2:Label}',",
+         "    border: OutlineInputBorder(),",
+         "  ),",
+         "  onChanged: (value) {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "TextFormField": {
+      "prefix": "tff",
+      "description": "A TextFormField with a validator",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "TextFormField(",
+         "  controller: ${1:_controller},",
+         "  decoration: const InputDecoration(labelText: '${2:Label}'),",
+         "  validator: (value) {",
+         "    if (value == null || value.isEmpty) {",
+         "      return '${3:Required}';",
+         "    }",
+         "    return null;",
+         "  },",
+         ")"
+      ]
+   },
+   "Form": {
+      "prefix": "frm",
+      "description": "A Form with a submit button",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Form(",
+         "  key: ${1:_formKey},",
+         "  child: Column(",
+         "    children: [",
+         "      $0",
+         "      FilledButton(",
+         "        onPressed: () {",
+         "          if (${1:_formKey}.currentState!.validate()) {",
+         "            ${2:// submit}",
+         "          }",
+         "        },",
+         "        child: Text('${3:Submit}'),",
+         "      ),",
+         "    ],",
+         "  ),",
+         ")"
+      ]
+   },
+   "CheckboxListTile": {
+      "prefix": "cbt",
+      "description": "A checkbox with a label",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "CheckboxListTile(",
+         "  value: ${1:false},",
+         "  title: Text('${2:Label}'),",
+         "  onChanged: (value) {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "SwitchListTile": {
+      "prefix": "swt",
+      "description": "A switch with a label",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "SwitchListTile(",
+         "  value: ${1:false},",
+         "  title: Text('${2:Label}'),",
+         "  onChanged: (value) {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "Slider": {
+      "prefix": "sl",
+      "description": "A Slider",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Slider(",
+         "  value: ${1:0.5},",
+         "  onChanged: (value) {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "DropdownButton": {
+      "prefix": "dd",
+      "description": "A DropdownButton",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "DropdownButton<${1:String}>(",
+         "  value: ${2:null},",
+         "  items: [",
+         "    for (final item in ${3:const ['a', 'b']})",
+         "      DropdownMenuItem(value: item, child: Text(item)),",
+         "  ],",
+         "  onChanged: (value) {",
+         "    $0",
+         "  },",
+         ")"
+      ]
+   },
+   "AnimatedContainer": {
+      "prefix": "anc",
+      "description": "A Container that animates its changes",
+      "context": "widget",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "AnimatedContainer(",
+         "  duration: const Duration(milliseconds: ${1:300}),",
+         "  curve: Curves.${2|easeInOut,easeOut,easeIn,linear,fastOutSlowIn|},",
+         "  width: ${3:100},",
+         "  height: ${4:100},",
+         "  color: ${5:Colors.blue},",
+         "  child: ${6:const Placeholder()},",
+         ")"
+      ]
+   },
+   "AnimatedOpacity": {
+      "prefix": "ano",
+      "description": "Fade a child in and out",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "AnimatedOpacity(",
+         "  opacity: ${1:1.0},",
+         "  duration: const Duration(milliseconds: ${2:300}),",
+         "  child: ${3:const Placeholder()},",
+         ")"
+      ]
+   },
+   "AnimatedSwitcher": {
+      "prefix": "ans",
+      "description": "Animate between children",
+      "context": "widget",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "AnimatedSwitcher(",
+         "  duration: const Duration(milliseconds: ${1:300}),",
+         "  child: ${2:const Placeholder()},",
+         ")"
+      ]
+   },
+   "Screen size": {
+      "prefix": "mqs",
+      "description": "The size of the screen",
+      "context": "expr",
+      "imports": [
+         "package:flutter/widgets.dart"
+      ],
+      "body": [
+         "MediaQuery.sizeOf(context)"
+      ]
+   },
+   "Theme.of": {
+      "prefix": "th",
+      "description": "The current theme",
+      "context": "expr",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Theme.of(context)"
+      ]
+   },
+   "TextTheme": {
+      "prefix": "tt",
+      "description": "The text theme",
+      "context": "expr",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Theme.of(context).textTheme"
+      ]
+   },
+   "ColorScheme": {
+      "prefix": "cs",
+      "description": "The color scheme",
+      "context": "expr",
+      "imports": [
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "Theme.of(context).colorScheme"
+      ]
+   },
+   "Import material": {
+      "prefix": "imm",
+      "description": "Import package:flutter/material.dart",
+      "context": "top",
+      "body": [
+         "import 'package:flutter/material.dart';"
+      ]
+   },
+   "Import cupertino": {
+      "prefix": "imc",
+      "description": "Import package:flutter/cupertino.dart",
+      "context": "top",
+      "body": [
+         "import 'package:flutter/cupertino.dart';"
+      ]
+   },
+   "Import widgets": {
+      "prefix": "imw",
+      "description": "Import package:flutter/widgets.dart",
+      "context": "top",
+      "body": [
+         "import 'package:flutter/widgets.dart';"
+      ]
+   },
+   "Import services": {
+      "prefix": "ims",
+      "description": "Import package:flutter/services.dart",
+      "context": "top",
+      "body": [
+         "import 'package:flutter/services.dart';"
+      ]
+   },
+   "Import dart:async": {
+      "prefix": "ima",
+      "description": "Import dart:async",
+      "context": "top",
+      "body": [
+         "import 'dart:async';"
+      ]
+   },
+   "Data class": {
+      "prefix": "mdl",
+      "description": "An immutable class with copyWith, JSON, equality and toString",
+      "context": "top",
+      "imports": [
+         "package:flutter/foundation.dart"
+      ],
+      "body": [
+         "@immutable",
+         "class ${1:Model} {",
+         "  const ${1:Model}({required this.${3:name}});",
+         "",
+         "  factory ${1:Model}.fromJson(Map<String, dynamic> json) =>",
+         "      ${1:Model}(${3:name}: json['${3:name}'] as ${2:String});",
+         "",
+         "  final ${2:String} ${3:name};",
+         "",
+         "  ${1:Model} copyWith({${2:String}? ${3:name}}) =>",
+         "      ${1:Model}(${3:name}: ${3:name} ?? this.${3:name});",
+         "",
+         "  Map<String, dynamic> toJson() => {'${3:name}': ${3:name}};",
+         "",
+         "  @override",
+         "  bool operator ==(Object other) =>",
+         "      other is ${1:Model} && other.${3:name} == ${3:name};",
+         "",
+         "  @override",
+         "  int get hashCode => ${3:name}.hashCode;",
+         "",
+         "  @override",
+         "  String toString() => '${1:Model}(${3:name}: \\$${3:name})';",
+         "}"
+      ]
+   },
+   "Enhanced enum": {
+      "prefix": "en",
+      "description": "An enum with a field and a constructor",
+      "context": "top",
+      "body": [
+         "enum ${1:Status} {",
+         "  ${2:active}('${3:Active}'),",
+         "  ${4:inactive}('${5:Inactive}');",
+         "",
+         "  const ${1:Status}(this.label);",
+         "",
+         "  final String label;",
+         "}"
+      ]
+   },
+   "Sealed class": {
+      "prefix": "sld",
+      "description": "A sealed class with two subclasses",
+      "context": "top",
+      "body": [
+         "sealed class ${1:Result} {",
+         "  const ${1:Result}();",
+         "}",
+         "",
+         "final class ${2:Success} extends ${1:Result} {",
+         "  const ${2:Success}();",
+         "}",
+         "",
+         "final class ${3:Failure} extends ${1:Result} {",
+         "  const ${3:Failure}(this.error);",
+         "",
+         "  final Object error;",
+         "}"
+      ]
+   },
+   "Extension": {
+      "prefix": "ext",
+      "description": "An extension",
+      "context": "top",
+      "body": [
+         "extension ${1:StringX} on ${2:String} {",
+         "  $0",
+         "}"
+      ]
+   },
+   "Mixin": {
+      "prefix": "mx",
+      "description": "A mixin",
+      "context": "top",
+      "body": [
+         "mixin ${1:MyMixin} {",
+         "  $0",
+         "}"
+      ]
+   },
+   "Singleton": {
+      "prefix": "sgl",
+      "description": "A class with a single instance",
+      "context": "top",
+      "body": [
+         "class ${1:Service} {",
+         "  ${1:Service}._();",
+         "",
+         "  static final instance = ${1:Service}._();",
+         "",
+         "  $0",
+         "}"
+      ]
+   },
+   "typedef": {
+      "prefix": "td",
+      "description": "A type alias",
+      "context": "top",
+      "body": [
+         "typedef ${1:Callback} = ${2:void Function()};"
+      ]
+   },
+   "Async function": {
+      "prefix": "fa",
+      "description": "A function returning a Future",
+      "context": "top",
+      "body": [
+         "Future<${1:void}> ${2:load}() async {",
+         "  $0",
+         "}"
+      ]
+   },
+   "Stream function": {
+      "prefix": "fs",
+      "description": "A function generating a Stream",
+      "context": "top",
+      "body": [
+         "Stream<${1:int}> ${2:watch}() async* {",
+         "  $0",
+         "}"
+      ]
+   },
+   "TODO": {
+      "prefix": "todo",
+      "description": "A TODO comment",
+      "context": "top",
+      "body": [
+         "// TODO(${1:author}): ${2:description}"
+      ]
+   },
+   "testWidgets": {
+      "prefix": "tw",
+      "description": "A widget test",
+      "context": "test",
+      "imports": [
+         "package:flutter_test/flutter_test.dart",
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "testWidgets('${1:description}', (tester) async {",
+         "  await tester.pumpWidget(",
+         "    const MaterialApp(home: ${2:Placeholder()}),",
+         "  );",
+         "",
+         "  expect(find.byType(${3:Placeholder}), findsOneWidget);",
+         "});"
+      ]
+   },
+   "setUp": {
+      "prefix": "su",
+      "description": "Run before each test",
+      "context": "test",
+      "imports": [
+         "package:flutter_test/flutter_test.dart"
+      ],
+      "body": [
+         "setUp(() {",
+         "  $0",
+         "});"
+      ]
+   },
+   "tearDown": {
+      "prefix": "tdn",
+      "description": "Run after each test",
+      "context": "test",
+      "imports": [
+         "package:flutter_test/flutter_test.dart"
+      ],
+      "body": [
+         "tearDown(() {",
+         "  $0",
+         "});"
+      ]
+   },
+   "setUpAll": {
+      "prefix": "sua",
+      "description": "Run once before all tests",
+      "context": "test",
+      "imports": [
+         "package:flutter_test/flutter_test.dart"
+      ],
+      "body": [
+         "setUpAll(() {",
+         "  $0",
+         "});"
+      ]
+   },
+   "Tap and pump": {
+      "prefix": "tp",
+      "description": "Tap a widget and settle",
+      "context": "tester",
+      "imports": [
+         "package:flutter_test/flutter_test.dart"
+      ],
+      "body": [
+         "await tester.tap(find.${1|text,byType,byKey,byIcon|}(${2:'Button'}));",
+         "await tester.pumpAndSettle();"
+      ]
+   },
+   "Enter text": {
+      "prefix": "et",
+      "description": "Type into a text field",
+      "context": "tester",
+      "imports": [
+         "package:flutter_test/flutter_test.dart",
+         "package:flutter/material.dart"
+      ],
+      "body": [
+         "await tester.enterText(find.byType(${1:TextField}), '${2:text}');",
+         "await tester.pump();"
+      ]
+   },
+   "expect finder": {
+      "prefix": "ef",
+      "description": "Expect a widget to be found",
+      "context": "tester",
+      "imports": [
+         "package:flutter_test/flutter_test.dart"
+      ],
+      "body": [
+         "expect(find.${1|text,byType,byKey,byIcon|}(${2:'Text'}), ${3|findsOneWidget,findsNothing,findsWidgets|});"
+      ]
+   }
+}
