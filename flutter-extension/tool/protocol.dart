@@ -10,8 +10,7 @@ List<int> encodeMessage(Map<String, Object?> message) {
 }
 
 /// Splits a byte stream into its JSON messages.
-class DapDecoder
-    extends StreamTransformerBase<List<int>, Map<String, Object?>> {
+class DapDecoder extends StreamTransformerBase<List<int>, Map<String, Object?>> {
   @override
   Stream<Map<String, Object?>> bind(Stream<List<int>> stream) async* {
     var buffer = <int>[];
@@ -23,10 +22,7 @@ class DapDecoder
           break;
         }
         final header = ascii.decode(buffer.sublist(0, end), allowInvalid: true);
-        final match = RegExp(
-          r'Content-Length:\s*(\d+)',
-          caseSensitive: false,
-        ).firstMatch(header);
+        final match = RegExp(r'Content-Length:\s*(\d+)', caseSensitive: false).firstMatch(header);
         if (match == null) {
           throw FormatException('a message without Content-Length: $header');
         }
@@ -44,10 +40,7 @@ class DapDecoder
 
   static int _headerEnd(List<int> buffer) {
     for (var i = 0; i + 3 < buffer.length; i++) {
-      if (buffer[i] == 13 &&
-          buffer[i + 1] == 10 &&
-          buffer[i + 2] == 13 &&
-          buffer[i + 3] == 10) {
+      if (buffer[i] == 13 && buffer[i + 1] == 10 && buffer[i + 2] == 13 && buffer[i + 3] == 10) {
         return i;
       }
     }

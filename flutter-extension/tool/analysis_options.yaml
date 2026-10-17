@@ -1,0 +1,3 @@
+# The tools are formatted at 100 columns, whoever runs `dart format` (CI, an editor).
+formatter:
+  page_width: 100

@@ -31,26 +31,15 @@ const firstOwnSeq = 1 << 30;
 
 Future<void> main(List<String> args) async {
   if (args.isEmpty) {
-    stderr.writeln(
-      'usage: dart flutter_proxy.dart <flutter> [args...] debug_adapter',
-    );
+    stderr.writeln('usage: dart flutter_proxy.dart <flutter> [args...] debug_adapter');
     exit(64);
   }
-  final adapter = await Process.start(
-    args.first,
-    args.sublist(1),
-    runInShell: Platform.isWindows,
-  );
+  final adapter = await Process.start(args.first, args.sublist(1), runInShell: Platform.isWindows);
   // `flutter debug_adapter` or `fvm flutter debug_adapter`: Flutter is the command before it.
-  final flutter = args.sublist(
-    0,
-    args.lastIndexOf('debug_adapter').clamp(1, args.length),
-  );
+  final flutter = args.sublist(0, args.lastIndexOf('debug_adapter').clamp(1, args.length));
   final proxy = Proxy(adapter.stdin, stdout, flutter);
   adapter.stderr.listen(stderr.add);
-  final fromAdapter = adapter.stdout
-      .transform(DapDecoder())
-      .listen(proxy.fromAdapter);
+  final fromAdapter = adapter.stdout.transform(DapDecoder()).listen(proxy.fromAdapter);
   stdin
       .transform(DapDecoder())
       .listen(
@@ -94,11 +83,8 @@ class Proxy {
         _root = arguments['cwd'] as String?;
         _reloadOnSave = arguments['hotReloadOnSave'] != false;
         final target = arguments['target'];
-        final toolArgs = (arguments['toolArgs'] as List? ?? const [])
-            .cast<String>();
-        final hasDevice = toolArgs.any(
-          (a) => a == '-d' || a.startsWith('--device-id'),
-        );
+        final toolArgs = (arguments['toolArgs'] as List? ?? const []).cast<String>();
+        final hasDevice = toolArgs.any((a) => a == '-d' || a.startsWith('--device-id'));
         if (target is String && !hasDevice && message['command'] == 'launch') {
           _held = [];
           _launchOn(target, message, arguments.cast<String, Object?>());
@@ -116,11 +102,7 @@ class Proxy {
     Map<String, Object?> arguments,
   ) async {
     try {
-      final device = await resolveDevice(
-        target,
-        _flutter,
-        (line) => _output('$line\n'),
-      );
+      final device = await resolveDevice(target, _flutter, (line) => _output('$line\n'));
       final toolArgs = [
         ...(arguments['toolArgs'] as List? ?? const []).cast<String>(),
         '-d',
@@ -177,16 +159,12 @@ class Proxy {
     }
     final lib = Directory('$root${Platform.pathSeparator}lib');
     final dir = lib.existsSync() ? lib : Directory(root);
-    _watch = dir.watch(recursive: true).listen(
-      (event) {
-        if (event.path.endsWith('.dart')) {
-          _pending?.cancel();
-          _pending = Timer(debounce, _reload);
-        }
-      },
-      onError: (Object error) =>
-          _output('Not watching ${dir.path} for hot reload: $error\n'),
-    );
+    _watch = dir.watch(recursive: true).listen((event) {
+      if (event.path.endsWith('.dart')) {
+        _pending?.cancel();
+        _pending = Timer(debounce, _reload);
+      }
+    }, onError: (Object error) => _output('Not watching ${dir.path} for hot reload: $error\n'));
   }
 
   void _stopWatching() {
@@ -218,6 +196,5 @@ class Proxy {
     });
   }
 
-  void _send(IOSink sink, Map<String, Object?> message) =>
-      sink.add(encodeMessage(message));
+  void _send(IOSink sink, Map<String, Object?> message) => sink.add(encodeMessage(message));
 }

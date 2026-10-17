@@ -42,17 +42,14 @@ Future<void> main() async {
   final documents = <String, String>{};
   await for (final message in stdin.transform(DapDecoder())) {
     final id = message['id'];
-    final params =
-        (message['params'] as Map?)?.cast<String, Object?>() ?? const {};
+    final params = (message['params'] as Map?)?.cast<String, Object?>() ?? const {};
     switch (message['method']) {
       case 'initialize':
         final log = <String>[];
         try {
           installRunner(here, log.add);
         } on Object catch (error) {
-          log.add(
-            'Flutter Tools could not install the runner of the run tasks: $error',
-          );
+          log.add('Flutter Tools could not install the runner of the run tasks: $error');
         }
         _send({
           'id': id,
@@ -86,10 +83,7 @@ Future<void> main() async {
         final uri = (params['textDocument'] as Map)['uri'] as String;
         _send({
           'id': id,
-          'result': {
-            'isIncomplete': false,
-            'items': completions(snippets, documents[uri] ?? ''),
-          },
+          'result': {'isIncomplete': false, 'items': completions(snippets, documents[uri] ?? '')},
         });
       case 'shutdown':
         _send({'id': id, 'result': null});
@@ -145,8 +139,7 @@ List<Map<String, Object?>> completions(List<Snippet> snippets, String text) => [
       'documentation': '${snippet.description}\n\n`${snippet.body}`',
       'insertTextFormat': 2, // Snippet
       'insertText': snippet.body,
-      if (importEdits(text, snippet.imports) case final edits
-          when edits.isNotEmpty)
+      if (importEdits(text, snippet.imports) case final edits when edits.isNotEmpty)
         'additionalTextEdits': edits,
     },
 ];
@@ -203,12 +196,9 @@ Map<String, Object?>? importEdit(String text, String library) {
 
 /// Copies the runner next to this file to ~/.zed-flutter/, when it differs.
 void installRunner(Directory source, void Function(String) log) {
-  final home =
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
   if (home == null) {
-    log(
-      'Flutter Tools: no home directory, so the run tasks will not find their runner',
-    );
+    log('Flutter Tools: no home directory, so the run tasks will not find their runner');
     return;
   }
   final target = Directory('$home/$runnerDir')..createSync(recursive: true);

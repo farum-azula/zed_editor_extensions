@@ -26,8 +26,7 @@ class DeviceException implements Exception {
 
 /// How often the device list is read again while a simulator or an emulator boots.
 Duration get pollInterval => Duration(
-  milliseconds:
-      int.tryParse(Platform.environment['FLUTTER_TOOLS_POLL_MS'] ?? '') ?? 2000,
+  milliseconds: int.tryParse(Platform.environment['FLUTTER_TOOLS_POLL_MS'] ?? '') ?? 2000,
 );
 
 /// How long a simulator or an emulator may take to boot.
@@ -35,18 +34,12 @@ const bootTimeout = Duration(minutes: 5);
 
 /// The device id for [target]. [flutter] is the command that runs Flutter (`flutter`, or `fvm
 /// flutter`); [log] reports what is happening, a line at a time.
-Future<String> resolveDevice(
-  String target,
-  List<String> flutter,
-  void Function(String) log,
-) async {
+Future<String> resolveDevice(String target, List<String> flutter, void Function(String) log) async {
   switch (target) {
     case 'macos' || 'windows' || 'linux':
       final host = Platform.operatingSystem;
       if (host != target) {
-        throw DeviceException(
-          '${targets[target]} apps run only on $target; this is $host.',
-        );
+        throw DeviceException('${targets[target]} apps run only on $target; this is $host.');
       }
       return target;
     case 'web':
@@ -56,9 +49,7 @@ Future<String> resolveDevice(
           return id;
         }
       }
-      log(
-        'No Chrome or Edge found: serving the app on web-server; open the URL it prints.',
-      );
+      log('No Chrome or Edge found: serving the app on web-server; open the URL it prints.');
       return 'web-server';
     case 'ios-simulator':
       final simulator = await _deviceOrBoot(
@@ -82,9 +73,7 @@ Future<String> resolveDevice(
         () => _launchEmulator(flutter, log),
       );
     default:
-      throw DeviceException(
-        'unknown target "$target"; use one of ${targets.keys.join(', ')}',
-      );
+      throw DeviceException('unknown target "$target"; use one of ${targets.keys.join(', ')}');
   }
 }
 
@@ -120,10 +109,7 @@ Future<List<Device>> listDevices(List<String> flutter) async {
 }
 
 Future<ProcessResult> runFlutter(List<String> flutter, List<String> args) =>
-    Process.run(flutter.first, [
-      ...flutter.skip(1),
-      ...args,
-    ], runInShell: Platform.isWindows);
+    Process.run(flutter.first, [...flutter.skip(1), ...args], runInShell: Platform.isWindows);
 
 Future<String> _deviceOrBoot(
   List<String> flutter,
@@ -146,9 +132,7 @@ Future<String> _deviceOrBoot(
       return booted.first.id;
     }
   }
-  throw DeviceException(
-    '$what did not come up within ${bootTimeout.inMinutes} minutes.',
-  );
+  throw DeviceException('$what did not come up within ${bootTimeout.inMinutes} minutes.');
 }
 
 /// Boots an iPhone simulator of the newest iOS runtime and opens the Simulator app.
@@ -156,26 +140,14 @@ Future<void> _bootSimulator(void Function(String) log) async {
   if (!Platform.isMacOS) {
     throw DeviceException('the iOS Simulator runs only on macOS.');
   }
-  final list = await Process.run('xcrun', [
-    'simctl',
-    'list',
-    'devices',
-    'available',
-    '-j',
-  ]);
+  final list = await Process.run('xcrun', ['simctl', 'list', 'devices', 'available', '-j']);
   if (list.exitCode != 0) {
-    throw DeviceException(
-      '`xcrun simctl` failed; is Xcode installed? ${list.stderr}',
-    );
+    throw DeviceException('`xcrun simctl` failed; is Xcode installed? ${list.stderr}');
   }
-  final runtimes = (jsonDecode(list.stdout as String)['devices'] as Map)
-      .cast<String, List>();
-  final ios = runtimes.keys.where((r) => r.contains('.iOS-')).toList()
-    ..sort(_compareRuntimes);
+  final runtimes = (jsonDecode(list.stdout as String)['devices'] as Map).cast<String, List>();
+  final ios = runtimes.keys.where((r) => r.contains('.iOS-')).toList()..sort(_compareRuntimes);
   for (final runtime in ios.reversed) {
-    final phones = runtimes[runtime]!.cast<Map>().where(
-      (d) => '${d['name']}'.startsWith('iPhone'),
-    );
+    final phones = runtimes[runtime]!.cast<Map>().where((d) => '${d['name']}'.startsWith('iPhone'));
     if (phones.isEmpty) {
       continue;
     }
@@ -201,12 +173,8 @@ Future<void> _showSimulator(String udid) async {
 
 /// `...SimRuntime.iOS-18-2` before `...SimRuntime.iOS-26-0`.
 int _compareRuntimes(String a, String b) {
-  List<int> version(String r) => r
-      .split('.iOS-')
-      .last
-      .split('-')
-      .map((p) => int.tryParse(p) ?? 0)
-      .toList();
+  List<int> version(String r) =>
+      r.split('.iOS-').last.split('-').map((p) => int.tryParse(p) ?? 0).toList();
   final va = version(a), vb = version(b);
   for (var i = 0; i < va.length && i < vb.length; i++) {
     if (va[i] != vb[i]) {
@@ -217,10 +185,7 @@ int _compareRuntimes(String a, String b) {
 }
 
 /// Launches the first Android emulator `flutter emulators` lists.
-Future<void> _launchEmulator(
-  List<String> flutter,
-  void Function(String) log,
-) async {
+Future<void> _launchEmulator(List<String> flutter, void Function(String) log) async {
   final result = await runFlutter(flutter, ['emulators']);
   final emulators = [
     for (final line in LineSplitter.split(result.stdout as String))
@@ -234,15 +199,9 @@ Future<void> _launchEmulator(
     );
   }
   log('Starting the Android emulator ${emulators.first[1]}…');
-  final launch = await runFlutter(flutter, [
-    'emulators',
-    '--launch',
-    emulators.first[0],
-  ]);
+  final launch = await runFlutter(flutter, ['emulators', '--launch', emulators.first[0]]);
   if (launch.exitCode != 0) {
-    throw DeviceException(
-      '`flutter emulators --launch` failed: ${launch.stdout}${launch.stderr}',
-    );
+    throw DeviceException('`flutter emulators --launch` failed: ${launch.stdout}${launch.stderr}');
   }
 }
 
@@ -253,8 +212,6 @@ List<String> flutterCommand(Directory dir) {
   if (override != null) {
     return (jsonDecode(override) as List).cast<String>();
   }
-  final fvm =
-      File('${dir.path}/.fvmrc').existsSync() ||
-      Directory('${dir.path}/.fvm').existsSync();
+  final fvm = File('${dir.path}/.fvmrc').existsSync() || Directory('${dir.path}/.fvm').existsSync();
   return fvm ? ['fvm', 'flutter'] : ['flutter'];
 }
