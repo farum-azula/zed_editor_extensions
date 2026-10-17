@@ -14,12 +14,22 @@
 // picked, or a simulator or an emulator started, before Flutter gets the launch request, as
 // `-d <device>` in its `toolArgs`. Messages from the editor wait meanwhile, so their order holds.
 //
+// Once the app runs, it also serves Flutter DevTools for it, and records where in a session file
+// (see devtools.dart) for the `Flutter: DevTools ...` tasks; `"devTools": false` turns that off.
+// When a widget is selected, in DevTools' inspector or in the app, Flutter sends a `navigate` tool
+// event with its place in the code, which this opens in Zed.
+//
+// And the debugger's Stop quits the app: Flutter's adapter answers a `disconnect` by killing
+// `flutter run`, which leaves a desktop app running, so a `terminate` goes first.
+//
 // Only `dart:` libraries are used, so that the Dart SDK alone runs this file.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'devices.dart';
+import 'devtools.dart';
 import 'protocol.dart';
 
 /// How long file changes are gathered into one reload: saving several files, or an editor
@@ -28,6 +38,9 @@ const debounce = Duration(milliseconds: 200);
 
 /// Sequence numbers of the requests this proxy makes, far from the editor's own.
 const firstOwnSeq = 1 << 30;
+
+/// How long the editor's `disconnect` waits for the app to stop (see [Proxy._terminateFirst]).
+const terminateTimeout = Duration(seconds: 10);
 
 Future<void> main(List<String> args) async {
   if (args.isEmpty) {
@@ -60,13 +73,30 @@ class Proxy {
   final IOSink _client;
   final List<String> _flutter;
 
-  /// Messages from the editor held while a launch waits for its device.
+  /// Messages from the editor held while a launch waits for its device, or a disconnect for the
+  /// app to stop.
   List<Map<String, Object?>>? _held;
   int _seq = firstOwnSeq;
-  final _own = <int>{};
+
+  /// The commands of this proxy's requests the adapter has yet to answer, by sequence number.
+  final _own = <int, String>{};
+
+  /// Whether the session launched the app (rather than attached to it), and whether the app was
+  /// asked to stop, or has.
+  bool _launched = false;
+  bool _terminating = false;
+  Timer? _terminateTimer;
   String? _root;
   bool _reloadOnSave = true;
+  bool _devTools = true;
   bool _started = false;
+
+  /// Whether DevTools was asked for, and whether the app has ended since: DevTools starts once,
+  /// and not after the app is gone.
+  bool _devToolsRequested = false;
+  bool _ended = false;
+  DevToolsServer? _devToolsServer;
+  File? _session;
   StreamSubscription<FileSystemEvent>? _watch;
   Timer? _pending;
 
@@ -78,10 +108,12 @@ class Proxy {
     }
     if (message['type'] == 'request' &&
         (message['command'] == 'launch' || message['command'] == 'attach')) {
+      _launched = message['command'] == 'launch';
       final arguments = message['arguments'];
       if (arguments is Map) {
         _root = arguments['cwd'] as String?;
         _reloadOnSave = arguments['hotReloadOnSave'] != false;
+        _devTools = arguments['devTools'] != false;
         final target = arguments['target'];
         final toolArgs = (arguments['toolArgs'] as List? ?? const []).cast<String>();
         final hasDevice = toolArgs.any((a) => a == '-d' || a.startsWith('--device-id'));
@@ -92,7 +124,38 @@ class Proxy {
         }
       }
     }
+    if (message['type'] == 'request') {
+      final arguments = message['arguments'];
+      final endsApp = arguments is! Map || arguments['terminateDebuggee'] != false;
+      switch (message['command']) {
+        case 'terminate':
+          _terminating = true;
+        case 'disconnect' when _launched && !_terminating && endsApp:
+          _terminateFirst(message);
+          return;
+      }
+    }
     _send(_adapter, message);
+  }
+
+  /// Flutter's adapter answers `disconnect` by killing `flutter run`, which leaves a desktop app
+  /// running; its `terminate` stops the app (`app.stop`), as VS Code's Stop does. So a
+  /// [disconnect] that ends a launched app goes after a `terminate`, once the app has stopped (or
+  /// [terminateTimeout] has passed), and what the editor sends meanwhile after it.
+  void _terminateFirst(Map<String, Object?> disconnect) {
+    _terminating = true;
+    _held = [disconnect];
+    _terminateTimer = Timer(terminateTimeout, _releaseHeld);
+    _request('terminate', const {});
+  }
+
+  void _releaseHeld() {
+    _terminateTimer?.cancel();
+    final held = _held;
+    if (held != null) {
+      _held = null;
+      held.forEach(fromClient);
+    }
   }
 
   /// Sends [launch] once [target] has a device, then what the editor sent meanwhile.
@@ -122,34 +185,111 @@ class Proxy {
         'message': '$error',
       });
     }
-    final held = _held!;
-    _held = null;
-    held.forEach(fromClient);
+    _releaseHeld();
   }
 
   void fromAdapter(Map<String, Object?> message) {
-    if (message['type'] == 'response' && _own.remove(message['request_seq'])) {
-      if (message['success'] == false) {
-        _output('Hot reload failed: ${message['message']}\n');
+    if (message['type'] == 'response') {
+      switch (_own.remove(message['request_seq'])) {
+        case 'hotReload':
+          if (message['success'] == false) {
+            _output('Hot reload failed: ${message['message']}\n');
+          }
+          return;
+        case 'terminate':
+          _releaseHeld();
+          return;
       }
-      return;
     }
     if (message['type'] == 'event') {
+      final body = message['body'];
       switch (message['event']) {
         case 'flutter.appStarted':
           _started = true;
           _watchFiles();
+        case 'dart.debuggerUris' when body is Map && body['vmServiceUri'] is String:
+          _serveDevTools(body['vmServiceUri'] as String);
+        case 'dart.toolEvent' when body is Map && body['kind'] == 'navigate':
+          _navigate(body['data']);
         case 'terminated' || 'exited':
+          _terminating = true;
           _started = false;
           _stopWatching();
+          _stopDevTools();
       }
     }
     _send(_client, message);
   }
 
   Future<void> close() async {
+    _terminateTimer?.cancel();
     _stopWatching();
+    _stopDevTools();
     await _client.flush();
+  }
+
+  /// Serves DevTools for the app at [vmServiceUri], and records it in this adapter's session file.
+  Future<void> _serveDevTools(String vmServiceUri) async {
+    final root = _root;
+    if (!_devTools || root == null || _devToolsRequested) {
+      return;
+    }
+    _devToolsRequested = true;
+    try {
+      final server = await DevToolsServer.start();
+      if (_ended) {
+        server.stop();
+        return;
+      }
+      _devToolsServer = server;
+      final session = Session(cwd: root, vmServiceUri: vmServiceUri, devTools: server.address);
+      final file = _session = sessionFile(pid);
+      if (file != null) {
+        file.parent.createSync(recursive: true);
+        file.writeAsStringSync(jsonEncode(session.toJson()));
+      }
+      _output('Flutter DevTools: ${session.pageUrl('inspector')}\n');
+    } on Object catch (error) {
+      _output('Flutter DevTools did not start: $error\n');
+    }
+  }
+
+  void _stopDevTools() {
+    _ended = true;
+    _devToolsServer?.stop();
+    _devToolsServer = null;
+    try {
+      _session?.deleteSync();
+    } on FileSystemException {
+      // Gone already.
+    }
+    _session = null;
+  }
+
+  /// Opens in Zed the place of a `navigate` tool event: a widget selected in the inspector.
+  Future<void> _navigate(Object? data) async {
+    if (data is! Map) {
+      return;
+    }
+    final uri = Uri.tryParse('${data['resolvedFileUri'] ?? data['fileUri']}');
+    if (uri == null || !uri.isScheme('file')) {
+      return;
+    }
+    final line = data['line'];
+    final column = data['column'];
+    try {
+      if (!await openInZed(
+        uri.toFilePath(),
+        line is int ? line : null,
+        column is int ? column : null,
+      )) {
+        _output(
+          'Install Zed\'s command line tool (cli: install) to open selected widgets in Zed.\n',
+        );
+      }
+    } on Object catch (error) {
+      _output('Could not open ${uri.toFilePath()} in Zed: $error\n');
+    }
   }
 
   void _watchFiles() {
@@ -177,14 +317,14 @@ class Proxy {
     if (!_started) {
       return;
     }
+    _request('hotReload', {'reason': 'save'});
+  }
+
+  /// Sends the adapter a request of this proxy's own, whose response the editor will not see.
+  void _request(String command, Map<String, Object?> arguments) {
     final seq = _seq++;
-    _own.add(seq);
-    _send(_adapter, {
-      'seq': seq,
-      'type': 'request',
-      'command': 'hotReload',
-      'arguments': {'reason': 'save'},
-    });
+    _own[seq] = command;
+    _send(_adapter, {'seq': seq, 'type': 'request', 'command': command, 'arguments': arguments});
   }
 
   void _output(String text) {

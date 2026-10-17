@@ -8,7 +8,10 @@ Flutter or a device:
 - nothing is reloaded before the app starts, or with `"hotReloadOnSave": false`;
 - a launch with a `target` runs on a device of that kind: a running one, or an emulator it starts
   first, while what the editor sends meanwhile waits; a device named in `toolArgs` wins; a target
-  that cannot run here fails the launch with the reason.
+  that cannot run here fails the launch with the reason;
+- the editor's Stop ends a launched app: a `disconnect` goes to Flutter after a `terminate`
+  (Flutter's own disconnect would leave a desktop app running), unless the editor sent one, the
+  app was attached to, or `terminateDebuggee` is false.
 
     python3 tests/check_proxy.py        # needs `dart` in PATH
 """
@@ -132,10 +135,46 @@ def main():
         check("hotReload" not in received(dap), "no reload when turned off")
         dap.close()
 
+        check_stop(project)
         check_targets(Path(tmp))
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)
+
+
+def check_stop(project):
+    print("== Stop: disconnect alone")
+    dap = session(project)
+    dap.request("startApp")
+    dap.event("flutter.appStarted")
+    seq = dap.request("disconnect", {"terminateDebuggee": True})
+    response = dap.response(seq)
+    order = received(dap)
+    check(response["success"], "the disconnect is answered")
+    check("terminate" in order and order.index("terminate") < order.index("disconnect"),
+          "the app is terminated first (Flutter's disconnect leaves a desktop app running)")
+    check(not any(m.get("type") == "response" and m.get("command") == "terminate" for m in dap.seen),
+          "the editor does not see the response to that terminate")
+    dap.close()
+
+    print("== Stop: terminate, then disconnect")
+    dap = session(project)
+    dap.response(dap.request("terminate"))
+    dap.response(dap.request("disconnect"))
+    check(received(dap).count("terminate") == 1, "no second terminate")
+    dap.close()
+
+    print("== disconnect without ending the app")
+    dap = session(project)
+    dap.response(dap.request("disconnect", {"terminateDebuggee": False}))
+    check("terminate" not in received(dap), "terminateDebuggee: false leaves the app alone")
+    dap.close()
+    dap = start()
+    dap.response(dap.request("initialize", {"adapterID": "Flutter"}))
+    dap.response(dap.request("attach", {"cwd": str(project)}))
+    dap.response(dap.request("disconnect"))
+    check("terminate" not in received(dap), "so does an attached session")
+    dap.close()
 
 
 def launch_on(tmp, target, devices=(), emulators=(), tool_args=None):

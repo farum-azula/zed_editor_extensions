@@ -107,6 +107,11 @@
       "type": "boolean",
       "description": "Hot reload when a .dart file under lib/ is saved",
       "default": true
+    },
+    "devTools": {
+      "type": "boolean",
+      "description": "Serve Flutter DevTools for the app, for the Flutter DevTools tasks, and open in Zed the widget selected in its inspector",
+      "default": true
     }
   },
   "required": [

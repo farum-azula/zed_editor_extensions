@@ -174,5 +174,59 @@
     "tags": [
       "flutter-main"
     ]
+  },
+  {
+    "label": "Flutter DevTools: Widget Inspector",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" inspector \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
+  },
+  {
+    "label": "Flutter DevTools: Performance",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" performance \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
+  },
+  {
+    "label": "Flutter DevTools: CPU Profiler",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" cpu-profiler \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
+  },
+  {
+    "label": "Flutter DevTools: Memory",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" memory \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
+  },
+  {
+    "label": "Flutter DevTools: Network",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" network \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
+  },
+  {
+    "label": "Flutter DevTools: Logging",
+    "command": "dart \"$HOME/.zed-flutter/flutter_devtools.dart\" logging \"$ZED_WORKTREE_ROOT\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus",
+    "hide": "on_success"
   }
 ]

@@ -6,7 +6,10 @@ to `calls`.
 - `debug_adapter`: answers every request with success and reports each one as an output event
   (`received <command>`, `launch <arguments>` for a launch). Two requests of its own drive it:
   `startApp` makes it send the `flutter.appStarted` event the real adapter sends once the app runs,
-  `failNextReload` makes it answer the next `hotReload` with an error.
+  `failNextReload` makes it answer the next `hotReload` with an error. `debuggerUris` makes it send
+  the `dart.debuggerUris` event with the VM service URI of its arguments, `navigate` a
+  `dart.toolEvent` of kind `navigate` with its arguments as the data, as Flutter's do. `terminate`
+  and `disconnect` are followed by a `terminated` event, and `disconnect` ends it.
 - `devices --machine`, `emulators`, `emulators --launch <id>` (the emulator becomes a device),
   `run ...` (prints its arguments), `open-simulator <udid>` (stands in for opening Simulator.app).
 """
@@ -108,6 +111,12 @@ while (message := read()) is not None:
     send(response)
     if command == "startApp":
         event("flutter.appStarted")
+    if command == "debuggerUris":
+        event("dart.debuggerUris", {"vmServiceUri": message["arguments"]["vmServiceUri"]})
+    if command == "navigate":
+        event("dart.toolEvent", {"kind": "navigate", "data": message["arguments"]})
+    if command == "terminate":
+        event("terminated")
     if command == "disconnect":
         event("terminated")
         break

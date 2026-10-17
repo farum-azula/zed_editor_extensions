@@ -6,7 +6,7 @@ Extensions for the [Zed](https://zed.dev) editor.
 |---------------------------------------------|-------------------------------------------------------------------------------------------------|
 | [HTTP Client](http-client-extension/README.md)   | An IntelliJ IDEA-style HTTP client: run requests from `.http` / `.rest` files from the gutter, switch environments, and generate requests from routes and HTTP calls in 48 frameworks. |
 | [Farum Azula Themes](theme-extension/README.md) | Two dark themes: **Farum Azula Transparent** (a transparent window) and **Farum Azula Dark** (opaque, for full screen). |
-| [Flutter Tools](flutter-extension/README.md) | Dart and Flutter as in VS Code: run and debug on the iOS Simulator, Android, web and desktop from Zed's run window, hot reload on save and hot restart, 144 snippets that add the imports they need. Includes Zed's Dart extension, which it replaces. |
+| [Flutter Tools](flutter-extension/README.md) | Dart and Flutter as in VS Code: run and debug on the iOS Simulator, Android, web and desktop from Zed's run window, hot reload on save and hot restart, Flutter DevTools in a window next to Zed, its widget inspector opening code in Zed, 144 snippets that add the imports they need. Includes Zed's Dart extension, which it replaces. |
 
 ## Installation
 

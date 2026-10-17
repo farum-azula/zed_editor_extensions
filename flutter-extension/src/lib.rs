@@ -49,6 +49,11 @@ const TOOLS: &[(&str, &str)] = &[
     ("flutter_lsp.dart", include_str!("../tool/flutter_lsp.dart")),
     ("flutter_run.dart", include_str!("../tool/flutter_run.dart")),
     ("devices.dart", include_str!("../tool/devices.dart")),
+    ("devtools.dart", include_str!("../tool/devtools.dart")),
+    (
+        "flutter_devtools.dart",
+        include_str!("../tool/flutter_devtools.dart"),
+    ),
     ("protocol.dart", include_str!("../tool/protocol.dart")),
     ("snippets.json", include_str!("../tool/snippets.json")),
 ];

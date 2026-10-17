@@ -7,11 +7,13 @@ name: flutter-extension
 # - the Dart language's tree-sitter queries compile against the pinned grammar, which parses the
 #   newest Dart syntax, and highlight a sample as expected;
 # - the Dart tools (tool/) do what they should against a stand-in for Flutter, on every OS: the
-#   proxy (hot reload on save, device lookup for a target), the language server (snippets and
-#   the imports they add, the runner's copy), and the runner of the run tasks; the run tasks, the debug locator and the
-#   targets agree;
+#   proxy (hot reload on save, device lookup for a target), DevTools (served for the app, its pages
+#   opened by the tasks, a selected widget opened in Zed), the language server (snippets and the
+#   imports they add, the copy of the tasks' programs), and the runner of the run tasks; the
+#   tasks, the debug locator and the targets agree;
 # - a real app, run through the proxy and Flutter's own debug adapter on each target, hot reloads
-#   on save and hot restarts on Restart.
+#   on save, hot restarts on Restart, gets DevTools (a widget selected in its inspector opens in
+#   Zed), and quits on Stop.
 
 on:
   push:
@@ -96,6 +98,7 @@ jobs:
       - run: dart format --line-length 100 --output none --set-exit-if-changed tool
       - run: python tests/check_tasks.py
       - run: python tests/check_proxy.py
+      - run: python tests/check_devtools.py
       - run: python tests/check_lsp.py
       - run: python tests/check_run.py
 

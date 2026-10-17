@@ -2,7 +2,8 @@
 
 - languages/dart/tasks.json has a `Flutter: run on <name>` task for each target of
   tool/devices.dart, in its order, running the runner on that target, tagged `flutter-main` (the
-  run button next to a Flutter app's main()); the Dart extension's own tasks come first;
+  run button next to a Flutter app's main()); then a `Flutter DevTools: <name>` task for each page
+  of tool/devtools.dart, opening it for the project; the Dart extension's own tasks come first;
 - src/lib.rs's debug locator knows the same targets and the same runner, so each task is offered
   in the debugger too;
 - languages/dart/config.toml names the Flutter adapter, without which Zed asks no locator.
@@ -33,9 +34,16 @@ def main():
     targets = re.findall(r"'([\w-]+)': '([^']+)'", block)
     check(len(targets) == 6, f"devices.dart has the six targets: {[t for t, _ in targets]}")
 
+    tools = (ROOT / "tool" / "devtools.dart").read_text()
+    block = tools[tools.index("const pages = {"):]
+    block = block[: block.index("};")]
+    pages = re.findall(r"'([\w-]+)': '([^']+)'", block)
+    check(len(pages) == 6, f"devtools.dart has the six pages: {[p for p, _ in pages]}")
+
     tasks = json.loads((ROOT / "languages" / "dart" / "tasks.json").read_text())
     flutter = [t for t in tasks if t["label"].startswith("Flutter: ")]
-    check(tasks[-len(flutter):] == flutter, "the Dart extension's tasks come first")
+    devtools = [t for t in tasks if t["label"].startswith("Flutter DevTools: ")]
+    check(tasks[-len(flutter) - len(devtools):] == flutter + devtools, "the Dart extension's tasks come first")
     check([t["label"] for t in flutter] == [f"Flutter: run on {name}" for _, name in targets], "a run task per target, in order")
     for task, (target, _) in zip(flutter, targets):
         check(
@@ -45,7 +53,24 @@ def main():
             f"{task['label']} runs the runner on {target}, from the run button too",
         )
 
+    check([t["label"] for t in devtools] == [f"Flutter DevTools: {name}" for _, name in pages], "a DevTools task per page, in order")
+    for task, (page, _) in zip(devtools, pages):
+        check(
+            task["command"] == f'dart "$HOME/.zed-flutter/flutter_devtools.dart" {page} "$ZED_WORKTREE_ROOT"'
+            and not task.get("tags"),
+            f"{task['label']} opens {page} for the project",
+        )
+
+    lsp = (ROOT / "tool" / "flutter_lsp.dart").read_text()
+    installed = re.findall(r"'([\w.]+\.dart)'", re.search(r"const runnerFiles = \[([^\]]*)\]", lsp).group(1))
+    check({"flutter_run.dart", "flutter_devtools.dart"} <= set(installed), "the language server installs both programs")
+    for name in installed:
+        imports = re.findall(r"^import '([\w.]+\.dart)';", (ROOT / "tool" / name).read_text(), re.M)
+        check(set(imports) <= set(installed), f"and what {name} imports")
+
     lib = (ROOT / "src" / "lib.rs").read_text()
+    for name in installed:
+        check(f'include_str!("../tool/{name}")' in lib, f"the extension writes {name} into its work directory")
     lib_targets = re.findall(r'"([\w-]+)"', re.search(r"const TARGETS: &\[&str\] = &\[([^\]]*)\]", lib).group(1))
     check(lib_targets == [t for t, _ in targets], "the debug locator knows the same targets")
     check('const RUNNER: &str = "flutter_run.dart";' in lib, "and the same runner")

@@ -5,10 +5,11 @@
 // - The snippets (snippets.json) come from here as completions, which, unlike Zed's snippets, can
 //   carry edits that add the imports a snippet needs (`log` dart:developer, `scf`
 //   flutter/material.dart, ...) when the file does not have them yet.
-// - The `Flutter: run on <platform>` tasks of the Dart language (languages/dart/tasks.json) start
-//   `~/.zed-flutter/flutter_run.dart`: a task cannot name the extension's own directory, which
-//   differs from one OS to the next. On start, this server copies flutter_run.dart and devices.dart
-//   from next to itself to ~/.zed-flutter/, when they differ.
+// - The `Flutter: run on <platform>` and `Flutter DevTools: <page>` tasks of the Dart language
+//   (languages/dart/tasks.json) start `~/.zed-flutter/flutter_run.dart` and
+//   `~/.zed-flutter/flutter_devtools.dart`: a task cannot name the extension's own directory, which
+//   differs from one OS to the next. On start, this server copies them and what they import
+//   (runnerFiles) from next to itself to ~/.zed-flutter/, when they differ.
 //
 // It writes nothing into projects.
 
@@ -19,6 +20,9 @@ import 'protocol.dart';
 
 /// Where the tasks find the runner: the same path on every machine.
 const runnerDir = '.zed-flutter';
+
+/// The programs the tasks run, and what they import.
+const runnerFiles = ['flutter_run.dart', 'devices.dart', 'flutter_devtools.dart', 'devtools.dart'];
 
 /// Imports that bring what an import of the key brings: flutter/foundation.dart (debugPrint) comes
 /// with widgets.dart, which comes with material.dart and cupertino.dart.
@@ -194,7 +198,7 @@ Map<String, Object?>? importEdit(String text, String library) {
   };
 }
 
-/// Copies the runner next to this file to ~/.zed-flutter/, when it differs.
+/// Copies the programs of the tasks next to this file to ~/.zed-flutter/, when they differ.
 void installRunner(Directory source, void Function(String) log) {
   final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
   if (home == null) {
@@ -202,7 +206,7 @@ void installRunner(Directory source, void Function(String) log) {
     return;
   }
   final target = Directory('$home/$runnerDir')..createSync(recursive: true);
-  for (final name in ['flutter_run.dart', 'devices.dart']) {
+  for (final name in runnerFiles) {
     final text = File('${source.path}/$name').readAsStringSync();
     final to = File('${target.path}/$name');
     if (!to.existsSync() || to.readAsStringSync() != text) {

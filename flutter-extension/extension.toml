@@ -1,7 +1,7 @@
 id = "flutter-tools"
 name = "Flutter Tools"
-description = "Dart and Flutter: the Dart extension's language support, plus run and debug configurations for every platform, hot reload on save, hot restart, and snippets."
-version = "0.2.0"
+description = "Dart and Flutter: the Dart extension's language support, plus run and debug configurations for every platform, hot reload on save, hot restart, Flutter DevTools, and snippets."
+version = "0.3.0"
 schema_version = 1
 authors = ["Farum-Azula"]
 repository = "https://github.com/farum-azula/zed_editor_extensions"

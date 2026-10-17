@@ -8,6 +8,10 @@ Dart and Flutter for [Zed](https://zed.dev), as they work in VS Code:
   runs. Nothing is written into the project.
 - **Hot reload on save, hot restart on Restart.** Under the debugger, saving a `.dart` file reloads
   the app, the debugger's Restart restarts it. No `r` / `R`.
+- **Flutter DevTools** for the app under the debugger: the widget inspector with the live widget
+  tree, performance, CPU profiler, memory, network and logging, opened from the Run tab in a window
+  next to Zed (Zed cannot show web pages itself). Selecting a widget, in the inspector or in the
+  app, opens its code in Zed.
 - **144 snippets** for widgets, layouts, scrolling, builders, navigation, dialogs, forms,
   animations, logging, Dart declarations and widget tests, with short prefixes (`sfp`, `lvb`,
   `ftb`); each adds the imports it needs (`scf` flutter/material.dart, `log` dart:developer, ...).
@@ -113,9 +117,54 @@ A scenario of your own for the `Flutter` adapter, in the project's `.zed/debug.j
 | `toolArgs`        | `[]`             | Arguments for `flutter run`: `--flavor dev`, `--dart-define=K=V`  |
 | `env`             | `{}`             | Environment variables for Flutter                                 |
 | `hotReloadOnSave` | `true`           | `false` reloads only on Restart                                   |
+| `devTools`        | `true`           | `false`: no DevTools for this app (see below)                     |
 | `useFvm`          | `true` with a `.fvmrc`, else `false` | Run Flutter through `fvm`               |
 | `request`         | `launch`         | `attach` (with `vmServiceUri`) attaches to a running app          |
 
+## Flutter DevTools
+
+DevTools works with an app running under the debugger:
+
+1. Start the app in the **Debug** tab (`debugger: start`): `Flutter: debug on <platform>`.
+2. Open DevTools from the **Run** tab (`task: spawn`), with one of these tasks:
+
+| Task                                 | Shows                                                           |
+|--------------------------------------|-----------------------------------------------------------------|
+| `Flutter DevTools: Widget Inspector` | The widget tree, live, with each widget's properties and layout |
+| `Flutter DevTools: Performance`      | Frame times, jank, rebuilds and the timeline                    |
+| `Flutter DevTools: CPU Profiler`     | Where the time goes, by function                                |
+| `Flutter DevTools: Memory`           | The heap, allocations and leaks                                 |
+| `Flutter DevTools: Network`          | HTTP requests and their responses                               |
+| `Flutter DevTools: Logging`          | Logs, `log()`'s included, and framework events                  |
+
+The tasks are in the Run tab because the Debug tab only starts debug sessions. Without an app
+under the debugger, a task says so in the terminal and opens nothing; an app started from the Run
+tab (`Flutter: run on ...`) has no DevTools here, but `flutter run` prints a DevTools link in its
+terminal.
+
+The page opens in a window of its own, next to Zed: Chrome, Edge or Chromium in app mode (no tabs,
+no address bar), or the default browser without them. Every page is a tab of that window, so one
+task is enough to reach all of them. The debug console prints DevTools' address too.
+
+**Selecting a widget opens its code in Zed**: a click in the inspector's tree, or, with *Select
+Widget Mode* on (the inspector's toolbar), a tap on the widget in the app. This needs Zed's command
+line tool, `zed`: on macOS, command palette → `cli: install`; elsewhere it must be on `PATH`
+(Zed's Linux installer puts it in `~/.local/bin`).
+
+DevTools is the Dart SDK's own (`dart devtools`), served for each app the debugger runs, and
+stopped with it; `"devTools": false` in a scenario of your own turns it off. A task finds the app
+of its project through `~/.zed-flutter/sessions/`, where the debugger records each app's DevTools
+address.
+
+### Why DevTools Is Not Inside Zed
+
+DevTools is a web app. VS Code shows it in a panel because VS Code can show web pages (webviews);
+Zed cannot, and a Zed extension cannot draw panels or windows of its own: it can only give Zed data
+(completions, highlighting, tasks, debuggers). So, until Zed can show web pages, DevTools lives in
+a window next to it. A browser that draws in the terminal (such as Carbonyl) could show it in Zed's
+terminal, but at a resolution too coarse for DevTools to be usable.
+
+## How It Works
 ## How It Works
 
 - **The Dart language** ([`languages/dart`](languages/dart), [`src/dart.rs`](src/dart.rs)) is the
@@ -138,15 +187,22 @@ extension writes them into its work directory as they start. Nothing is download
   message through unchanged; once the app runs, it sends Flutter that `hotReload` request itself
   when a `.dart` file under `lib/` changes on disk (several changes within 200 ms make one reload).
   For a `target`, it finds or starts the device before Flutter gets the launch. The debugger's
-  Restart reaches Flutter as a hot restart by itself.
+  Restart reaches Flutter as a hot restart by itself. When Flutter reports the app's VM service, it
+  starts DevTools and records it in `~/.zed-flutter/sessions/`; when Flutter reports a selected
+  widget (a `navigate` tool event), it opens the widget's file in Zed at its line. And since
+  Flutter's adapter answers a `disconnect` by killing `flutter run`, which leaves a desktop app
+  running, the proxy sends it a `terminate` first, so that Stop quits the app.
 - **[`flutter_run.dart`](tool/flutter_run.dart), the runner of the run tasks.** It finds or starts
   the device, then runs `flutter run -d <device>` in the terminal.
+- **[`flutter_devtools.dart`](tool/flutter_devtools.dart), the program of the DevTools tasks.** It
+  finds the app of the project in `~/.zed-flutter/sessions/` and opens the page for it.
 - **[`flutter_lsp.dart`](tool/flutter_lsp.dart), a language server next to the Dart one.** It
   offers the snippets as completions carrying edits that add their imports: Zed's own snippets
   can only insert at the cursor. And since a task cannot name the extension's directory,
-  which differs between OSes, the run tasks start `~/.zed-flutter/flutter_run.dart`, which this
-  server keeps there and up to date.
-- [`devices.dart`](tool/devices.dart) finds and starts devices;
+  which differs between OSes, the run and DevTools tasks start `~/.zed-flutter/flutter_run.dart`
+  and `~/.zed-flutter/flutter_devtools.dart`, which this server keeps there and up to date.
+- [`devices.dart`](tool/devices.dart) finds and starts devices; [`devtools.dart`](tool/devtools.dart)
+  starts DevTools, keeps the sessions, opens windows and Zed;
   [`protocol.dart`](tool/protocol.dart) frames the messages of the proxy and the server.
 
 ## Snippets
@@ -388,11 +444,12 @@ The Dart language server has snippets of its own, so these do not repeat them: `
 ```sh
 python3 tests/check_snippets.py     # the snippets; needs flutter in PATH
 python3 tests/check_proxy.py        # the debug adapter proxy, against a stand-in for Flutter
+python3 tests/check_devtools.py     # DevTools: served, its pages opened, widgets opened in Zed
 python3 tests/check_queries.py      # the Dart queries against the pinned grammar; needs cargo
 python3 tests/check_tasks.py        # the run tasks, the debug locator and the targets agree
 python3 tests/check_lsp.py          # the language server: snippets and their imports, the runner
 python3 tests/check_run.py          # the runner of the run tasks, against a stand-in for Flutter
-python3 tests/check_hot_reload.py [--device <target>]   # a real app: reload and restart
+python3 tests/check_hot_reload.py [--device <target>]   # a real app: reload, restart, DevTools, Stop
 ```
 
 `check_queries.py` builds the grammar `extension.toml` pins, compiles every query of
@@ -403,8 +460,10 @@ token names the capture expected there. Add a line there with each change to `hi
 `check_hot_reload.py` creates a Flutter app, runs it through the proxy and Flutter's adapter the way
 Zed does (on this OS's desktop, or `--device ios-simulator`, `android`, ...), saves a change and
 checks that the new code runs without a restart, then sends Restart and checks that `main` runs
-again. The other checks need no device: `tests/fake_flutter.py` stands in for `flutter`, its debug
-adapter, its device list and its emulators. CI runs them on Linux, macOS and Windows, and the real
+again, that DevTools is served and a widget selected in the inspector opens its code in Zed, and
+that Stop quits the app. The other checks need no device: `tests/fake_flutter.py`
+stands in for `flutter`, its debug adapter, its device list and its emulators, and
+`tests/fake_devtools.py` for DevTools, a browser and `zed`. CI runs them on Linux, macOS and Windows, and the real
 app on macOS, the iOS Simulator, Windows, Linux and an Android emulator.
 
 ### Snippets

@@ -3,11 +3,11 @@
 - it answers initialize, shutdown and exit, and refuses other requests;
 - it offers the snippets of tool/snippets.json as completions, each with edits that add the
   imports it needs where `dart format` keeps imports (a `dart:` one among the `dart:` ones, or
-  first with a blank line; others last; after a `library` directive), or none when the file has the import, or
-  one that brings the same (`debugPrint` comes with any Flutter library, widgets with material);
-  edits to the file count;
-- it copies flutter_run.dart and devices.dart to ~/.zed-flutter/, and copies them again when they
-  differ;
+  first with a blank line; others last; after a `library` directive), or none when the file has
+  the import, or one that brings the same (`debugPrint` comes with any Flutter library, widgets
+  with material); edits to the file count;
+- it copies the programs of the run and DevTools tasks (flutter_run.dart, flutter_devtools.dart
+  and what they import) to ~/.zed-flutter/, and copies them again when they differ;
 - it writes nothing into the project.
 
     python3 tests/check_lsp.py        # needs `dart` in PATH
@@ -155,7 +155,7 @@ def main():
         check(code == 0, "it exits on exit")
 
         runner = home / ".zed-flutter"
-        same = lambda: all((runner / n).read_text() == (TOOL / n).read_text() for n in ("flutter_run.dart", "devices.dart"))
+        same = lambda: all((runner / n).read_text() == (TOOL / n).read_text() for n in ("flutter_run.dart", "devices.dart", "flutter_devtools.dart", "devtools.dart"))
         check(same(), "the runner is copied to ~/.zed-flutter/")
         check(sorted(p.relative_to(app) for p in app.rglob("*")) == before, "nothing is written into the project")
 
