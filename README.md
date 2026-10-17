@@ -6,6 +6,7 @@ Extensions for the [Zed](https://zed.dev) editor.
 |---------------------------------------------|-------------------------------------------------------------------------------------------------|
 | [HTTP Client](http-client-extension/README.md)   | An IntelliJ IDEA-style HTTP client: run requests from `.http` / `.rest` files from the gutter, switch environments, and generate requests from routes and HTTP calls in 48 frameworks. |
 | [Farum Azula Themes](theme-extension/README.md) | Two dark themes: **Farum Azula Transparent** (a transparent window) and **Farum Azula Dark** (opaque, for full screen). |
+| [Flutter Tools](flutter-extension/README.md) | 141 Flutter and Dart snippets: widgets, layouts, builders, navigation, forms, animations and widget tests; each one checked to compile. |
 
 ## Installation
 
@@ -61,6 +62,7 @@ version. The installers find extensions by these folders, so a new one needs no 
 | `.github/workflows/install-scripts.yml`      | Runs both installers on macOS, Linux and Windows.              |
 | `.github/scripts/test-install.ps1`           | Checks what the installers did; runs locally as well.          |
 | `.github/workflows/http-client-extension*.yml` | Tests and releases of the HTTP Client extension.             |
+| `.github/workflows/flutter-extension.yml`    | Checks the Flutter Tools snippets.                             |
 
 ## License
 

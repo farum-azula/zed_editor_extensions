@@ -1,0 +1,1602 @@
+{
+  "Material app": {
+    "prefix": "mapp",
+    "body": [
+      "import 'package:flutter/material.dart';",
+      "",
+      "void main() => runApp(const ${1:App}());",
+      "",
+      "class ${1:App} extends StatelessWidget {",
+      "  const ${1:App}({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return MaterialApp(",
+      "      title: '${2:Flutter App}',",
+      "      theme: ThemeData(colorSchemeSeed: ${3:Colors.blue}),",
+      "      home: ${4:const Placeholder()},",
+      "    );",
+      "  }",
+      "}"
+    ],
+    "description": "A MaterialApp with a home screen"
+  },
+  "Cupertino app": {
+    "prefix": "capp",
+    "body": [
+      "import 'package:flutter/cupertino.dart';",
+      "",
+      "void main() => runApp(const ${1:App}());",
+      "",
+      "class ${1:App} extends StatelessWidget {",
+      "  const ${1:App}({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return CupertinoApp(",
+      "      title: '${2:Flutter App}',",
+      "      home: ${3:const Placeholder()},",
+      "    );",
+      "  }",
+      "}"
+    ],
+    "description": "A CupertinoApp with a home screen"
+  },
+  "Async main": {
+    "prefix": "mna",
+    "body": [
+      "Future<void> main() async {",
+      "  WidgetsFlutterBinding.ensureInitialized();",
+      "  $0",
+      "  runApp(${1:const Placeholder()});",
+      "}"
+    ],
+    "description": "main() that initializes bindings before runApp"
+  },
+  "ThemeData": {
+    "prefix": "thd",
+    "body": [
+      "ThemeData(",
+      "  colorScheme: ColorScheme.fromSeed(",
+      "    seedColor: ${1:Colors.blue},",
+      "    brightness: Brightness.${2|light,dark|},",
+      "  ),",
+      ")"
+    ],
+    "description": "A Material 3 ThemeData from a seed color"
+  },
+  "Stateless widget with child": {
+    "prefix": "slc",
+    "body": [
+      "class ${1:MyWidget} extends StatelessWidget {",
+      "  const ${1:MyWidget}({super.key, required this.child});",
+      "",
+      "  final Widget child;",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${2:child};",
+      "  }",
+      "}"
+    ],
+    "description": "A StatelessWidget that wraps a child"
+  },
+  "Stateful widget with a parameter": {
+    "prefix": "sfp",
+    "body": [
+      "class ${1:MyWidget} extends StatefulWidget {",
+      "  const ${1:MyWidget}({super.key, required this.${3:value}});",
+      "",
+      "  final ${2:String} ${3:value};",
+      "",
+      "  @override",
+      "  State<${1:MyWidget}> createState() => _${1:MyWidget}State();",
+      "}",
+      "",
+      "class _${1:MyWidget}State extends State<${1:MyWidget}> {",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${4:Text('\\${widget.${3:value}\\}')};",
+      "  }",
+      "}"
+    ],
+    "description": "A StatefulWidget with a field read through widget."
+  },
+  "InheritedWidget": {
+    "prefix": "inh",
+    "body": [
+      "class ${1:MyScope} extends InheritedWidget {",
+      "  const ${1:MyScope}({super.key, required this.${3:data}, required super.child});",
+      "",
+      "  final ${2:String} ${3:data};",
+      "",
+      "  static ${1:MyScope}? maybeOf(BuildContext context) =>",
+      "      context.dependOnInheritedWidgetOfExactType<${1:MyScope}>();",
+      "",
+      "  static ${1:MyScope} of(BuildContext context) {",
+      "    final scope = maybeOf(context);",
+      "    assert(scope != null, 'No ${1:MyScope} found in context');",
+      "    return scope!;",
+      "  }",
+      "",
+      "  @override",
+      "  bool updateShouldNotify(${1:MyScope} oldWidget) => ${3:data} != oldWidget.${3:data};",
+      "}"
+    ],
+    "description": "An InheritedWidget with of() and maybeOf()"
+  },
+  "ChangeNotifier": {
+    "prefix": "cn",
+    "body": [
+      "class ${1:Counter} extends ChangeNotifier {",
+      "  ${2:int} _${3:value} = ${4:0};",
+      "",
+      "  ${2:int} get ${3:value} => _${3:value};",
+      "",
+      "  set ${3:value}(${2:int} newValue) {",
+      "    if (newValue == _${3:value}) return;",
+      "    _${3:value} = newValue;",
+      "    notifyListeners();",
+      "  }",
+      "}"
+    ],
+    "description": "A ChangeNotifier with one notifying field"
+  },
+  "CustomPainter": {
+    "prefix": "cpt",
+    "body": [
+      "class ${1:MyPainter} extends CustomPainter {",
+      "  @override",
+      "  void paint(Canvas canvas, Size size) {",
+      "    final paint = Paint()..color = ${2:Colors.blue};",
+      "    $0",
+      "  }",
+      "",
+      "  @override",
+      "  bool shouldRepaint(covariant ${1:MyPainter} oldDelegate) => ${3:false};",
+      "}"
+    ],
+    "description": "A CustomPainter"
+  },
+  "CustomClipper": {
+    "prefix": "ccl",
+    "body": [
+      "class ${1:MyClipper} extends CustomClipper<Path> {",
+      "  @override",
+      "  Path getClip(Size size) {",
+      "    return Path()",
+      "      ..lineTo(0, size.height)",
+      "      ..lineTo(size.width, size.height)",
+      "      ..lineTo(size.width, 0)",
+      "      ..close();",
+      "  }",
+      "",
+      "  @override",
+      "  bool shouldReclip(covariant ${1:MyClipper} oldClipper) => ${2:false};",
+      "}"
+    ],
+    "description": "A CustomClipper<Path>"
+  },
+  "initState": {
+    "prefix": "ins",
+    "body": [
+      "@override",
+      "void initState() {",
+      "  super.initState();",
+      "  $0",
+      "}"
+    ],
+    "description": "Override initState"
+  },
+  "dispose": {
+    "prefix": "ds",
+    "body": [
+      "@override",
+      "void dispose() {",
+      "  $0",
+      "  super.dispose();",
+      "}"
+    ],
+    "description": "Override dispose"
+  },
+  "didChangeDependencies": {
+    "prefix": "dcd",
+    "body": [
+      "@override",
+      "void didChangeDependencies() {",
+      "  super.didChangeDependencies();",
+      "  $0",
+      "}"
+    ],
+    "description": "Override didChangeDependencies"
+  },
+  "didUpdateWidget": {
+    "prefix": "duw",
+    "body": [
+      "@override",
+      "void didUpdateWidget(covariant ${1:StatefulWidget} oldWidget) {",
+      "  super.didUpdateWidget(oldWidget);",
+      "  $0",
+      "}"
+    ],
+    "description": "Override didUpdateWidget"
+  },
+  "deactivate": {
+    "prefix": "dea",
+    "body": [
+      "@override",
+      "void deactivate() {",
+      "  $0",
+      "  super.deactivate();",
+      "}"
+    ],
+    "description": "Override deactivate"
+  },
+  "build": {
+    "prefix": "bld",
+    "body": [
+      "@override",
+      "Widget build(BuildContext context) {",
+      "  return ${1:const Placeholder()};",
+      "}"
+    ],
+    "description": "Override build"
+  },
+  "AnimationController field": {
+    "prefix": "ac",
+    "body": [
+      "late final AnimationController _${1:animationController} = AnimationController(",
+      "  vsync: this,",
+      "  duration: const Duration(milliseconds: ${2:300}),",
+      ");"
+    ],
+    "description": "An AnimationController (the State needs a TickerProvider mixin; dispose it)"
+  },
+  "TextEditingController field": {
+    "prefix": "tc",
+    "body": [
+      "final _${1:controller} = TextEditingController();"
+    ],
+    "description": "A TextEditingController (dispose it)"
+  },
+  "ScrollController field": {
+    "prefix": "sc",
+    "body": [
+      "final _${1:scrollController} = ScrollController();"
+    ],
+    "description": "A ScrollController (dispose it)"
+  },
+  "FocusNode field": {
+    "prefix": "fn",
+    "body": [
+      "final _${1:focusNode} = FocusNode();"
+    ],
+    "description": "A FocusNode (dispose it)"
+  },
+  "Form key field": {
+    "prefix": "fk",
+    "body": [
+      "final _${1:formKey} = GlobalKey<FormState>();"
+    ],
+    "description": "A GlobalKey<FormState>"
+  },
+  "Getter": {
+    "prefix": "gt",
+    "body": [
+      "${1:String} get ${2:name} => ${3:_name};"
+    ],
+    "description": "A getter"
+  },
+  "Setter": {
+    "prefix": "st",
+    "body": [
+      "set ${1:name}(${2:String} value) {",
+      "  ${3:_name} = value;",
+      "}"
+    ],
+    "description": "A setter"
+  },
+  "setState": {
+    "prefix": "ss",
+    "body": [
+      "setState(() {",
+      "  $0",
+      "});"
+    ],
+    "description": "Call setState"
+  },
+  "Return if unmounted": {
+    "prefix": "ifm",
+    "body": [
+      "if (!mounted) return;"
+    ],
+    "description": "Stop when the State is no longer mounted (after an await)"
+  },
+  "Return if context unmounted": {
+    "prefix": "ifcm",
+    "body": [
+      "if (!context.mounted) return;"
+    ],
+    "description": "Stop when the BuildContext is no longer mounted (after an await)"
+  },
+  "Navigator push": {
+    "prefix": "np",
+    "body": [
+      "Navigator.of(context).push(",
+      "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+      ");"
+    ],
+    "description": "Push a MaterialPageRoute"
+  },
+  "Navigator pushNamed": {
+    "prefix": "npn",
+    "body": [
+      "Navigator.of(context).pushNamed('${1:/route}');"
+    ],
+    "description": "Push a named route"
+  },
+  "Navigator pushReplacement": {
+    "prefix": "npr",
+    "body": [
+      "Navigator.of(context).pushReplacement(",
+      "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+      ");"
+    ],
+    "description": "Replace the current route"
+  },
+  "Navigator pushAndRemoveUntil": {
+    "prefix": "npa",
+    "body": [
+      "Navigator.of(context).pushAndRemoveUntil(",
+      "  MaterialPageRoute<${1:void}>(builder: (context) => ${2:const Placeholder()}),",
+      "  (route) => false,",
+      ");"
+    ],
+    "description": "Push a route and remove all the others"
+  },
+  "Navigator pop": {
+    "prefix": "npo",
+    "body": [
+      "Navigator.of(context).pop($1);"
+    ],
+    "description": "Pop the current route"
+  },
+  "Navigator popUntil first": {
+    "prefix": "npu",
+    "body": [
+      "Navigator.of(context).popUntil((route) => route.isFirst);"
+    ],
+    "description": "Pop back to the first route"
+  },
+  "showDialog": {
+    "prefix": "sd",
+    "body": [
+      "final ${1:confirmed} = await showDialog<bool>(",
+      "  context: context,",
+      "  builder: (context) => AlertDialog(",
+      "    title: Text('${2:Title}'),",
+      "    content: Text('${3:Content}'),",
+      "    actions: [",
+      "      TextButton(",
+      "        onPressed: () => Navigator.of(context).pop(false),",
+      "        child: const Text('${4:Cancel}'),",
+      "      ),",
+      "      FilledButton(",
+      "        onPressed: () => Navigator.of(context).pop(true),",
+      "        child: const Text('${5:OK}'),",
+      "      ),",
+      "    ],",
+      "  ),",
+      ");"
+    ],
+    "description": "Show an AlertDialog with cancel and confirm actions"
+  },
+  "showModalBottomSheet": {
+    "prefix": "sbs",
+    "body": [
+      "await showModalBottomSheet<${1:void}>(",
+      "  context: context,",
+      "  showDragHandle: true,",
+      "  builder: (context) => ${2:const Placeholder()},",
+      ");"
+    ],
+    "description": "Show a modal bottom sheet"
+  },
+  "Show a SnackBar": {
+    "prefix": "ssb",
+    "body": [
+      "ScaffoldMessenger.of(context).showSnackBar(",
+      "  SnackBar(content: Text('${1:Message}')),",
+      ");"
+    ],
+    "description": "Show a SnackBar through the ScaffoldMessenger"
+  },
+  "Post-frame callback": {
+    "prefix": "pfc",
+    "body": [
+      "WidgetsBinding.instance.addPostFrameCallback((_) {",
+      "  $0",
+      "});"
+    ],
+    "description": "Run code after the current frame"
+  },
+  "Future.delayed": {
+    "prefix": "fd",
+    "body": [
+      "await Future<void>.delayed(const Duration(milliseconds: ${1:300}));"
+    ],
+    "description": "Wait for a duration"
+  },
+  "Timer": {
+    "prefix": "tm",
+    "body": [
+      "final ${1:timer} = Timer(const Duration(seconds: ${2:1}), () {",
+      "  $0",
+      "});"
+    ],
+    "description": "Start a Timer (import dart:async)"
+  },
+  "Periodic Timer": {
+    "prefix": "tmp",
+    "body": [
+      "final ${1:timer} = Timer.periodic(const Duration(seconds: ${2:1}), (timer) {",
+      "  $0",
+      "});"
+    ],
+    "description": "Start a periodic Timer (import dart:async)"
+  },
+  "Completer": {
+    "prefix": "cpl",
+    "body": [
+      "final ${1:completer} = Completer<${2:void}>();"
+    ],
+    "description": "Create a Completer (import dart:async)"
+  },
+  "try / catch / finally": {
+    "prefix": "tcf",
+    "body": [
+      "try {",
+      "  $0",
+      "} catch (error, stackTrace) {",
+      "  ${1:debugPrint('\\$error\\n\\$stackTrace');}",
+      "} finally {",
+      "  $2",
+      "}"
+    ],
+    "description": "try with catch and finally"
+  },
+  "debugPrint": {
+    "prefix": "dp",
+    "body": [
+      "debugPrint('${1:message}');"
+    ],
+    "description": "Print in debug builds"
+  },
+  "log": {
+    "prefix": "lg",
+    "body": [
+      "log('${1:message}', name: '${2:app}');"
+    ],
+    "description": "Log through dart:developer"
+  },
+  "Unfocus": {
+    "prefix": "uf",
+    "body": [
+      "FocusScope.of(context).unfocus();"
+    ],
+    "description": "Dismiss the keyboard"
+  },
+  "if-case": {
+    "prefix": "ifc",
+    "body": [
+      "if (${1:value} case ${2:final String text}) {",
+      "  $0",
+      "}"
+    ],
+    "description": "Match a pattern"
+  },
+  "forEach with index": {
+    "prefix": "fid",
+    "body": [
+      "for (final (${1:index}, ${2:item}) in ${3:items}.indexed) {",
+      "  $0",
+      "}"
+    ],
+    "description": "Loop over a list with its indexes"
+  },
+  "Scaffold": {
+    "prefix": "scf",
+    "body": [
+      "Scaffold(",
+      "  appBar: AppBar(title: Text('${1:Title}')),",
+      "  body: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Scaffold with an AppBar"
+  },
+  "AppBar": {
+    "prefix": "ab",
+    "body": [
+      "AppBar(",
+      "  title: Text('${1:Title}'),",
+      "  actions: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "An AppBar with actions"
+  },
+  "Column": {
+    "prefix": "col",
+    "body": [
+      "Column(",
+      "  mainAxisAlignment: MainAxisAlignment.${1|start,center,end,spaceBetween,spaceAround,spaceEvenly|},",
+      "  crossAxisAlignment: CrossAxisAlignment.${2|center,start,end,stretch|},",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A Column"
+  },
+  "Row": {
+    "prefix": "row",
+    "body": [
+      "Row(",
+      "  mainAxisAlignment: MainAxisAlignment.${1|start,center,end,spaceBetween,spaceAround,spaceEvenly|},",
+      "  crossAxisAlignment: CrossAxisAlignment.${2|center,start,end,stretch|},",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A Row"
+  },
+  "Stack": {
+    "prefix": "stk",
+    "body": [
+      "Stack(",
+      "  alignment: Alignment.${1|topLeft,center,bottomCenter|},",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A Stack"
+  },
+  "Positioned": {
+    "prefix": "pos",
+    "body": [
+      "Positioned(",
+      "  top: ${1:0},",
+      "  left: ${2:0},",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Positioned child of a Stack"
+  },
+  "Center": {
+    "prefix": "cen",
+    "body": [
+      "Center(child: ${1:const Placeholder()})"
+    ],
+    "description": "A Center"
+  },
+  "Padding": {
+    "prefix": "pd",
+    "body": [
+      "Padding(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "Padding on all sides"
+  },
+  "Padding symmetric": {
+    "prefix": "pds",
+    "body": [
+      "Padding(",
+      "  padding: const EdgeInsets.symmetric(horizontal: ${1:16}, vertical: ${2:8}),",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "Horizontal and vertical padding"
+  },
+  "SizedBox height": {
+    "prefix": "sbh",
+    "body": [
+      "const SizedBox(height: ${1:16})"
+    ],
+    "description": "Vertical space"
+  },
+  "SizedBox width": {
+    "prefix": "sbw",
+    "body": [
+      "const SizedBox(width: ${1:16})"
+    ],
+    "description": "Horizontal space"
+  },
+  "SizedBox": {
+    "prefix": "sbx",
+    "body": [
+      "SizedBox(",
+      "  width: ${1:100},",
+      "  height: ${2:100},",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "A SizedBox with a child"
+  },
+  "Container": {
+    "prefix": "ct",
+    "body": [
+      "Container(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  color: ${2:Colors.white},",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Container"
+  },
+  "Decorated Container": {
+    "prefix": "dct",
+    "body": [
+      "Container(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  decoration: BoxDecoration(",
+      "    color: ${2:Colors.white},",
+      "    borderRadius: BorderRadius.circular(${3:12}),",
+      "  ),",
+      "  child: ${4:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Container with a rounded BoxDecoration"
+  },
+  "Expanded": {
+    "prefix": "ex",
+    "body": [
+      "Expanded(child: ${1:const Placeholder()})"
+    ],
+    "description": "An Expanded"
+  },
+  "Flexible": {
+    "prefix": "fx",
+    "body": [
+      "Flexible(",
+      "  flex: ${1:1},",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Flexible"
+  },
+  "Align": {
+    "prefix": "al",
+    "body": [
+      "Align(",
+      "  alignment: Alignment.${1|center,topLeft,topCenter,topRight,centerLeft,centerRight,bottomLeft,bottomCenter,bottomRight|},",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "An Align"
+  },
+  "Wrap": {
+    "prefix": "wr",
+    "body": [
+      "Wrap(",
+      "  spacing: ${1:8},",
+      "  runSpacing: ${2:8},",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A Wrap"
+  },
+  "SafeArea": {
+    "prefix": "sa",
+    "body": [
+      "SafeArea(child: ${1:const Placeholder()})"
+    ],
+    "description": "A SafeArea"
+  },
+  "ClipRRect": {
+    "prefix": "crr",
+    "body": [
+      "ClipRRect(",
+      "  borderRadius: BorderRadius.circular(${1:12}),",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "Clip with rounded corners"
+  },
+  "Card": {
+    "prefix": "cd",
+    "body": [
+      "Card(",
+      "  child: Padding(",
+      "    padding: const EdgeInsets.all(${1:16}),",
+      "    child: ${2:const Placeholder()},",
+      "  ),",
+      ")"
+    ],
+    "description": "A Card with padding"
+  },
+  "ListTile": {
+    "prefix": "lt",
+    "body": [
+      "ListTile(",
+      "  leading: ${1:const Icon(Icons.person)},",
+      "  title: Text('${2:Title}'),",
+      "  subtitle: Text('${3:Subtitle}'),",
+      "  trailing: ${4:const Icon(Icons.chevron_right)},",
+      "  onTap: () {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A ListTile"
+  },
+  "Divider": {
+    "prefix": "dv",
+    "body": [
+      "const Divider(height: ${1:1})"
+    ],
+    "description": "A Divider"
+  },
+  "CircularProgressIndicator": {
+    "prefix": "cpi",
+    "body": [
+      "const Center(child: CircularProgressIndicator())"
+    ],
+    "description": "A centered progress indicator"
+  },
+  "Visibility": {
+    "prefix": "vis",
+    "body": [
+      "Visibility(",
+      "  visible: ${1:true},",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "Show a child conditionally"
+  },
+  "ListView": {
+    "prefix": "lv",
+    "body": [
+      "ListView(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A ListView of children"
+  },
+  "ListView.builder": {
+    "prefix": "lvb",
+    "body": [
+      "ListView.builder(",
+      "  itemCount: ${1:items}.length,",
+      "  itemBuilder: (context, index) {",
+      "    final ${2:item} = ${1:items}[index];",
+      "    return ${3:Text('\\$${2:item}')};",
+      "  },",
+      ")"
+    ],
+    "description": "A lazily built ListView"
+  },
+  "ListView.separated": {
+    "prefix": "lvs",
+    "body": [
+      "ListView.separated(",
+      "  itemCount: ${1:items}.length,",
+      "  separatorBuilder: (context, index) => ${2:const Divider()},",
+      "  itemBuilder: (context, index) {",
+      "    final ${3:item} = ${1:items}[index];",
+      "    return ${4:Text('\\$${3:item}')};",
+      "  },",
+      ")"
+    ],
+    "description": "A ListView with separators"
+  },
+  "GridView.builder": {
+    "prefix": "gvb",
+    "body": [
+      "GridView.builder(",
+      "  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(",
+      "    crossAxisCount: ${1:2},",
+      "    mainAxisSpacing: ${2:8},",
+      "    crossAxisSpacing: ${2:8},",
+      "  ),",
+      "  itemCount: ${3:items}.length,",
+      "  itemBuilder: (context, index) {",
+      "    final ${4:item} = ${3:items}[index];",
+      "    return ${5:Text('\\$${4:item}')};",
+      "  },",
+      ")"
+    ],
+    "description": "A lazily built grid with a fixed column count"
+  },
+  "GridView.count": {
+    "prefix": "gvc",
+    "body": [
+      "GridView.count(",
+      "  crossAxisCount: ${1:2},",
+      "  mainAxisSpacing: ${2:8},",
+      "  crossAxisSpacing: ${2:8},",
+      "  children: [",
+      "    $0",
+      "  ],",
+      ")"
+    ],
+    "description": "A grid of children with a fixed column count"
+  },
+  "SingleChildScrollView": {
+    "prefix": "scv",
+    "body": [
+      "SingleChildScrollView(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  child: Column(",
+      "    children: [",
+      "      $0",
+      "    ],",
+      "  ),",
+      ")"
+    ],
+    "description": "A scrollable Column"
+  },
+  "CustomScrollView": {
+    "prefix": "csv",
+    "body": [
+      "CustomScrollView(",
+      "  slivers: [",
+      "    SliverAppBar(",
+      "      title: Text('${1:Title}'),",
+      "      floating: true,",
+      "    ),",
+      "    SliverList.builder(",
+      "      itemCount: ${2:items}.length,",
+      "      itemBuilder: (context, index) => ${3:Text('\\${${2:items}[index]\\}')},",
+      "    ),",
+      "  ],",
+      ")"
+    ],
+    "description": "A CustomScrollView with an app bar and a list"
+  },
+  "SliverList.builder": {
+    "prefix": "slb",
+    "body": [
+      "SliverList.builder(",
+      "  itemCount: ${1:items}.length,",
+      "  itemBuilder: (context, index) => ${2:Text('\\${${1:items}[index]\\}')},",
+      ")"
+    ],
+    "description": "A lazily built sliver list"
+  },
+  "SliverToBoxAdapter": {
+    "prefix": "sla",
+    "body": [
+      "SliverToBoxAdapter(child: ${1:const Placeholder()})"
+    ],
+    "description": "A box widget inside a CustomScrollView"
+  },
+  "SliverPadding": {
+    "prefix": "slp",
+    "body": [
+      "SliverPadding(",
+      "  padding: const EdgeInsets.all(${1:16}),",
+      "  sliver: ${2:const SliverToBoxAdapter()},",
+      ")"
+    ],
+    "description": "Padding around a sliver"
+  },
+  "RefreshIndicator": {
+    "prefix": "ri",
+    "body": [
+      "RefreshIndicator(",
+      "  onRefresh: () async {",
+      "    $0",
+      "  },",
+      "  child: ${1:ListView()},",
+      ")"
+    ],
+    "description": "Pull to refresh"
+  },
+  "PageView.builder": {
+    "prefix": "pvb",
+    "body": [
+      "PageView.builder(",
+      "  itemCount: ${1:items}.length,",
+      "  itemBuilder: (context, index) => ${2:Text('\\${${1:items}[index]\\}')},",
+      ")"
+    ],
+    "description": "A lazily built PageView"
+  },
+  "Tabs": {
+    "prefix": "dtc",
+    "body": [
+      "DefaultTabController(",
+      "  length: ${1:2},",
+      "  child: Scaffold(",
+      "    appBar: AppBar(",
+      "      title: Text('${2:Title}'),",
+      "      bottom: const TabBar(",
+      "        tabs: [",
+      "          Tab(text: '${3:First}'),",
+      "          Tab(text: '${4:Second}'),",
+      "        ],",
+      "      ),",
+      "    ),",
+      "    body: const TabBarView(",
+      "      children: [",
+      "        ${5:Placeholder()},",
+      "        ${6:Placeholder()},",
+      "      ],",
+      "    ),",
+      "  ),",
+      ")"
+    ],
+    "description": "A DefaultTabController with a TabBar and a TabBarView"
+  },
+  "Builder": {
+    "prefix": "bd",
+    "body": [
+      "Builder(",
+      "  builder: (context) {",
+      "    return ${1:const Placeholder()};",
+      "  },",
+      ")"
+    ],
+    "description": "A Builder for a new BuildContext"
+  },
+  "LayoutBuilder": {
+    "prefix": "lb",
+    "body": [
+      "LayoutBuilder(",
+      "  builder: (context, constraints) {",
+      "    if (constraints.maxWidth > ${1:600}) {",
+      "      return ${2:const Placeholder()};",
+      "    }",
+      "    return ${3:const Placeholder()};",
+      "  },",
+      ")"
+    ],
+    "description": "Build from the parent constraints"
+  },
+  "FutureBuilder": {
+    "prefix": "ftb",
+    "body": [
+      "FutureBuilder<${1:String}>(",
+      "  future: ${2:future},",
+      "  builder: (context, snapshot) {",
+      "    if (snapshot.hasError) {",
+      "      return Text('\\${snapshot.error\\}');",
+      "    }",
+      "    if (!snapshot.hasData) {",
+      "      return const Center(child: CircularProgressIndicator());",
+      "    }",
+      "    final ${3:data} = snapshot.requireData;",
+      "    return ${4:Text('\\$${3:data}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Build from a Future, with loading and error states"
+  },
+  "StreamBuilder": {
+    "prefix": "stb",
+    "body": [
+      "StreamBuilder<${1:String}>(",
+      "  stream: ${2:stream},",
+      "  builder: (context, snapshot) {",
+      "    if (snapshot.hasError) {",
+      "      return Text('\\${snapshot.error\\}');",
+      "    }",
+      "    if (!snapshot.hasData) {",
+      "      return const Center(child: CircularProgressIndicator());",
+      "    }",
+      "    final ${3:data} = snapshot.requireData;",
+      "    return ${4:Text('\\$${3:data}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Build from a Stream, with loading and error states"
+  },
+  "ValueListenableBuilder": {
+    "prefix": "vlb",
+    "body": [
+      "ValueListenableBuilder<${1:int}>(",
+      "  valueListenable: ${2:notifier},",
+      "  builder: (context, value, child) {",
+      "    return ${3:Text('\\$value')};",
+      "  },",
+      ")"
+    ],
+    "description": "Rebuild when a ValueListenable changes"
+  },
+  "ListenableBuilder": {
+    "prefix": "lnb",
+    "body": [
+      "ListenableBuilder(",
+      "  listenable: ${1:notifier},",
+      "  builder: (context, child) {",
+      "    return ${2:const Placeholder()};",
+      "  },",
+      ")"
+    ],
+    "description": "Rebuild when a Listenable notifies"
+  },
+  "AnimatedBuilder": {
+    "prefix": "anb",
+    "body": [
+      "AnimatedBuilder(",
+      "  animation: ${1:_animationController},",
+      "  builder: (context, child) {",
+      "    return ${2:Opacity(opacity: ${1:_animationController}.value, child: child)};",
+      "  },",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "Rebuild on every animation tick"
+  },
+  "Text": {
+    "prefix": "tx",
+    "body": [
+      "Text(",
+      "  '${1:Text}',",
+      "  style: Theme.of(context).textTheme.${2|bodyMedium,bodyLarge,bodySmall,titleLarge,titleMedium,titleSmall,headlineMedium,labelLarge|},",
+      ")"
+    ],
+    "description": "A Text with a theme style"
+  },
+  "Text.rich": {
+    "prefix": "rt",
+    "body": [
+      "Text.rich(",
+      "  TextSpan(",
+      "    text: '${1:Hello, }',",
+      "    children: [",
+      "      TextSpan(",
+      "        text: '${2:world}',",
+      "        style: const TextStyle(fontWeight: FontWeight.bold),",
+      "      ),",
+      "    ],",
+      "  ),",
+      ")"
+    ],
+    "description": "Text with several styles"
+  },
+  "Icon": {
+    "prefix": "ic",
+    "body": [
+      "const Icon(Icons.${1:star}, size: ${2:24})"
+    ],
+    "description": "An Icon"
+  },
+  "Image.asset": {
+    "prefix": "img",
+    "body": [
+      "Image.asset(",
+      "  '${1:assets/images/image.png}',",
+      "  fit: BoxFit.${2|cover,contain,fill,fitWidth,fitHeight|},",
+      ")"
+    ],
+    "description": "An image from the assets"
+  },
+  "Image.network": {
+    "prefix": "imgn",
+    "body": [
+      "Image.network(",
+      "  '${1:https://example.com/image.png}',",
+      "  fit: BoxFit.${2|cover,contain,fill,fitWidth,fitHeight|},",
+      "  loadingBuilder: (context, child, progress) =>",
+      "      progress == null ? child : const Center(child: CircularProgressIndicator()),",
+      "  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),",
+      ")"
+    ],
+    "description": "An image from the network, with loading and error states"
+  },
+  "Hero": {
+    "prefix": "hr",
+    "body": [
+      "Hero(",
+      "  tag: '${1:tag}',",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Hero animation"
+  },
+  "GestureDetector": {
+    "prefix": "gd",
+    "body": [
+      "GestureDetector(",
+      "  onTap: () {",
+      "    $0",
+      "  },",
+      "  child: ${1:const Placeholder()},",
+      ")"
+    ],
+    "description": "Detect taps"
+  },
+  "InkWell": {
+    "prefix": "iw",
+    "body": [
+      "InkWell(",
+      "  onTap: () {",
+      "    $0",
+      "  },",
+      "  borderRadius: BorderRadius.circular(${1:12}),",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "A tappable area with a ripple"
+  },
+  "ElevatedButton": {
+    "prefix": "eb",
+    "body": [
+      "ElevatedButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  child: Text('${1:Button}'),",
+      ")"
+    ],
+    "description": "An ElevatedButton"
+  },
+  "FilledButton": {
+    "prefix": "flb",
+    "body": [
+      "FilledButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  child: Text('${1:Button}'),",
+      ")"
+    ],
+    "description": "A FilledButton"
+  },
+  "OutlinedButton": {
+    "prefix": "ob",
+    "body": [
+      "OutlinedButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  child: Text('${1:Button}'),",
+      ")"
+    ],
+    "description": "An OutlinedButton"
+  },
+  "TextButton": {
+    "prefix": "tb",
+    "body": [
+      "TextButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  child: Text('${1:Button}'),",
+      ")"
+    ],
+    "description": "A TextButton"
+  },
+  "IconButton": {
+    "prefix": "ib",
+    "body": [
+      "IconButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  tooltip: '${1:Tooltip}',",
+      "  icon: const Icon(Icons.${2:add}),",
+      ")"
+    ],
+    "description": "An IconButton"
+  },
+  "FloatingActionButton": {
+    "prefix": "fab",
+    "body": [
+      "FloatingActionButton(",
+      "  onPressed: () {",
+      "    $0",
+      "  },",
+      "  tooltip: '${1:Add}',",
+      "  child: const Icon(Icons.${2:add}),",
+      ")"
+    ],
+    "description": "A FloatingActionButton"
+  },
+  "TextField": {
+    "prefix": "tf",
+    "body": [
+      "TextField(",
+      "  controller: ${1:_controller},",
+      "  decoration: const InputDecoration(",
+      "    labelText: '${2:Label}',",
+      "    border: OutlineInputBorder(),",
+      "  ),",
+      "  onChanged: (value) {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A TextField with a controller"
+  },
+  "TextFormField": {
+    "prefix": "tff",
+    "body": [
+      "TextFormField(",
+      "  controller: ${1:_controller},",
+      "  decoration: const InputDecoration(labelText: '${2:Label}'),",
+      "  validator: (value) {",
+      "    if (value == null || value.isEmpty) {",
+      "      return '${3:Required}';",
+      "    }",
+      "    return null;",
+      "  },",
+      ")"
+    ],
+    "description": "A TextFormField with a validator"
+  },
+  "Form": {
+    "prefix": "frm",
+    "body": [
+      "Form(",
+      "  key: ${1:_formKey},",
+      "  child: Column(",
+      "    children: [",
+      "      $0",
+      "      FilledButton(",
+      "        onPressed: () {",
+      "          if (${1:_formKey}.currentState!.validate()) {",
+      "            ${2:// submit}",
+      "          }",
+      "        },",
+      "        child: Text('${3:Submit}'),",
+      "      ),",
+      "    ],",
+      "  ),",
+      ")"
+    ],
+    "description": "A Form with a submit button"
+  },
+  "CheckboxListTile": {
+    "prefix": "cbt",
+    "body": [
+      "CheckboxListTile(",
+      "  value: ${1:false},",
+      "  title: Text('${2:Label}'),",
+      "  onChanged: (value) {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A checkbox with a label"
+  },
+  "SwitchListTile": {
+    "prefix": "swt",
+    "body": [
+      "SwitchListTile(",
+      "  value: ${1:false},",
+      "  title: Text('${2:Label}'),",
+      "  onChanged: (value) {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A switch with a label"
+  },
+  "Slider": {
+    "prefix": "sl",
+    "body": [
+      "Slider(",
+      "  value: ${1:0.5},",
+      "  onChanged: (value) {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A Slider"
+  },
+  "DropdownButton": {
+    "prefix": "dd",
+    "body": [
+      "DropdownButton<${1:String}>(",
+      "  value: ${2:null},",
+      "  items: [",
+      "    for (final item in ${3:const ['a', 'b']})",
+      "      DropdownMenuItem(value: item, child: Text(item)),",
+      "  ],",
+      "  onChanged: (value) {",
+      "    $0",
+      "  },",
+      ")"
+    ],
+    "description": "A DropdownButton"
+  },
+  "AnimatedContainer": {
+    "prefix": "anc",
+    "body": [
+      "AnimatedContainer(",
+      "  duration: const Duration(milliseconds: ${1:300}),",
+      "  curve: Curves.${2|easeInOut,easeOut,easeIn,linear,fastOutSlowIn|},",
+      "  width: ${3:100},",
+      "  height: ${4:100},",
+      "  color: ${5:Colors.blue},",
+      "  child: ${6:const Placeholder()},",
+      ")"
+    ],
+    "description": "A Container that animates its changes"
+  },
+  "AnimatedOpacity": {
+    "prefix": "ano",
+    "body": [
+      "AnimatedOpacity(",
+      "  opacity: ${1:1.0},",
+      "  duration: const Duration(milliseconds: ${2:300}),",
+      "  child: ${3:const Placeholder()},",
+      ")"
+    ],
+    "description": "Fade a child in and out"
+  },
+  "AnimatedSwitcher": {
+    "prefix": "ans",
+    "body": [
+      "AnimatedSwitcher(",
+      "  duration: const Duration(milliseconds: ${1:300}),",
+      "  child: ${2:const Placeholder()},",
+      ")"
+    ],
+    "description": "Animate between children"
+  },
+  "Screen size": {
+    "prefix": "mqs",
+    "body": [
+      "MediaQuery.sizeOf(context)"
+    ],
+    "description": "The size of the screen"
+  },
+  "Theme.of": {
+    "prefix": "th",
+    "body": [
+      "Theme.of(context)"
+    ],
+    "description": "The current theme"
+  },
+  "TextTheme": {
+    "prefix": "tt",
+    "body": [
+      "Theme.of(context).textTheme"
+    ],
+    "description": "The text theme"
+  },
+  "ColorScheme": {
+    "prefix": "cs",
+    "body": [
+      "Theme.of(context).colorScheme"
+    ],
+    "description": "The color scheme"
+  },
+  "Import material": {
+    "prefix": "imm",
+    "body": [
+      "import 'package:flutter/material.dart';"
+    ],
+    "description": "Import package:flutter/material.dart"
+  },
+  "Import cupertino": {
+    "prefix": "imc",
+    "body": [
+      "import 'package:flutter/cupertino.dart';"
+    ],
+    "description": "Import package:flutter/cupertino.dart"
+  },
+  "Import widgets": {
+    "prefix": "imw",
+    "body": [
+      "import 'package:flutter/widgets.dart';"
+    ],
+    "description": "Import package:flutter/widgets.dart"
+  },
+  "Import services": {
+    "prefix": "ims",
+    "body": [
+      "import 'package:flutter/services.dart';"
+    ],
+    "description": "Import package:flutter/services.dart"
+  },
+  "Import dart:async": {
+    "prefix": "ima",
+    "body": [
+      "import 'dart:async';"
+    ],
+    "description": "Import dart:async"
+  },
+  "Data class": {
+    "prefix": "mdl",
+    "body": [
+      "@immutable",
+      "class ${1:Model} {",
+      "  const ${1:Model}({required this.${3:name}});",
+      "",
+      "  factory ${1:Model}.fromJson(Map<String, dynamic> json) =>",
+      "      ${1:Model}(${3:name}: json['${3:name}'] as ${2:String});",
+      "",
+      "  final ${2:String} ${3:name};",
+      "",
+      "  ${1:Model} copyWith({${2:String}? ${3:name}}) =>",
+      "      ${1:Model}(${3:name}: ${3:name} ?? this.${3:name});",
+      "",
+      "  Map<String, dynamic> toJson() => {'${3:name}': ${3:name}};",
+      "",
+      "  @override",
+      "  bool operator ==(Object other) =>",
+      "      other is ${1:Model} && other.${3:name} == ${3:name};",
+      "",
+      "  @override",
+      "  int get hashCode => ${3:name}.hashCode;",
+      "",
+      "  @override",
+      "  String toString() => '${1:Model}(${3:name}: \\$${3:name})';",
+      "}"
+    ],
+    "description": "An immutable class with copyWith, JSON, equality and toString"
+  },
+  "Enhanced enum": {
+    "prefix": "en",
+    "body": [
+      "enum ${1:Status} {",
+      "  ${2:active}('${3:Active}'),",
+      "  ${4:inactive}('${5:Inactive}');",
+      "",
+      "  const ${1:Status}(this.label);",
+      "",
+      "  final String label;",
+      "}"
+    ],
+    "description": "An enum with a field and a constructor"
+  },
+  "Sealed class": {
+    "prefix": "sld",
+    "body": [
+      "sealed class ${1:Result} {",
+      "  const ${1:Result}();",
+      "}",
+      "",
+      "final class ${2:Success} extends ${1:Result} {",
+      "  const ${2:Success}();",
+      "}",
+      "",
+      "final class ${3:Failure} extends ${1:Result} {",
+      "  const ${3:Failure}(this.error);",
+      "",
+      "  final Object error;",
+      "}"
+    ],
+    "description": "A sealed class with two subclasses"
+  },
+  "Extension": {
+    "prefix": "ext",
+    "body": [
+      "extension ${1:StringX} on ${2:String} {",
+      "  $0",
+      "}"
+    ],
+    "description": "An extension"
+  },
+  "Mixin": {
+    "prefix": "mx",
+    "body": [
+      "mixin ${1:MyMixin} {",
+      "  $0",
+      "}"
+    ],
+    "description": "A mixin"
+  },
+  "Singleton": {
+    "prefix": "sgl",
+    "body": [
+      "class ${1:Service} {",
+      "  ${1:Service}._();",
+      "",
+      "  static final instance = ${1:Service}._();",
+      "",
+      "  $0",
+      "}"
+    ],
+    "description": "A class with a single instance"
+  },
+  "typedef": {
+    "prefix": "td",
+    "body": [
+      "typedef ${1:Callback} = ${2:void Function()};"
+    ],
+    "description": "A type alias"
+  },
+  "Async function": {
+    "prefix": "fa",
+    "body": [
+      "Future<${1:void}> ${2:load}() async {",
+      "  $0",
+      "}"
+    ],
+    "description": "A function returning a Future"
+  },
+  "Stream function": {
+    "prefix": "fs",
+    "body": [
+      "Stream<${1:int}> ${2:watch}() async* {",
+      "  $0",
+      "}"
+    ],
+    "description": "A function generating a Stream"
+  },
+  "TODO": {
+    "prefix": "todo",
+    "body": [
+      "// TODO(${1:author}): ${2:description}"
+    ],
+    "description": "A TODO comment"
+  },
+  "testWidgets": {
+    "prefix": "tw",
+    "body": [
+      "testWidgets('${1:description}', (tester) async {",
+      "  await tester.pumpWidget(",
+      "    const MaterialApp(home: ${2:Placeholder()}),",
+      "  );",
+      "",
+      "  expect(find.byType(${3:Placeholder}), findsOneWidget);",
+      "});"
+    ],
+    "description": "A widget test"
+  },
+  "setUp": {
+    "prefix": "su",
+    "body": [
+      "setUp(() {",
+      "  $0",
+      "});"
+    ],
+    "description": "Run before each test"
+  },
+  "tearDown": {
+    "prefix": "tdn",
+    "body": [
+      "tearDown(() {",
+      "  $0",
+      "});"
+    ],
+    "description": "Run after each test"
+  },
+  "setUpAll": {
+    "prefix": "sua",
+    "body": [
+      "setUpAll(() {",
+      "  $0",
+      "});"
+    ],
+    "description": "Run once before all tests"
+  },
+  "Tap and pump": {
+    "prefix": "tp",
+    "body": [
+      "await tester.tap(find.${1|text,byType,byKey,byIcon|}(${2:'Button'}));",
+      "await tester.pumpAndSettle();"
+    ],
+    "description": "Tap a widget and settle"
+  },
+  "Enter text": {
+    "prefix": "et",
+    "body": [
+      "await tester.enterText(find.byType(${1:TextField}), '${2:text}');",
+      "await tester.pump();"
+    ],
+    "description": "Type into a text field"
+  },
+  "expect finder": {
+    "prefix": "ef",
+    "body": [
+      "expect(find.${1|text,byType,byKey,byIcon|}(${2:'Text'}), ${3|findsOneWidget,findsNothing,findsWidgets|});"
+    ],
+    "description": "Expect a widget to be found"
+  }
+}
