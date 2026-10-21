@@ -1,7 +1,0 @@
-# The Dart of the code blocks in documentation comments (languages/dartdoc). The Dart grammar with
-# Dart's highlights.scm, a copy that tests/check_queries.py keeps equal, and nothing else: no
-# outline, runnables or tasks, so that an example's classes and main() stay out of the outline
-# and get no run button. Hidden, so that the language there stays Dart's.
-name = "Dartdoc Code"
-grammar = "dart"
-hidden = true

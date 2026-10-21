@@ -142,6 +142,234 @@
           "blur_effects": {
             "background_color": "#212121B5",
             "color": "#00000000"
+          },
+          "dartdoc.code": {
+            "color": "#505050"
+          },
+          "attribute.builtin.dartdoc": {
+            "color": "#016a2b"
+          },
+          "attribute.dartdoc": {
+            "color": "#016a2b"
+          },
+          "attribute.jsx.dartdoc": {
+            "color": "#016a2b"
+          },
+          "attribute.special.dartdoc": {
+            "color": "#016a2b"
+          },
+          "boolean.dartdoc": {
+            "color": "#345e80"
+          },
+          "comment.dartdoc": {
+            "color": "#303030",
+            "font_style": "italic"
+          },
+          "comment.doc.dartdoc": {
+            "color": "#303030",
+            "font_style": "italic"
+          },
+          "comment.documentation.dartdoc": {
+            "color": "#303030",
+            "font_style": "italic"
+          },
+          "constant.builtin.dartdoc": {
+            "color": "#345e80"
+          },
+          "constant.dartdoc": {
+            "color": "#345e80"
+          },
+          "constructor.dartdoc": {
+            "color": "#345e80"
+          },
+          "embedded.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "enum.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "function.builtin.dartdoc": {
+            "color": "#997600"
+          },
+          "function.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.dartdoc": {
+            "color": "#997600"
+          },
+          "function.decorator.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.decorator.dartdoc": {
+            "color": "#997600"
+          },
+          "function.definition.dartdoc": {
+            "color": "#997600"
+          },
+          "function.kwargs.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.constructor.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.dartdoc": {
+            "color": "#997600"
+          },
+          "function.special.dartdoc": {
+            "color": "#997600"
+          },
+          "function.special.definition.dartdoc": {
+            "color": "#997600"
+          },
+          "keyword.conditional.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.control.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.coroutine.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.declaration.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.definition.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.exception.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.import.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.modifier.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.operator.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.operator.regex.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.repeat.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.return.dartdoc": {
+            "color": "#3b527f"
+          },
+          "label.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "lifetime.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "nested.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "none.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "number.dartdoc": {
+            "color": "#6d7c65"
+          },
+          "operator.dartdoc": {
+            "color": "#6b3102"
+          },
+          "property.dartdoc": {
+            "color": "#5e8498"
+          },
+          "property.name.dartdoc": {
+            "color": "#5e8498"
+          },
+          "punctuation.bracket.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.bracket.jsx.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.delimiter.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.delimiter.jsx.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.special.dartdoc": {
+            "color": "#6a342dff"
+          },
+          "string.dartdoc": {
+            "color": "#7c5748"
+          },
+          "string.doc.dartdoc": {
+            "color": "#7c5748"
+          },
+          "string.escape.dartdoc": {
+            "color": "#81704b"
+          },
+          "string.regex.dartdoc": {
+            "color": "#7c5748"
+          },
+          "string.special.dartdoc": {
+            "color": "#81704b"
+          },
+          "string.special.symbol.dartdoc": {
+            "color": "#81704b"
+          },
+          "tag.component.jsx.dartdoc": {
+            "color": "#345e80"
+          },
+          "tag.jsx.dartdoc": {
+            "color": "#345e80"
+          },
+          "text.jsx.dartdoc": {
+            "color": "#7f7f7f"
+          },
+          "type.builtin.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.builtin.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.call.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.definition.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.inheritance.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.definition.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.interface.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.name.dartdoc": {
+            "color": "#016d47"
+          },
+          "variable.builtin.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.parameter.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.special.dartdoc": {
+            "color": "#5e8498"
           }
         },
         "title_bar.inactive_background": "#2b2b2b"
@@ -395,6 +623,239 @@
           "blur_effects": {
             "background_color": "#212121B5",
             "color": "#00000000"
+          },
+          "dartdoc.code": {
+            "color": "#69676c"
+          },
+          "attribute.builtin.dartdoc": {
+            "color": "#016a2b",
+            "font_style": "italic"
+          },
+          "attribute.dartdoc": {
+            "color": "#016a2b",
+            "font_style": "italic"
+          },
+          "attribute.jsx.dartdoc": {
+            "color": "#016a2b",
+            "font_style": "italic"
+          },
+          "attribute.special.dartdoc": {
+            "color": "#016a2b",
+            "font_style": "italic"
+          },
+          "boolean.dartdoc": {
+            "color": "#595388"
+          },
+          "comment.dartdoc": {
+            "color": "#3f3e41",
+            "font_style": "italic"
+          },
+          "comment.doc.dartdoc": {
+            "color": "#3f3e41",
+            "font_style": "italic"
+          },
+          "comment.documentation.dartdoc": {
+            "color": "#3f3e41",
+            "font_style": "italic"
+          },
+          "constant.builtin.dartdoc": {
+            "color": "#595388"
+          },
+          "constant.dartdoc": {
+            "color": "#595388"
+          },
+          "constructor.dartdoc": {
+            "color": "#973a55"
+          },
+          "embedded.dartdoc": {
+            "color": "#949199"
+          },
+          "enum.dartdoc": {
+            "color": "#949199"
+          },
+          "function.builtin.dartdoc": {
+            "color": "#997600"
+          },
+          "function.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.dartdoc": {
+            "color": "#997600"
+          },
+          "function.decorator.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.decorator.dartdoc": {
+            "color": "#997600"
+          },
+          "function.definition.dartdoc": {
+            "color": "#997600"
+          },
+          "function.kwargs.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.call.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.constructor.dartdoc": {
+            "color": "#997600"
+          },
+          "function.method.dartdoc": {
+            "color": "#997600"
+          },
+          "function.special.dartdoc": {
+            "color": "#997600"
+          },
+          "function.special.definition.dartdoc": {
+            "color": "#997600"
+          },
+          "keyword.conditional.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.control.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.coroutine.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.declaration.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.definition.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.exception.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.import.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.modifier.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.operator.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.operator.regex.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.repeat.dartdoc": {
+            "color": "#3b527f"
+          },
+          "keyword.return.dartdoc": {
+            "color": "#3b527f"
+          },
+          "label.dartdoc": {
+            "color": "#4a8256"
+          },
+          "lifetime.dartdoc": {
+            "color": "#949199"
+          },
+          "nested.dartdoc": {
+            "color": "#949199"
+          },
+          "none.dartdoc": {
+            "color": "#949199"
+          },
+          "number.dartdoc": {
+            "color": "#595388"
+          },
+          "operator.dartdoc": {
+            "color": "#6b3102"
+          },
+          "property.dartdoc": {
+            "color": "#427699"
+          },
+          "property.name.dartdoc": {
+            "color": "#427699"
+          },
+          "punctuation.bracket.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.bracket.jsx.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.delimiter.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.delimiter.jsx.dartdoc": {
+            "color": "#867128"
+          },
+          "punctuation.special.dartdoc": {
+            "color": "#6a342dff"
+          },
+          "string.dartdoc": {
+            "color": "#405c33"
+          },
+          "string.doc.dartdoc": {
+            "color": "#405c33"
+          },
+          "string.escape.dartdoc": {
+            "color": "#949199"
+          },
+          "string.regex.dartdoc": {
+            "color": "#97893d"
+          },
+          "string.special.dartdoc": {
+            "color": "#985832"
+          },
+          "string.special.symbol.dartdoc": {
+            "color": "#985832"
+          },
+          "tag.component.jsx.dartdoc": {
+            "color": "#973a55"
+          },
+          "tag.jsx.dartdoc": {
+            "color": "#973a55"
+          },
+          "text.jsx.dartdoc": {
+            "color": "#949199"
+          },
+          "type.builtin.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.builtin.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.call.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.definition.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.class.inheritance.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.definition.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.interface.dartdoc": {
+            "color": "#016d47"
+          },
+          "type.name.dartdoc": {
+            "color": "#016d47"
+          },
+          "variable.builtin.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.parameter.dartdoc": {
+            "color": "#808080"
+          },
+          "variable.special.dartdoc": {
+            "color": "#706d73",
+            "font_style": "italic"
           }
         }
       }

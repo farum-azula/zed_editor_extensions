@@ -1,11 +1,14 @@
-// What the Dartdoc language (languages/dartdoc) makes of `///` comments: the code of a fenced
-// block that names Dart, or no language, is highlighted as Dart; the rest stays a comment. Marks as
-// in highlights.dart, under the `///` line they are about.
+// What the Dartdoc language (languages/dartdoc) makes of `///` comments: a fenced block is
+// `dartdoc.code`, and its code is highlighted in the language its fence names (Dart for none, as
+// for dartdoc), `keyword.dartdoc` and the like, when it is one of the languages of examples; the
+// rest stays a comment. Marks as in highlights.dart, under the `///` line they are about.
 
 /// Aspect-oriented programming: a class with advice.
 //                                 ^ comment.documentation
 ///
 /// ```dart
+//  ^ dartdoc.code
+//     ^ dartdoc.code
 /// @Aspect()
 //  ^ attribute
 //   ^ attribute
@@ -25,10 +28,43 @@
 /// }
 /// ```
 ///
-/// Spring (Java), not Dart:
+/// Spring (Java):
 /// ```java
+/// @Aspect
+//   ^ attribute
 /// class Auditing {}
-//  ^ comment.documentation
+//  ^ keyword
+//        ^ type
+/// ```
+///
+/// Other languages of examples:
+/// ```rust
+/// fn audit(calls: u32) -> u32 { calls + 1 }
+//  ^ keyword
+//     ^ function
+//                  ^ type
+/// ```
+/// ```js
+/// const calls = [];
+//  ^ keyword
+/// ```
+/// ```ts
+/// interface Clock { now(): Date }
+//  ^ keyword
+//            ^ type
+/// ```
+/// ```python
+/// def audit(calls):
+//  ^ keyword
+//      ^ function
+///     return calls + 1
+//      ^ keyword
+/// ```
+///
+/// A language it has not stays a comment, in a block:
+/// ```kotlin
+/// fun main() {}
+//  ^ dartdoc.code
 /// ```
 ///
 /// A fence without a language is Dart, as for dartdoc:

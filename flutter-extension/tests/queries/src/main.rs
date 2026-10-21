@@ -1,8 +1,8 @@
-//! Runs the Dart grammar (built from GRAMMAR_SRC by build.rs) and this extension's Dartdoc grammar
-//! for check_queries.py:
+//! Runs the Dart grammar (built from GRAMMAR_SRC by build.rs), this extension's Dartdoc grammar and
+//! those of the languages of examples (Cargo.toml) for check_queries.py:
 //!
-//!     dart-queries-check compile <query.scm>...       each query compiles against its grammar
-//!                                                     (dartdoc's for languages/dartdoc, Dart's else)
+//!     dart-queries-check compile <query.scm>...       each query compiles against its grammar, the
+//!                                                     `grammar` of its language's config.toml
 //!     dart-queries-check errors <file.dart>           the file parses without errors
 //!     dart-queries-check captures <highlights.scm> <file.dart>
 //!         every capture, in the order Zed applies them: `row:column<TAB>capture<TAB>text`
@@ -37,8 +37,21 @@ fn grammar(name: &str) -> Language {
     match name {
         "dart" => dart(),
         "dartdoc" => dartdoc(),
+        "java" => tree_sitter_java::LANGUAGE.into(),
+        "rust" => tree_sitter_rust::LANGUAGE.into(),
+        "python" => tree_sitter_python::LANGUAGE.into(),
+        "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
         _ => panic!("no grammar {name}"),
     }
+}
+
+/// The `key = "value"` of a config.toml.
+fn config_value(config: &str, key: &str) -> Option<String> {
+    config.lines().find_map(|line| {
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().to_string())
+    })
 }
 
 fn read(path: &str) -> String {
@@ -51,13 +64,9 @@ fn main() {
         Some("compile") => {
             let mut failed = false;
             for path in &args[2..] {
-                let language = if Path::new(path).parent().and_then(Path::file_name)
-                    == Some("dartdoc".as_ref())
-                {
-                    dartdoc()
-                } else {
-                    dart()
-                };
+                let config = Path::new(path).with_file_name("config.toml");
+                let name = config_value(&read(config.to_str().unwrap()), "grammar").unwrap();
+                let language = grammar(name.trim_matches('"'));
                 if let Err(e) = Query::new(&language, &read(path)) {
                     println!("{path}: {e}");
                     failed = true;
@@ -143,12 +152,7 @@ fn languages(root: &Path) -> Vec<LanguageDir> {
         let Ok(config) = std::fs::read_to_string(dir.join("config.toml")) else {
             continue;
         };
-        let value = |key: &str| {
-            config.lines().find_map(|line| {
-                let (k, v) = line.split_once('=')?;
-                (k.trim() == key).then(|| v.trim().to_string())
-            })
-        };
+        let value = |key: &str| config_value(&config, key);
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         languages.push(LanguageDir {
             name: unquote(&value("name").unwrap()),

@@ -17,7 +17,8 @@ Dart and Flutter for [Zed](https://zed.dev), as they work in VS Code:
   `ftb`); each adds the imports it needs (`scf` flutter/material.dart, `log` dart:developer, ...).
 - **Code in documentation comments, highlighted.** The code blocks of `///` comments
   (```` ```dart ````, or a fence with no language, which dartdoc takes for Dart) are highlighted as
-  Dart; the rest of the comment stays a comment.
+  Dart; the rest of the comment stays a comment. A theme can set the examples apart from the code
+  around them: the Farum Azula themes (`../theme-extension`) darken their colors.
 - **The Dart language itself**: everything Zed's [Dart extension](https://github.com/zed-extensions/dart)
   gives (highlighting, the Dart language server, its tasks, the `Dart` debugger), included as it is.
 
@@ -183,11 +184,15 @@ terminal, but at a resolution too coarse for DevTools to be usable.
   language injects all of a file's `///` comments at once into `Dartdoc`, a small grammar of this
   extension: Zed hands them over a line each, and it finds the fenced code blocks and gives each
   line of their code a node of its own, without the `///`. Those lines, a block at a time, are
-  injected as `Dartdoc Code` ([`languages/dartdoc-code`](languages/dartdoc-code)): the Dart grammar
-  and Dart's `highlights.scm`, and nothing else, so that an example's classes stay out of the
-  outline and its `main()` gets no run button. Both languages are hidden: in a comment, the
-  language is still Dart (comment toggling, `///` on a new line). Blocks of other languages
-  (`java`, `yaml`) are left as comments, since their outline would join the file's.
+  injected into the language the fence names, Dart for none: `Dartdoc Dart`, `Dartdoc Java`,
+  `Dartdoc Rust`, `Dartdoc JavaScript`, `Dartdoc TypeScript`, `Dartdoc Python`
+  (`languages/dartdoc-<name>`). Each is that language's grammar and `highlights.scm`, and nothing
+  else, so that an example's classes stay out of the outline and its `main()` gets no run button.
+  Their captures have `.dartdoc` after them (`keyword.dartdoc`), which a theme styles as `keyword`
+  unless it has a style for them; a block's lines and fences are `dartdoc.code`. All are hidden: in
+  a comment, the language is still Dart (comment toggling, `///` on a new line). Java's grammar is
+  the Java extension's, so Java examples need it installed; the others come with Zed. Blocks of
+  other languages (`kotlin`, `yaml`) stay comments.
 - **The `flutter` debug locator** ([`src/lib.rs`](src/lib.rs)): Zed asks it about each task, and
   it turns each `Flutter: run on <platform>` into `Flutter: debug on <platform>`, a scenario of the
   `Flutter` adapter with that `target`.
@@ -473,9 +478,14 @@ token names the capture expected there. Add a line there with each change to `hi
 It also checks the code blocks of documentation comments: that `tree-sitter-dartdoc/src` is what its
 `grammar.js` generates and its corpus (`test/corpus`) passes, and that in
 `tests/queries/doc_comments.dart`, with its layers built the way Zed builds them, the marks of code
-blocks get Dart's captures and the rest `comment.documentation`. After a change to `grammar.js`,
-regenerate with `npx tree-sitter-cli@0.27.1 generate` in `tree-sitter-dartdoc`; after one to
-`languages/dart/highlights.scm`, copy it to `languages/dartdoc-code`.
+blocks get their language's captures and the rest `comment.documentation`. After a change to
+`grammar.js`, regenerate with `npx tree-sitter-cli@0.27.1 generate` in `tree-sitter-dartdoc`; after
+one to `languages/dart/highlights.scm`, or to the other languages' in `tests/doc_languages` (Zed's
+and the Java extension's, copied with where from), run `python3 tests/check_queries.py --update`: it
+writes `languages/dartdoc-<name>` (each capture suffixed `.dartdoc`), `languages/dartdoc/injections.scm`
+and the `.dartdoc` styles of the Farum Azula themes: the colors of the language's, darkened. A
+language of examples is a line of `DOC_LANGUAGES` there, its grammar a line of
+`tests/queries/Cargo.toml` and of `grammar()` in `tests/queries/src/main.rs`.
 
 `check_hot_reload.py` creates a Flutter app, runs it through the proxy and Flutter's adapter the way
 Zed does (on this OS's desktop, or `--device ios-simulator`, `android`, ...), saves a change and
