@@ -15,6 +15,14 @@ repository = "https://github.com/UserNobody14/tree-sitter-dart"
 # constructors) parses, so `class A({required this.x})` is no longer an error.
 commit = "3f0c7a8309d89927e7cc6bef39569c815fddb2e5"
 
+# The code blocks of `///` comments (languages/dartdoc): tree-sitter-dartdoc, in this repository, as
+# of a commit that has it. Local until pushed: before pushing, set the repository to
+# https://github.com/farum-azula/zed_editor_extensions (same commit).
+[grammars.dartdoc]
+repository = "file:///Users/maliketh/farum-azula/zed_editor_extensions"
+commit = "28210589e4557156da61263213e0edd3796428ed"
+path = "flutter-extension/tree-sitter-dartdoc"
+
 [language_servers.dart]
 name = "Dart LSP"
 language = "Dart"
