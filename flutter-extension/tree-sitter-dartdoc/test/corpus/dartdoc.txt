@@ -1,0 +1,128 @@
+=====================================
+Text only
+=====================================
+/// Aspect-oriented programming with `@Aspect`.
+///
+/// See [Advised].
+
+---
+
+(document)
+
+=====================================
+A dart code block
+=====================================
+/// Docs.
+///
+/// ```dart
+/// @Aspect()
+/// class Auditing {}
+/// ```
+/// More docs.
+
+---
+
+(document
+  (code_block
+    (fence)
+    language: (info_string)
+    (code)
+    (code)
+    (fence)))
+
+=====================================
+A fence without a language
+=====================================
+/// ```
+/// void main() {}
+///
+/// ```
+
+---
+
+(document
+  (code_block
+    (fence)
+    (code)
+    (code)
+    (fence)))
+
+=====================================
+Indented fences, tildes, a spaced info string with more after it
+=====================================
+///   ```dart
+/// x;
+///   ```
+/// ~~~ java title="Spring"
+/// y;
+/// ~~~
+
+---
+
+(document
+  (code_block
+    (fence)
+    language: (info_string)
+    (code)
+    (fence))
+  (code_block
+    (fence)
+    language: (info_string)
+    (code)
+    (fence)))
+
+=====================================
+Backticks that are not a fence
+=====================================
+/// Uses ``code`` and `x`.
+///     ```four spaces in```
+
+---
+
+(document)
+
+=====================================
+A code block left open at the end
+=====================================
+/// ```dart
+/// final x = 1;
+/// // a comment
+---
+
+(document
+  (code_block
+    (fence)
+    language: (info_string)
+    (code)
+    (code)))
+
+=====================================
+A closing fence at the end, without a newline
+=====================================
+/// ```dart
+/// x;
+/// ```
+---
+
+(document
+  (code_block
+    (fence)
+    language: (info_string)
+    (code)
+    (fence)))
+
+=====================================
+Four slashes
+=====================================
+//// A divider.
+/// ```
+//// x;
+/// ```
+
+---
+
+(document
+  (code_block
+    (fence)
+    (code)
+    (fence)))

@@ -1,0 +1,6 @@
+# The `///` comments of a Dart file, which languages/dart/injections.scm hands over all together:
+# the grammar (tree-sitter-dartdoc) finds their fenced code blocks. Hidden, so that a comment's
+# language stays Dart (comment toggling, `///` on a new line) and no file opens as Dartdoc.
+name = "Dartdoc"
+grammar = "dartdoc"
+hidden = true

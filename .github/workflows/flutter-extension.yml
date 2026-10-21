@@ -5,7 +5,9 @@ name: flutter-extension
 #   they list;
 # - the extension's WebAssembly builds without warnings;
 # - the Dart language's tree-sitter queries compile against the pinned grammar, which parses the
-#   newest Dart syntax, and highlight a sample as expected;
+#   newest Dart syntax, and highlight a sample as expected; the Dartdoc grammar is generated from
+#   its grammar.js and passes its corpus, and the code blocks of documentation comments are
+#   highlighted as Dart;
 # - the Dart tools (tool/) do what they should against a stand-in for Flutter, on every OS: the
 #   proxy (hot reload on save, device lookup for a target), DevTools (served for the app, its pages
 #   opened by the tasks, a selected widget opened in Zed), the language server (snippets and the
