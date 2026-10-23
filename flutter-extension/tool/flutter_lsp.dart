@@ -1,17 +1,24 @@
-// A language server for Dart files, next to the Dart language server, with two small jobs:
+// A language server for Dart files, next to the Dart language server, with three small jobs:
 //
 //     dart flutter_lsp.dart
 //
 // - The snippets (snippets.json) come from here as completions, which, unlike Zed's snippets, can
 //   carry edits that add the imports a snippet needs (`log` dart:developer, `scf`
-//   flutter/material.dart, ...) when the file does not have them yet.
+//   flutter/material.dart, ...) when the file does not have them yet. They are offered for the
+//   word being typed (`sc` offers `sc`, `scf`, ...), never after `{`, `(`, `.`, a space, ...
 // - The `Flutter: run on <platform>` and `Flutter DevTools: <page>` tasks of the Dart language
 //   (languages/dart/tasks.json) start `~/.zed-flutter/flutter_run.dart` and
 //   `~/.zed-flutter/flutter_devtools.dart`: a task cannot name the extension's own directory, which
 //   differs from one OS to the next. On start, this server copies them and what they import
 //   (runnerFiles) from next to itself to ~/.zed-flutter/, when they differ.
+// - For each project of the workspace that has `build_runner` in the `dev_dependencies` of its
+//   pubspec.yaml (the root, and the directories right under it), it runs
+//   `dart run build_runner watch --delete-conflicting-outputs` while the server lives, and shows
+//   its output in Zed's language server log. `"initialization_options": {"build_runner": false}`
+//   in the settings of `flutter-tools`, or FLUTTER_TOOLS_BUILD_RUNNER=off in the environment,
+//   turns that off.
 //
-// It writes nothing into projects.
+// It writes nothing into projects itself (build_runner writes the generated files).
 
 import 'dart:convert';
 import 'dart:io';
@@ -22,7 +29,16 @@ import 'protocol.dart';
 const runnerDir = '.zed-flutter';
 
 /// The programs the tasks run, and what they import.
-const runnerFiles = ['flutter_run.dart', 'devices.dart', 'flutter_devtools.dart', 'devtools.dart'];
+const runnerFiles = [
+  'flutter_run.dart',
+  'dart_run.dart',
+  'devices.dart',
+  'flutter_devtools.dart',
+  'devtools.dart',
+];
+
+/// What build_runner is run with, in the package directory of each project that uses it.
+const buildRunnerArguments = ['run', 'build_runner', 'watch', '--delete-conflicting-outputs'];
 
 /// Imports that bring what an import of the key brings: flutter/foundation.dart (debugPrint) comes
 /// with widgets.dart, which comes with material.dart and cupertino.dart.
@@ -44,11 +60,16 @@ Future<void> main() async {
   final here = File.fromUri(Platform.script).parent;
   final snippets = loadSnippets(File('${here.path}/snippets.json'));
   final documents = <String, String>{};
+  final watches = BuildRunnerWatches(_send);
+  var roots = <Directory>[];
+  var watchBuilds = true;
   await for (final message in stdin.transform(DapDecoder())) {
     final id = message['id'];
     final params = (message['params'] as Map?)?.cast<String, Object?>() ?? const {};
     switch (message['method']) {
       case 'initialize':
+        roots = workspaceRoots(params);
+        watchBuilds = buildRunnerEnabled(params['initializationOptions'], Platform.environment);
         final log = <String>[];
         try {
           installRunner(here, log.add);
@@ -72,6 +93,10 @@ Future<void> main() async {
             'params': {'type': 1, 'message': line},
           });
         }
+      case 'initialized':
+        if (watchBuilds) {
+          watches.start([for (final root in roots) ...buildRunnerProjects(root)]);
+        }
       case 'textDocument/didOpen':
         final document = params['textDocument'] as Map;
         documents[document['uri'] as String] = document['text'] as String;
@@ -85,13 +110,29 @@ Future<void> main() async {
         documents.remove((params['textDocument'] as Map)['uri']);
       case 'textDocument/completion':
         final uri = (params['textDocument'] as Map)['uri'] as String;
+        final position = (params['position'] as Map?) ?? const {};
+        // Zed asks with TriggerCharacter (2) after a character some server declared (`{`, `.`,
+        // `(` of the Dart server) and with Invoked (1, the LSP default) for typed letters and
+        // for ctrl-space (or whatever key runs editor::ShowCompletions).
+        final context = params['context'] as Map?;
         _send({
           'id': id,
-          'result': {'isIncomplete': false, 'items': completions(snippets, documents[uri] ?? '')},
+          'result': {
+            'isIncomplete': false,
+            'items': completions(
+              snippets,
+              documents[uri] ?? '',
+              (position['line'] as num?)?.toInt() ?? -1,
+              (position['character'] as num?)?.toInt() ?? 0,
+              invoked: (context?['triggerKind'] as num?)?.toInt() != 2,
+            ),
+          },
         });
       case 'shutdown':
+        watches.stop();
         _send({'id': id, 'result': null});
       case 'exit':
+        watches.stop();
         exit(0);
       default:
         if (id != null && message['method'] != null) {
@@ -102,6 +143,9 @@ Future<void> main() async {
         }
     }
   }
+  // Zed went away without `exit`.
+  watches.stop();
+  exit(0);
 }
 
 void _send(Map<String, Object?> message) =>
@@ -131,22 +175,52 @@ List<Snippet> loadSnippets(File file) {
   ];
 }
 
-/// The snippets as completion items for a file with [text]: each adds the imports it needs that
-/// the file has none that brings.
-List<Map<String, Object?>> completions(List<Snippet> snippets, String text) => [
-  for (final snippet in snippets)
-    {
-      'label': snippet.prefix,
-      'filterText': snippet.prefix,
-      'kind': 15, // Snippet
-      'detail': snippet.name,
-      'documentation': '${snippet.description}\n\n`${snippet.body}`',
-      'insertTextFormat': 2, // Snippet
-      'insertText': snippet.body,
-      if (importEdits(text, snippet.imports) case final edits when edits.isNotEmpty)
-        'additionalTextEdits': edits,
-    },
-];
+final _wordEnd = RegExp(r'[A-Za-z0-9_$]+$');
+
+/// The word that ends at [character] (UTF-16 units, as in the protocol) of [line] (from 0) of
+/// [text]: what has been typed of an identifier, or '' after anything else (`{`, `.`, a space, the
+/// start of the line) and outside the text.
+String typedPrefix(String text, int line, int character) {
+  final lines = LineSplitter.split(text).toList();
+  if (line < 0 || line >= lines.length || character <= 0) {
+    return '';
+  }
+  final end = character < lines[line].length ? character : lines[line].length;
+  return _wordEnd.firstMatch(lines[line].substring(0, end))?.group(0) ?? '';
+}
+
+/// The snippets as completion items for a file with [text], at [character] of [line]: those whose
+/// prefix starts with the word being typed there (any case). With no word there, all of them when
+/// the completion was [invoked] (ctrl-space), none when a trigger character brought it, so that
+/// nothing pops up after `{` or `(`. Each adds the imports it needs that the file has none that
+/// brings.
+List<Map<String, Object?>> completions(
+  List<Snippet> snippets,
+  String text,
+  int line,
+  int character, {
+  bool invoked = true,
+}) {
+  final typed = typedPrefix(text, line, character).toLowerCase();
+  if (typed.isEmpty && !invoked) {
+    return const [];
+  }
+  return [
+    for (final snippet in snippets)
+      if (typed.isEmpty || snippet.prefix.toLowerCase().startsWith(typed))
+        {
+          'label': snippet.prefix,
+          'filterText': snippet.prefix,
+          'kind': 15, // Snippet
+          'detail': snippet.name,
+          'documentation': '${snippet.description}\n\n`${snippet.body}`',
+          'insertTextFormat': 2, // Snippet
+          'insertText': snippet.body,
+          if (importEdits(text, snippet.imports) case final edits when edits.isNotEmpty)
+            'additionalTextEdits': edits,
+        },
+  ];
+}
 
 /// The edits that add the imports of [libraries] that [text] lacks, the `dart:` ones first: edits
 /// at the same place apply in their order.
@@ -213,4 +287,204 @@ void installRunner(Directory source, void Function(String) log) {
       to.writeAsStringSync(text);
     }
   }
+}
+
+/// The folders of the workspace the client opened: its `workspaceFolders`, else its `rootUri`.
+List<Directory> workspaceRoots(Map<String, Object?> initializeParams) {
+  final uris = <String>[
+    for (final folder in (initializeParams['workspaceFolders'] as List?) ?? const [])
+      if (folder is Map && folder['uri'] is String) folder['uri'] as String,
+  ];
+  if (uris.isEmpty && initializeParams['rootUri'] is String) {
+    uris.add(initializeParams['rootUri'] as String);
+  }
+  return [
+    for (final uri in uris.toSet())
+      if (Uri.tryParse(uri) case final parsed? when parsed.scheme == 'file')
+        Directory.fromUri(parsed),
+  ];
+}
+
+/// Whether to run build_runner: not when the `build_runner` initialization option is false (or
+/// "off"), nor when FLUTTER_TOOLS_BUILD_RUNNER is "off" (or false, 0, no).
+bool buildRunnerEnabled(Object? initializationOptions, Map<String, String> environment) {
+  bool off(Object? value) =>
+      value == false ||
+      (value is String && const {'off', 'false', '0', 'no'}.contains(value.trim().toLowerCase()));
+  final option = initializationOptions is Map ? initializationOptions['build_runner'] : null;
+  return !off(option) && !off(environment['FLUTTER_TOOLS_BUILD_RUNNER']);
+}
+
+/// The package directories to run build_runner in: [root] and the directories right under it (the
+/// members of a pub workspace, the packages of a monorepo), hidden ones left out, whose
+/// pubspec.yaml has `build_runner` in `dev_dependencies`.
+List<Directory> buildRunnerProjects(Directory root) {
+  final packages = <Directory>[root];
+  try {
+    packages.addAll(
+      root
+          .listSync(followLinks: false)
+          .whereType<Directory>()
+          .where((directory) => !_basename(directory.path).startsWith('.'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path)),
+    );
+  } on FileSystemException {
+    // A root that cannot be listed is just the one package.
+  }
+  return [
+    for (final package in packages)
+      if (_readPubspec(package) case final text? when devDependsOnBuildRunner(text)) package,
+  ];
+}
+
+String? _readPubspec(Directory package) {
+  try {
+    return File('${package.path}/pubspec.yaml').readAsStringSync();
+  } on FileSystemException {
+    return null;
+  }
+}
+
+String _basename(String path) => path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).last;
+
+final _buildRunnerKey = RegExp(r"""^['"]?build_runner['"]?\s*:""");
+
+/// Whether [pubspec] lists `build_runner` among its `dev_dependencies`. Read by lines, since the
+/// tools bring no YAML parser: the key at the indentation of the section's first entry.
+bool devDependsOnBuildRunner(String pubspec) {
+  var inDevDependencies = false;
+  int? indent;
+  for (final line in LineSplitter.split(pubspec)) {
+    final entry = line.trimLeft();
+    if (entry.isEmpty || entry.startsWith('#')) {
+      continue;
+    }
+    if (entry.length == line.length) {
+      inDevDependencies = RegExp(r'^dev_dependencies\s*:').hasMatch(line);
+      indent = null;
+    } else if (inDevDependencies) {
+      indent ??= line.length - entry.length;
+      if (line.length - entry.length == indent && _buildRunnerKey.hasMatch(entry)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+final _buildSummary = RegExp(r'\b(Succeeded|Failed) after\b');
+
+/// The `build_runner watch` processes of a workspace, with their output in the client's log.
+class BuildRunnerWatches {
+  BuildRunnerWatches(this._send);
+
+  final void Function(Map<String, Object?>) _send;
+  final _started = <String>{};
+  final _processes = <Process>[];
+  var _stopped = false;
+
+  /// Starts a watch in each of [projects] that has none yet.
+  void start(Iterable<Directory> projects) {
+    for (final project in projects) {
+      if (!_stopped && _started.add(project.path)) {
+        _watch(project);
+      }
+    }
+  }
+
+  Future<void> _watch(Directory project) async {
+    final name = _basename(project.path);
+    void message(String method, int type, String text) => _send({
+      'method': method,
+      'params': {'type': type, 'message': 'build_runner $name: $text'},
+    });
+    final Process process;
+    try {
+      // The Dart that runs this server: the one of the Flutter SDK, or fvm's.
+      process = await Process.start(
+        Platform.resolvedExecutable,
+        buildRunnerArguments,
+        workingDirectory: project.path,
+      );
+    } on ProcessException catch (error) {
+      message('window/logMessage', 1, 'could not start: ${error.message}');
+      return;
+    }
+    if (_stopped) {
+      killTree(process);
+      return;
+    }
+    _processes.add(process);
+    void forward(Stream<List<int>> output, int type) {
+      output
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          .listen((line) {
+            if (line.trim().isEmpty) {
+              return;
+            }
+            message('window/logMessage', type, line);
+            if (_buildSummary.firstMatch(line) case final summary?) {
+              message('window/showMessage', summary.group(1) == 'Failed' ? 1 : 3, line.trim());
+            }
+          });
+    }
+
+    forward(process.stdout, 3);
+    forward(process.stderr, 2);
+    process.exitCode.then((code) {
+      _processes.remove(process);
+      if (!_stopped) {
+        message('window/logMessage', code == 0 ? 3 : 1, 'exited with code $code');
+      }
+    });
+  }
+
+  /// Stops the watches, for good.
+  void stop() {
+    _stopped = true;
+    for (final process in _processes) {
+      killTree(process);
+    }
+    _processes.clear();
+  }
+}
+
+/// Kills [process] and what it started: `dart run` runs the program in a process of its own, and
+/// build_runner the build script in another, which would run on without it.
+void killTree(Process process) {
+  try {
+    if (Platform.isWindows) {
+      Process.runSync('taskkill', ['/T', '/F', '/PID', '${process.pid}']);
+      return;
+    }
+    final table = Process.runSync('ps', ['-A', '-o', 'pid=,ppid=']).stdout as String;
+    for (final pid in [...descendants(process.pid, table), process.pid]) {
+      Process.killPid(pid);
+    }
+  } on ProcessException {
+    process.kill();
+  }
+}
+
+/// The pids under [root] in a `ps -o pid=,ppid=` [table], children and their children.
+List<int> descendants(int root, String table) {
+  final children = <int, List<int>>{};
+  for (final line in LineSplitter.split(table)) {
+    final columns = line.trim().split(RegExp(r'\s+'));
+    final pid = columns.length == 2 ? int.tryParse(columns[0]) : null;
+    final parent = columns.length == 2 ? int.tryParse(columns[1]) : null;
+    if (pid != null && parent != null && pid != root) {
+      children.putIfAbsent(parent, () => []).add(pid);
+    }
+  }
+  final found = <int>[];
+  for (final pending = [root]; pending.isNotEmpty;) {
+    for (final child in children[pending.removeLast()] ?? const <int>[]) {
+      found.add(child);
+      pending.add(child);
+    }
+  }
+  return found;
 }

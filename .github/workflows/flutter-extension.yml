@@ -103,6 +103,7 @@ jobs:
       - run: python tests/check_devtools.py
       - run: python tests/check_lsp.py
       - run: python tests/check_run.py
+      - run: python tests/check_dart_run.py
 
   hot-reload:
     name: Hot reload on ${{ matrix.target }}

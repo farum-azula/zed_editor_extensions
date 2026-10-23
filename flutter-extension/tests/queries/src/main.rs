@@ -13,6 +13,8 @@
 //!             error<TAB>depth<TAB>language<TAB>row:column<TAB>node
 //!             capture<TAB>depth<TAB>row:column<TAB>capture<TAB>text
 //!             pending<TAB>depth<TAB>language                   (no such language)
+//!     dart-queries-check runnables <runnables.scm> <file.dart>
+//!         every `@run` capture with its tag: `row:column<TAB>text<TAB>tag`
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -92,8 +94,31 @@ fn main() {
             }
         }
         Some("layers") => layers(Path::new(&args[2]), &read(&args[3])),
+        Some("runnables") => {
+            // Each `@run` capture with the `tag` its pattern sets: what Zed
+            // shows a run button for, and which tasks it offers there.
+            let query = Query::new(&dart(), &read(&args[2])).unwrap();
+            let text = read(&args[3]);
+            let tree = parse(&dart(), &text, None);
+            let run = query.capture_index_for_name("run").unwrap();
+            let mut cursor = QueryCursor::new();
+            let mut matches = cursor.matches(&query, tree.root_node(), text.as_bytes());
+            while let Some(m) = matches.next() {
+                let tag = query
+                    .property_settings(m.pattern_index)
+                    .iter()
+                    .find(|p| &*p.key == "tag")
+                    .and_then(|p| p.value.as_deref().map(str::to_string))
+                    .unwrap_or_default();
+                for node in m.nodes_for_capture_index(run) {
+                    let p = node.start_position();
+                    let name = node.utf8_text(text.as_bytes()).unwrap();
+                    println!("{}:{}\t{name}\t{tag}", p.row + 1, p.column + 1);
+                }
+            }
+        }
         _ => {
-            eprintln!("usage: dart-queries-check compile|errors|captures|layers ...");
+            eprintln!("usage: dart-queries-check compile|errors|captures|layers|runnables ...");
             std::process::exit(64);
         }
     }

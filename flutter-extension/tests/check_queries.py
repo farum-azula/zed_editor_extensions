@@ -242,9 +242,36 @@ def main():
 
     check_dartdoc_grammar()
     check_doc_comments(exe)
+    check_runnables(exe)
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)
+
+
+def check_runnables(exe):
+    """runnables.scm: a run button on every top-level main() (`dart-main`), and on a Flutter app's
+    main() the Flutter run tasks too (`flutter-main`); nothing for tests, which run as a whole."""
+    print("== runnables")
+    query = LANGUAGE / "runnables.scm"
+
+    def runnables(text):
+        with tempfile.NamedTemporaryFile("w", suffix=".dart", delete=False) as f:
+            f.write(text)
+        try:
+            out = subprocess.run([exe, "runnables", str(query), f.name], capture_output=True, text=True, check=True).stdout
+        finally:
+            os.unlink(f.name)
+        return {(line.split("\t")[0], line.split("\t")[2]) for line in out.splitlines()}
+
+    check(runnables("void main(List<String> args) {\n  print(args);\n}\n") == {("1:6", "dart-main")}, "a plain main(): dart-main, on the name")
+    check(
+        runnables("import 'package:flutter/material.dart';\n\nvoid main() => runApp(const App());\n") == {("3:6", "flutter-main"), ("3:6", "dart-main")},
+        "a Flutter app's main(): flutter-main and dart-main",
+    )
+    check(runnables("import 'package:flutter_test/flutter_test.dart';\n\nvoid main() {\n  testWidgets('x', (t) async {});\n}\n") == {("3:6", "dart-main")}, "a Flutter test: only dart-main (tests run as a whole)")
+    check(runnables("import 'package:test/test.dart';\n\nvoid main() {\n  group('g', () {\n    test('t', () {});\n  });\n}\n") == {("3:6", "dart-main")}, "a Dart test: only dart-main, nothing on group or test")
+    check(runnables("void helper() {}\nclass A {\n  void main() {}\n}\n") == {("3:8", "dart-main")}, "only functions named main (a method named main counts too, as in Zed's other languages)")
+    check(runnables("int add(int a, int b) => a + b;\n") == set(), "nothing without a main")
 
 
 def check_marks(fixture, captures):

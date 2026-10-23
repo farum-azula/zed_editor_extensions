@@ -61,9 +61,21 @@ def main():
             f"{task['label']} opens {page} for the project",
         )
 
+    plain = {t["label"]: t for t in tasks}
+    for label, file in (("dart run: $ZED_RELATIVE_FILE", "$ZED_FILE"), ("dart run: bin/main.dart", "$ZED_WORKTREE_ROOT/bin/main.dart")):
+        task = plain.get(label)
+        check(
+            task is not None
+            and task["command"] == f'dart "$HOME/.zed-flutter/dart_run.dart" "{file}"'
+            and "args" not in task
+            and task["cwd"] == "$ZED_WORKTREE_ROOT",
+            f"{label} builds first (dart_run.dart) before running {file}",
+        )
+    check("dart-main" in plain["dart run: $ZED_RELATIVE_FILE"].get("tags", []), "the first is on the run button next to main()")
+
     lsp = (ROOT / "tool" / "flutter_lsp.dart").read_text()
     installed = re.findall(r"'([\w.]+\.dart)'", re.search(r"const runnerFiles = \[([^\]]*)\]", lsp).group(1))
-    check({"flutter_run.dart", "flutter_devtools.dart"} <= set(installed), "the language server installs both programs")
+    check({"flutter_run.dart", "flutter_devtools.dart", "dart_run.dart"} <= set(installed), "the language server installs the programs of the tasks")
     for name in installed:
         imports = re.findall(r"^import '([\w.]+\.dart)';", (ROOT / "tool" / name).read_text(), re.M)
         check(set(imports) <= set(installed), f"and what {name} imports")

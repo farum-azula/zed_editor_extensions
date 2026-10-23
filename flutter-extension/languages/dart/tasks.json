@@ -1,5 +1,25 @@
 [
   {
+    "label": "dart run: $ZED_RELATIVE_FILE",
+    "command": "dart \"$HOME/.zed-flutter/dart_run.dart\" \"$ZED_FILE\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "tags": [
+      "dart-main"
+    ]
+  },
+  {
+    "label": "dart run: bin/main.dart",
+    "command": "dart \"$HOME/.zed-flutter/dart_run.dart\" \"$ZED_WORKTREE_ROOT/bin/main.dart\"",
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "dart test",
+    "command": "dart",
+    "args": [
+      "test"
+    ]
+  },
+  {
     "label": "dart pub get",
     "command": "dart",
     "args": [
@@ -14,6 +34,16 @@
       "run",
       "build_runner",
       "build",
+      "--delete-conflicting-outputs"
+    ]
+  },
+  {
+    "label": "dart run build_runner watch",
+    "command": "dart",
+    "args": [
+      "run",
+      "build_runner",
+      "watch",
       "--delete-conflicting-outputs"
     ]
   },
@@ -54,59 +84,18 @@
     ]
   },
   {
-    "label": "flutter test $ZED_STEM",
+    "label": "flutter test",
     "command": "flutter",
     "args": [
-      "test",
-      "$ZED_FILE"
-    ],
-    "tags": [
-      "flutter-test-main"
+      "test"
     ]
   },
   {
-    "label": "fvm flutter test $ZED_STEM",
+    "label": "fvm flutter test",
     "command": "fvm",
     "args": [
       "flutter",
-      "test",
-      "$ZED_FILE"
-    ],
-    "tags": [
-      "flutter-test-main"
-    ]
-  },
-  {
-    "label": "dart test file $ZED_STEM",
-    "command": "dart",
-    "args": [
-      "test",
-      "$ZED_FILE"
-    ],
-    "tags": [
-      "dart-test-file"
-    ]
-  },
-  {
-    "label": "dart test group $ZED_STEM",
-    "command": "dart",
-    "args": [
-      "test",
-      "\"$ZED_FILE?line=$ZED_ROW\""
-    ],
-    "tags": [
-      "dart-test-group"
-    ]
-  },
-  {
-    "label": "dart test single $ZED_STEM",
-    "command": "dart",
-    "args": [
-      "test",
-      "\"$ZED_FILE?line=$ZED_ROW\""
-    ],
-    "tags": [
-      "dart-test-single"
+      "test"
     ]
   },
   {

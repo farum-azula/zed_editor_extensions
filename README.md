@@ -63,6 +63,7 @@ version. The installers find extensions by these folders, so a new one needs no 
 | `.github/scripts/test-install.ps1`           | Checks what the installers did; runs locally as well.          |
 | `.github/workflows/http-client-extension*.yml` | Tests and releases of the HTTP Client extension.             |
 | `.github/workflows/flutter-extension.yml`    | Checks Flutter Tools: snippets, tools, hot reload on each platform. |
+| `roadmap/bugs.md`                            | Known bugs of the extensions, with causes and the fix to make.   |
 
 ## License
 

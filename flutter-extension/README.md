@@ -58,6 +58,49 @@ They run `lib/main.dart` of the project root, through fvm when the project has a
 anything else (a flavor, another entry point, one particular phone), add a scenario of your own to
 `.zed/debug.json`, see [Options](#options).
 
+### Plain Dart
+
+For a project that is not a Flutter app, `task: spawn` offers, next to `dart pub get`,
+`dart analyze` and `dart format`:
+
+| Task                       | What it runs                                                          |
+|----------------------------|-----------------------------------------------------------------------|
+| `dart run: <file>`         | `dart run` for the file open in the editor, in its package; builds first when the project uses `build_runner`; also on the run button next to `main()` |
+| `dart run: bin/main.dart`  | `dart run bin/main.dart` in the project root; builds first when the project uses `build_runner` |
+| `dart test`                | `dart test` for the whole project (`flutter test` / `fvm flutter test` for a Flutter app) |
+
+The Debug tab offers no `Dart: debug ...` scenario for these tasks yet (that would be a second
+debug locator, Rust code in `src/`; see `roadmap/bugs.md` in the repository root). The `Dart`
+debug adapter is there, though: a scenario of your own in the project's `.zed/debug.json`
+debugs a Dart program:
+
+```json
+{
+  "label": "Dart: bin/main.dart",
+  "adapter": "Dart",
+  "type": "dart",
+  "request": "launch",
+  "program": "bin/main.dart"
+}
+```
+
+### build_runner
+
+When a project has `build_runner` in the `dev_dependencies` of its `pubspec.yaml` (the workspace
+folder itself, and the folders right under it), the Flutter Tools language server starts
+`dart run build_runner watch --delete-conflicting-outputs` there once, when the project opens, and
+stops it, with what it started, when Zed closes the server. Its output is in Zed's language server
+log (`dev: open language server logs`, `flutter-tools`); each `Succeeded` / `Failed` line of a
+build is also shown as a message. To turn it off, set in Zed's settings
+
+```json
+{ "lsp": { "flutter-tools": { "initialization_options": { "build_runner": false } } } }
+```
+
+or start Zed with `FLUTTER_TOOLS_BUILD_RUNNER=off` in the environment. The tasks `dart run
+build_runner build` (a single build) and `dart run build_runner watch` (the watch in a terminal
+tab, for when the automatic one is off) are there as well.
+
 Once you have run `Flutter: run on <platform>`, Zed no longer offers `Flutter: debug on <platform>`
 in the Debug tab until it restarts: Zed leaves the scenarios of tasks already spawned out of the
 list. The other platforms' stay, and so does the run task, under its recent ones.
@@ -220,14 +263,24 @@ extension writes them into its work directory as they start. Nothing is download
   can only insert at the cursor. And since a task cannot name the extension's directory,
   which differs between OSes, the run and DevTools tasks start `~/.zed-flutter/flutter_run.dart`
   and `~/.zed-flutter/flutter_devtools.dart`, which this server keeps there and up to date.
+  It offers a snippet only for the word being typed (`sc` offers `sc`, `scf`, ...), never after
+  `{`, `(` or `.`, and runs `build_runner watch` for the projects that use it (above).
 - [`devices.dart`](tool/devices.dart) finds and starts devices; [`devtools.dart`](tool/devtools.dart)
   starts DevTools, keeps the sessions, opens windows and Zed;
   [`protocol.dart`](tool/protocol.dart) frames the messages of the proxy and the server.
 
 ## Snippets
 
-Type a prefix and pick the snippet from the completion menu. Prefixes are short, mostly the first
-letters of the words: `sfp` is a **s**tate**f**ul widget with a **p**arameter, `lvb` a
+Type a prefix and pick the snippet from the completion menu; the menu shows only the snippets
+that start with what is typed, and nothing after `{`, `(` or `.`. **ctrl-space** (Zed's
+`editor::ShowCompletions`, the same on every platform) lists them all; for option-space on a Mac
+add to `keymap.json`:
+
+```json
+[{ "context": "Editor", "bindings": { "alt-space": "editor::ShowCompletions" } }]
+```
+
+Prefixes are short, mostly the first letters of the words: `sfp` is a **s**tate**f**ul widget with a **p**arameter, `lvb` a
 **L**ist**V**iew.**b**uilder, `ftb` a **F**u**t**ure**B**uilder. **Tab** moves to the next field; a
 field that appears more than once (a class name, say) is edited everywhere at once; fields with a
 fixed set of values (`MainAxisAlignment.start`, `BoxFit.cover`, ...) offer them as a list. Every
@@ -466,7 +519,7 @@ python3 tests/check_proxy.py        # the debug adapter proxy, against a stand-i
 python3 tests/check_devtools.py     # DevTools: served, its pages opened, widgets opened in Zed
 python3 tests/check_queries.py      # the queries against the grammars; needs cargo and npx
 python3 tests/check_tasks.py        # the run tasks, the debug locator and the targets agree
-python3 tests/check_lsp.py          # the language server: snippets and their imports, the runner
+python3 tests/check_lsp.py          # the language server: snippets and their imports, build_runner, the runner
 python3 tests/check_run.py          # the runner of the run tasks, against a stand-in for Flutter
 python3 tests/check_hot_reload.py [--device <target>]   # a real app: reload, restart, DevTools, Stop
 ```
