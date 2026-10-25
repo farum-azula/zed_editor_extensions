@@ -268,6 +268,23 @@ def check_runnables(exe):
         runnables("import 'package:flutter/material.dart';\n\nvoid main() => runApp(const App());\n") == {("3:6", "flutter-main"), ("3:6", "dart-main")},
         "a Flutter app's main(): flutter-main and dart-main",
     )
+    check(
+        runnables("import 'package:flutter/foundation.dart';\n\nvoid main() {}\n") == {("3:6", "flutter-main"), ("3:6", "dart-main")},
+        "any package:flutter/ library: flutter-main",
+    )
+    check(
+        runnables("import 'package:spring_boot_starter_flutter/spring_boot_starter_flutter.dart';\n\n"
+                  "void main() => runApp(\n  SpringApplicationWidget(home: const Page()),\n);\n") == {("3:6", "flutter-main"), ("3:6", "dart-main")},
+        "Flutter through another package: a main() that calls runApp is flutter-main",
+    )
+    check(
+        runnables("void main() {\n  runApp(const App());\n}\n") == {("1:6", "flutter-main"), ("1:6", "dart-main")},
+        "runApp in a block body too",
+    )
+    check(
+        runnables("void main() {\n  run();\n}\nvoid other() => runApp(x);\n") == {("1:6", "dart-main")},
+        "runApp outside main(): only dart-main",
+    )
     check(runnables("import 'package:flutter_test/flutter_test.dart';\n\nvoid main() {\n  testWidgets('x', (t) async {});\n}\n") == {("3:6", "dart-main")}, "a Flutter test: only dart-main (tests run as a whole)")
     check(runnables("import 'package:test/test.dart';\n\nvoid main() {\n  group('g', () {\n    test('t', () {});\n  });\n}\n") == {("3:6", "dart-main")}, "a Dart test: only dart-main, nothing on group or test")
     check(runnables("void helper() {}\nclass A {\n  void main() {}\n}\n") == {("3:8", "dart-main")}, "only functions named main (a method named main counts too, as in Zed's other languages)")

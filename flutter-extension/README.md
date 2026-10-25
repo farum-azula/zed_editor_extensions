@@ -6,8 +6,9 @@ Dart and Flutter for [Zed](https://zed.dev), as they work in VS Code:
   `debugger: start`) offers the app on the iOS Simulator, Android, the web, macOS, Windows and
   Linux: in the terminal, or under the debugger. A simulator or an emulator is started when none
   runs. Nothing is written into the project.
-- **Hot reload on save, hot restart on Restart.** Under the debugger, saving a `.dart` file reloads
-  the app, the debugger's Restart restarts it. No `r` / `R`.
+- **Hot reload on save, hot restart on Restart.** Saving a `.dart` file reloads the app, under the
+  debugger and in the terminal of a `Flutter: run on ...` task alike; the debugger's Restart (or
+  `R` in the terminal) restarts it.
 - **Flutter DevTools** for the app under the debugger: the widget inspector with the live widget
   tree, performance, CPU profiler, memory, network and logging, opened from the Run tab in a window
   next to Zed (Zed cannot show web pages itself). Selecting a widget, in the inspector or in the
@@ -107,7 +108,16 @@ list. The other platforms' stay, and so does the run task, under its recent ones
 
 ## Hot Reload and Hot Restart
 
-Start a `Flutter: debug on ...` scenario, or one of your own of the `Flutter` adapter:
+**In a `Flutter: run on ...` task** (the terminal): saving a `.dart` file under the app's `lib/`
+hot reloads it (several saves within 200 ms make one reload); `r`, `R` and `q` work as in any
+`flutter run`. The runner gives `flutter run` a `--pid-file` and sends it SIGUSR1, Flutter's own
+signal for a hot reload, so the terminal stays Flutter's. Generated code counts too: when
+`build_runner watch` rewrites a `.dart` file under `lib/`, the app reloads. Not on Windows, which
+has no such signals (`r` there); `FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE=off` in Zed's environment
+switches it off; a `--pid-file` of your own in the task's arguments is kept and used.
+
+**Under the debugger**: start a `Flutter: debug on ...` scenario, or one of your own of the
+`Flutter` adapter:
 
 | What you do                              | What happens                                               |
 |------------------------------------------|------------------------------------------------------------|

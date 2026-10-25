@@ -1,7 +1,7 @@
 """A stand-in for the `flutter` command in the tests, without Flutter or devices. What it knows is
 in the JSON file named by FAKE_FLUTTER_STATE: `devices` (as `flutter devices --machine` prints
 them), `emulators` (ids and names), `run_exit` (the exit code of `run`); it appends what it is asked
-to `calls`.
+to `calls`, and the directory `run` runs in to `run_cwds`.
 
 - `debug_adapter`: answers every request with success and reports each one as an output event
   (`received <command>`, `launch <arguments>` for a launch). Two requests of its own drive it:
@@ -11,7 +11,9 @@ to `calls`.
   `dart.toolEvent` of kind `navigate` with its arguments as the data, as Flutter's do. `terminate`
   and `disconnect` are followed by a `terminated` event, and `disconnect` ends it.
 - `devices --machine`, `emulators`, `emulators --launch <id>` (the emulator becomes a device),
-  `run ...` (prints its arguments), `open-simulator <udid>` (stands in for opening Simulator.app).
+  `run ...` (prints its arguments; with `--pid-file` it writes its pid there, runs for
+  `run_seconds` and records the SIGUSR1 / SIGUSR2 it gets in `signals`), `open-simulator <udid>`
+  (stands in for opening Simulator.app).
 """
 
 import json
@@ -59,7 +61,27 @@ if args[:2] == ["emulators", "--launch"]:
             sys.exit(0)
     sys.exit(1)
 if args[:1] == ["run"]:
-    print("run " + " ".join(args[1:]))
+    state.setdefault("run_cwds", []).append(os.path.realpath(os.getcwd()))
+    save(state)
+    print("run " + " ".join(args[1:]), flush=True)
+    if "--pid-file" in args:
+        # Like Flutter: the pid file, and SIGUSR1 / SIGUSR2 for hot reload / restart; it runs for
+        # `run_seconds` and records the signals in `signals`.
+        import signal
+        import time
+
+        def on_signal(number, _frame):
+            current = load()
+            current.setdefault("signals", []).append(signal.Signals(number).name)
+            save(current)
+
+        signal.signal(signal.SIGUSR1, on_signal)
+        signal.signal(signal.SIGUSR2, on_signal)
+        with open(args[args.index("--pid-file") + 1], "w") as f:
+            f.write(str(os.getpid()))
+        end = time.time() + state.get("run_seconds", 0)
+        while time.time() < end:
+            time.sleep(0.05)
     sys.exit(state.get("run_exit", 0))
 if args != ["debug_adapter"]:
     sys.exit(f"fake flutter: unknown command {args}")

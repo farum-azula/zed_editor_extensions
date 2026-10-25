@@ -215,3 +215,139 @@ List<String> flutterCommand(Directory dir) {
   final fvm = File('${dir.path}/.fvmrc').existsSync() || Directory('${dir.path}/.fvm').existsSync();
   return fvm ? ['fvm', 'flutter'] : ['flutter'];
 }
+
+/// The directory of the Flutter app to run from [start] (the worktree root, as tasks and
+/// scenarios give it): [start] itself when it is one; otherwise, in a monorepo or a pub
+/// workspace, the app under it, i.e. a package that depends on the Flutter SDK and has a
+/// `lib/main.dart`. The members of [start]'s `workspace:` are looked at first, then its
+/// subdirectories, a few levels down. Of several apps, the one holding [activeFile] (Zed's
+/// `ZED_FILE` by default) is taken; without one, a [DeviceException] lists them. With none,
+/// [start] is returned, and Flutter reports what it misses there.
+Directory flutterApp(Directory start, {String? activeFile}) {
+  if (isFlutterApp(start)) {
+    return start;
+  }
+  var apps = [
+    for (final member in workspaceMembers(start))
+      if (isFlutterApp(member)) member,
+  ];
+  if (apps.isEmpty) {
+    apps = _appsBelow(start, depth: 3);
+  }
+  if (apps.isEmpty) {
+    return start;
+  }
+  if (apps.length == 1) {
+    return apps.single;
+  }
+  final file = activeFile ?? Platform.environment['ZED_FILE'];
+  if (file != null && file.isNotEmpty) {
+    final path = File(file).absolute.path;
+    for (final app in apps) {
+      if (path.startsWith('${app.absolute.path}${Platform.pathSeparator}')) {
+        return app;
+      }
+    }
+  }
+  throw DeviceException(
+    'this folder holds several Flutter apps (${apps.map((a) => _relative(a, start)).join(', ')}); '
+    'open a file of the one to run, or set "cwd" in a scenario of your own.',
+  );
+}
+
+/// Whether [dir] is a Flutter app: its pubspec.yaml depends on the Flutter SDK and it has a
+/// `lib/main.dart`.
+bool isFlutterApp(Directory dir) {
+  final sep = Platform.pathSeparator;
+  final pubspec = File('${dir.path}${sep}pubspec.yaml');
+  return pubspec.existsSync() &&
+      File('${dir.path}${sep}lib${sep}main.dart').existsSync() &&
+      pubspecDependsOnFlutter(pubspec.readAsStringSync());
+}
+
+/// The directories of the `workspace:` list in [root]'s pubspec.yaml (pub workspaces).
+List<Directory> workspaceMembers(Directory root) {
+  final pubspec = File('${root.path}${Platform.pathSeparator}pubspec.yaml');
+  if (!pubspec.existsSync()) {
+    return const [];
+  }
+  final members = <Directory>[];
+  var inWorkspace = false;
+  for (final line in LineSplitter.split(pubspec.readAsStringSync())) {
+    final entry = line.trim();
+    if (entry.isEmpty || entry.startsWith('#')) {
+      continue;
+    }
+    if (line.length == line.trimLeft().length) {
+      inWorkspace = RegExp(r'^workspace\s*:').hasMatch(line);
+    } else if (inWorkspace && entry.startsWith('-')) {
+      final path = entry.substring(1).split('#').first.trim().replaceAll(RegExp('''^['"]|['"]\$'''), '');
+      if (path.isNotEmpty) {
+        members.add(Directory('${root.path}${Platform.pathSeparator}$path'));
+      }
+    }
+  }
+  return members;
+}
+
+/// Whether [pubspec] has `flutter: sdk: flutter` among its `dependencies` (read by lines: the
+/// tools bring no YAML parser).
+bool pubspecDependsOnFlutter(String pubspec) {
+  var inDependencies = false;
+  var inFlutter = false;
+  int? indent;
+  for (final line in LineSplitter.split(pubspec)) {
+    final entry = line.trimLeft();
+    if (entry.isEmpty || entry.startsWith('#')) {
+      continue;
+    }
+    final depth = line.length - entry.length;
+    if (depth == 0) {
+      inDependencies = RegExp(r'^dependencies\s*:').hasMatch(line);
+      inFlutter = false;
+      indent = null;
+    } else if (inDependencies) {
+      indent ??= depth;
+      if (depth == indent) {
+        inFlutter = RegExp(r'''^['"]?flutter['"]?\s*:''').hasMatch(entry);
+      } else if (inFlutter && RegExp(r'''^sdk\s*:\s*['"]?flutter['"]?\s*(#.*)?$''').hasMatch(entry)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Directories skipped while looking for apps: tool output, dependencies and platform projects.
+const _skipped = {'build', 'node_modules', 'android', 'ios', 'macos', 'linux', 'windows', 'web', 'Pods'};
+
+List<Directory> _appsBelow(Directory dir, {required int depth}) {
+  if (depth == 0) {
+    return const [];
+  }
+  final apps = <Directory>[];
+  final List<FileSystemEntity> children;
+  try {
+    children = dir.listSync(followLinks: false)..sort((a, b) => a.path.compareTo(b.path));
+  } on FileSystemException {
+    return const [];
+  }
+  for (final child in children.whereType<Directory>()) {
+    final name = child.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    if (name.startsWith('.') || _skipped.contains(name)) {
+      continue;
+    }
+    if (isFlutterApp(child)) {
+      apps.add(child);
+    } else {
+      apps.addAll(_appsBelow(child, depth: depth - 1));
+    }
+  }
+  return apps;
+}
+
+String _relative(Directory dir, Directory root) {
+  final prefix = '${root.absolute.path}${Platform.pathSeparator}';
+  final path = dir.absolute.path;
+  return path.startsWith(prefix) ? path.substring(prefix.length) : path;
+}

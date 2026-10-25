@@ -109,7 +109,31 @@ class Proxy {
     if (message['type'] == 'request' &&
         (message['command'] == 'launch' || message['command'] == 'attach')) {
       _launched = message['command'] == 'launch';
-      final arguments = message['arguments'];
+      var arguments = message['arguments'];
+      if (arguments is Map && message['command'] == 'launch') {
+        // In a monorepo or a pub workspace the scenario's cwd (the worktree root by default) is
+        // not the app's folder: Flutter is given the app under it.
+        final cwd = arguments['cwd'];
+        if (cwd is String) {
+          try {
+            final app = flutterApp(Directory(cwd)).path;
+            if (app != cwd) {
+              arguments = {...arguments, 'cwd': app};
+              message = {...message, 'arguments': arguments};
+            }
+          } on DeviceException catch (error) {
+            _send(_client, {
+              'seq': 0,
+              'type': 'response',
+              'request_seq': message['seq'],
+              'command': 'launch',
+              'success': false,
+              'message': '$error',
+            });
+            return;
+          }
+        }
+      }
       if (arguments is Map) {
         _root = arguments['cwd'] as String?;
         _reloadOnSave = arguments['hotReloadOnSave'] != false;

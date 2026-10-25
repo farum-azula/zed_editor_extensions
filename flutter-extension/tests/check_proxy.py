@@ -11,7 +11,9 @@ Flutter or a device:
   that cannot run here fails the launch with the reason;
 - the editor's Stop ends a launched app: a `disconnect` goes to Flutter after a `terminate`
   (Flutter's own disconnect would leave a desktop app running), unless the editor sent one, the
-  app was attached to, or `terminateDebuggee` is false.
+  app was attached to, or `terminateDebuggee` is false;
+- a launch whose `cwd` is a monorepo or a pub workspace goes to Flutter with the app's folder as
+  `cwd`, and saving under that app's lib/ reloads it; of several apps, none: the launch fails.
 
     python3 tests/check_proxy.py        # needs `dart` in PATH
 """
@@ -137,6 +139,7 @@ def main():
 
         check_stop(project)
         check_targets(Path(tmp))
+    check_workspace()
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)
@@ -200,6 +203,46 @@ def tool_args(dap):
         if output.startswith("launch "):
             return json.loads(output[len("launch "):]).get("toolArgs")
     return None
+
+
+def launched(dap):
+    """The arguments of the launch the fake adapter received."""
+    for m in dap.seen:
+        output = m.get("body", {}).get("output", "") if m.get("event") == "output" else ""
+        if output.startswith("launch "):
+            return json.loads(output[len("launch "):])
+    return None
+
+
+def check_workspace():
+    flutter_pubspec = "name: {}\ndependencies:\n  flutter:\n    sdk: flutter\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        (root / "pubspec.yaml").write_text("name: root\nworkspace:\n  - app\n  - core/ui\n")
+        for path, main in (("app", True), ("core/ui", False)):
+            (root / path / "lib").mkdir(parents=True)
+            (root / path / "pubspec.yaml").write_text(flutter_pubspec.format(Path(path).name))
+            if main:
+                (root / path / "lib" / "main.dart").write_text("void main() {}\n")
+
+        print("== a pub workspace")
+        dap = session(root)
+        check(launched(dap)["cwd"] == str(root / "app"), "Flutter launches in the app's folder")
+        dap.request("startApp")
+        dap.event("flutter.appStarted")
+        time.sleep(0.5)
+        save(root / "app" / "lib" / "main.dart")
+        dap.drain(1)
+        check("hotReload" in received(dap), "saving under the app's lib/ reloads")
+        dap.close()
+
+        print("== several apps")
+        (root / "core" / "ui" / "lib" / "main.dart").write_text("void main() {}\n")
+        dap = start()
+        dap.response(dap.request("initialize", {"adapterID": "Flutter"}))
+        response = dap.response(dap.request("launch", {"cwd": str(root), "program": "lib/main.dart"}))
+        check(not response["success"] and "several Flutter apps" in response["message"], "the launch fails, naming them")
+        dap.close()
 
 
 def check_targets(tmp):
