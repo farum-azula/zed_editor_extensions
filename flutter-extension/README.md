@@ -116,6 +116,18 @@ signal for a hot reload, so the terminal stays Flutter's. Generated code counts 
 has no such signals (`r` there); `FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE=off` in Zed's environment
 switches it off; a `--pid-file` of your own in the task's arguments is kept and used.
 
+**In a `dart run: <file>` task** (a Dart program on the VM: a server, a CLI): the program runs with
+its VM service on, and saving a `.dart` file of its package, or a file under a `lib/resources/`
+directory, hot reloads it (`reloadSources`; several saves within 200 ms make one reload), with a
+`↻ Reloaded in 55 ms` line in the terminal. Generated code counts: when `build_runner watch`
+rewrites `*.spring.dart`, the program reloads again. A **Spring Boot for Dart** application
+(`spring_boot_dart` 0.3.2 and later) then restarts itself when its beans, annotations or config
+files changed — a new `@GetMapping`, another `server.port` — and keeps running with the new
+method bodies otherwise, like Spring Boot DevTools. A compile error is shown only when the code
+still does not compile 2 s later (stale generated code is not an error); a reload the VM rejects
+for another reason restarts the program. Ctrl+C stops it. `FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE=off`
+runs it with plain `dart run`.
+
 **Under the debugger**: start a `Flutter: debug on ...` scenario, or one of your own of the
 `Flutter` adapter:
 

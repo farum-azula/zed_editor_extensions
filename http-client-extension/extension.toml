@@ -1,7 +1,7 @@
 id = "http-client"
 name = "HTTP Client"
 description = "IntelliJ IDEA-style HTTP client: run .http/.rest requests from the gutter, and generate them from routes and HTTP calls in 48 frameworks."
-version = "0.3.0"
+version = "0.3.1"
 schema_version = 1
 authors = ["Farum-Azula"]
 repository = "https://github.com/farum-azula/zed_editor_extensions"

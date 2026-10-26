@@ -161,6 +161,7 @@ fn run(o: Opts) -> Result<bool, String> {
             }
             let store_path = dir.join(".zed-http").join("responses.json");
             let mut ctx = Context { responses: load_store(&store_path), ..Default::default() };
+            let stored = ctx.responses.clone();
 
             let mut ok = true;
             let mut shown = None;
@@ -185,7 +186,10 @@ fn run(o: Opts) -> Result<bool, String> {
                 }
             }
             ctx.responses.retain(|k, _| !ctx.unlogged.contains(k));
-            save_store(&store_path, &ctx.responses);
+            // Nothing new to keep (only `# @no-log` requests, say): nothing is written.
+            if ctx.responses != stored {
+                save_store(&store_path, &ctx.responses);
+            }
             Ok(ok)
         }
         other => Err(format!("unknown command `{other}`\n\n{USAGE}")),

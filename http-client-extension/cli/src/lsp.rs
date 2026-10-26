@@ -44,12 +44,36 @@ pub fn serve_io(input: &mut dyn BufRead, out: &mut dyn Write) {
                 "serverInfo": { "name": "zed-http" }
                 }))
             }
+            "initialized" => {
+                // Requests generated, edited or deleted outside the open buffers change the
+                // "Open" / "Generate" lenses of source files too.
+                next_id += 1;
+                write_message(
+                    out,
+                    &json!({
+                        "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "client/registerCapability",
+                        "params": { "registrations": [{
+                            "id": "zed-http-files",
+                            "method": "workspace/didChangeWatchedFiles",
+                            "registerOptions": { "watchers": [{ "globPattern": "**/*.http" }] }
+                        }] }
+                    }),
+                );
+                None
+            }
+            "workspace/didChangeWatchedFiles" => {
+                refresh_lenses(&mut next_id, out);
+                None
+            }
             "shutdown" => Some(Value::Null),
             "exit" => return,
             "textDocument/didOpen" => {
                 let d = &params["textDocument"];
                 if let (Some(uri), Some(text)) = (d["uri"].as_str(), d["text"].as_str()) {
                     docs.insert(uri.to_string(), text.to_string());
+                    if is_http_file(uri) {
+                        refresh_lenses(&mut next_id, out);
+                    }
                 }
                 None
             }
@@ -59,12 +83,18 @@ pub fn serve_io(input: &mut dyn BufRead, out: &mut dyn Write) {
                     params["contentChanges"].as_array().and_then(|c| c.last()).and_then(|c| c["text"].as_str())
                 {
                     docs.insert(uri.to_string(), text.to_string());
+                    if is_http_file(uri) {
+                        refresh_lenses(&mut next_id, out);
+                    }
                 }
                 None
             }
             "textDocument/didClose" => {
                 if let Some(uri) = params["textDocument"]["uri"].as_str() {
                     docs.remove(uri);
+                    if is_http_file(uri) {
+                        refresh_lenses(&mut next_id, out);
+                    }
                 }
                 None
             }
@@ -79,6 +109,7 @@ pub fn serve_io(input: &mut dyn BufRead, out: &mut dyn Write) {
             "workspace/executeCommand" => {
                 let c = catalogs.get(root.as_deref());
                 execute_command(c, &docs, &params, root.as_deref(), &mut next_id, out);
+                refresh_lenses(&mut next_id, out);
                 Some(Value::Null)
             }
             "textDocument/definition" => Some(with_variable(&docs, &params, definition).unwrap_or(Value::Null)),
@@ -117,6 +148,16 @@ fn read_message(input: &mut dyn BufRead) -> Option<Value> {
     let mut buf = vec![0; length?];
     input.read_exact(&mut buf).ok()?;
     serde_json::from_slice(&buf).ok()
+}
+
+/// Asks Zed to request the code lenses again: whether a route's request exists ("Open") or not
+/// ("Generate") depends on `.http` files, which change apart from the source file.
+fn refresh_lenses(next_id: &mut u64, out: &mut dyn Write) {
+    *next_id += 1;
+    write_message(
+        out,
+        &json!({ "jsonrpc": "2.0", "id": format!("zed-http-{next_id}"), "method": "workspace/codeLens/refresh" }),
+    );
 }
 
 fn write_message(out: &mut dyn Write, msg: &Value) {
@@ -219,7 +260,11 @@ fn generation(
     let base = root.join(ZED_HTTP_DIR);
     let dir = base.join("endpoints");
     let target = endpoint::file_for_source(&dir, &file);
-    let current = docs.get(&path_to_uri(&target)).cloned().or_else(|| fs::read_to_string(&target).ok());
+    // A file deleted from disk is gone, even if its tab is still open in Zed.
+    let current = target
+        .exists()
+        .then(|| docs.get(&path_to_uri(&target)).cloned().or_else(|| fs::read_to_string(&target).ok()))
+        .flatten();
     let existing = current.as_deref().and_then(|t| endpoint::find_request(t, &name));
     let added = endpoint::append_text(current.as_deref().unwrap_or_default(), &content);
     Some(Generation {
@@ -236,7 +281,8 @@ fn generation(
 
 /// Adds the generated request. A `.http` file open in Zed is edited in its buffer, which Zed then
 /// saves like any other edit; otherwise the file is written to disk, where `zed-http run` reads it.
-/// (A workspace edit to a file that is not open would leave it unsaved, and empty on disk.)
+/// (A workspace edit to a file that is not open would leave it unsaved, and empty on disk.) A file
+/// missing on disk counts as gone, open or not: it is written afresh.
 fn add_request(
     g: &Generation,
     docs: &HashMap<String, String>,
@@ -245,6 +291,7 @@ fn add_request(
 ) -> io::Result<()> {
     endpoint::ensure_env(&g.base, &g.source)?;
     let uri = path_to_uri(&g.target);
+    let whole = format!("{}{}", g.current.as_deref().unwrap_or_default(), g.added);
     match g.current.as_deref().filter(|_| docs.contains_key(&uri)) {
         Some(open) => {
             let (line, character) = end_position(open);
@@ -261,12 +308,14 @@ fn add_request(
                 }),
             );
         }
-        None => {
-            fs::create_dir_all(g.target.parent().expect("a file in .zed/http/endpoints"))?;
-            fs::write(&g.target, format!("{}{}", g.current.as_deref().unwrap_or_default(), g.added))?;
-        }
+        None => write_target(&g.target, &whole)?,
     }
     Ok(())
+}
+
+fn write_target(target: &Path, text: &str) -> io::Result<()> {
+    fs::create_dir_all(target.parent().expect("a file in .zed/http/endpoints"))?;
+    fs::write(target, text)
 }
 
 /// LSP position just past the end of `text`.

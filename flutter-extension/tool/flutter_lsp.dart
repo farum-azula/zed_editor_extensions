@@ -348,7 +348,8 @@ Directory? workspaceBuildRoot(Directory project) {
   final path = _normalized(project);
   for (final candidate in [project, project.parent]) {
     final members = workspaceMembers(candidate);
-    final isRoot = members.isNotEmpty &&
+    final isRoot =
+        members.isNotEmpty &&
         (_normalized(candidate) == path || members.any((member) => _normalized(member) == path));
     if (!isRoot) {
       continue;

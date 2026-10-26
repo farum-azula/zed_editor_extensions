@@ -281,7 +281,12 @@ List<Directory> workspaceMembers(Directory root) {
     if (line.length == line.trimLeft().length) {
       inWorkspace = RegExp(r'^workspace\s*:').hasMatch(line);
     } else if (inWorkspace && entry.startsWith('-')) {
-      final path = entry.substring(1).split('#').first.trim().replaceAll(RegExp('''^['"]|['"]\$'''), '');
+      final path = entry
+          .substring(1)
+          .split('#')
+          .first
+          .trim()
+          .replaceAll(RegExp('''^['"]|['"]\$'''), '');
       if (path.isNotEmpty) {
         members.add(Directory('${root.path}${Platform.pathSeparator}$path'));
       }
@@ -310,7 +315,8 @@ bool pubspecDependsOnFlutter(String pubspec) {
       indent ??= depth;
       if (depth == indent) {
         inFlutter = RegExp(r'''^['"]?flutter['"]?\s*:''').hasMatch(entry);
-      } else if (inFlutter && RegExp(r'''^sdk\s*:\s*['"]?flutter['"]?\s*(#.*)?$''').hasMatch(entry)) {
+      } else if (inFlutter &&
+          RegExp(r'''^sdk\s*:\s*['"]?flutter['"]?\s*(#.*)?$''').hasMatch(entry)) {
         return true;
       }
     }
@@ -319,7 +325,17 @@ bool pubspecDependsOnFlutter(String pubspec) {
 }
 
 /// Directories skipped while looking for apps: tool output, dependencies and platform projects.
-const _skipped = {'build', 'node_modules', 'android', 'ios', 'macos', 'linux', 'windows', 'web', 'Pods'};
+const _skipped = {
+  'build',
+  'node_modules',
+  'android',
+  'ios',
+  'macos',
+  'linux',
+  'windows',
+  'web',
+  'Pods',
+};
 
 List<Directory> _appsBelow(Directory dir, {required int depth}) {
   if (depth == 0) {

@@ -179,7 +179,7 @@ fn generate_writes_the_request_and_opens_it() {
 fn generate_edits_a_http_file_that_is_open() {
     let dir = Dir::new();
     let src = dir.write("server.ts", EXPRESS);
-    let target = dir.join(".zed/http/endpoints/server.ts.http");
+    let target = dir.write(".zed/http/endpoints/server.ts.http", "### mine\nGET {{baseUrl}}/mine\n");
     let unsaved = "### mine\nGET {{baseUrl}}/mine\n";
     let out = talk(vec![
         init(&dir),
@@ -192,7 +192,11 @@ fn generate_edits_a_http_file_that_is_open() {
     let edit = &edits[0]["params"]["edit"]["changes"][uri(&target)][0];
     assert_eq!(edit["range"]["start"], json!({"line": 2, "character": 0}), "after the buffer's text");
     assert!(edit["newText"].as_str().unwrap().starts_with("\n### get-users-by-id\n"), "{edit}");
-    assert!(!target.exists(), "the open buffer is edited, not the file behind it");
+    assert_eq!(
+        dir.read(".zed/http/endpoints/server.ts.http"),
+        unsaved,
+        "the open buffer is edited, not the file behind it"
+    );
     assert!(dir.exists(".zed/http/http-client.env.json"));
     assert_eq!(sent(&out, "window/showDocument")[0]["params"]["selection"]["start"]["line"], json!(3));
 }
@@ -806,4 +810,58 @@ fn hover_uses_the_environment_chosen_in_the_file() {
     let definition = result(&out, 3);
     let targets = definition.as_array().unwrap();
     assert_eq!(targets.len(), 1, "only the chosen environment: {definition:#}");
+}
+
+#[test]
+fn a_file_deleted_while_open_is_forgotten() {
+    let dir = Dir::new();
+    let src = dir.write("server.ts", EXPRESS);
+    let target = dir.join(".zed/http/endpoints/server.ts.http");
+    // Its tab is still open in Zed, with the request, but the file was deleted from disk.
+    let stale = "### get-users-by-id\n# @name get-users-by-id\nGET {{baseUrl}}/users/{{id}}\n";
+    let out = talk(vec![
+        init(&dir),
+        open(&src, EXPRESS),
+        open(&target, stale),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
+    ]);
+    assert!(sent(&out, "workspace/applyEdit").is_empty(), "{out:#?}");
+    let written = dir.read(".zed/http/endpoints/server.ts.http");
+    assert!(
+        written.starts_with("### get-users-by-id\n") && written.contains("# @no-log"),
+        "generated afresh: {written}"
+    );
+}
+
+#[test]
+fn lenses_are_refreshed_when_http_files_change() {
+    let dir = Dir::new();
+    let src = dir.write("server.ts", EXPRESS);
+    let notify = |method: &str, params: Value| json!({"jsonrpc": "2.0", "method": method, "params": params});
+
+    // Zed is asked to watch .http files, created, changed or deleted outside the editor.
+    let out = talk(vec![init(&dir), notify("initialized", json!({}))]);
+    let registered = sent(&out, "client/registerCapability");
+    assert_eq!(registered[0]["params"]["registrations"][0]["method"], json!("workspace/didChangeWatchedFiles"));
+    assert!(sent(&out, "workspace/codeLens/refresh").is_empty());
+
+    // Generating a request, a watched file changing, a .http buffer opened: lenses are asked again.
+    let out = talk(vec![
+        init(&dir),
+        open(&src, EXPRESS),
+        request(2, "workspace/executeCommand", json!({"command": "zed-http.generate", "arguments": [uri(&src), 1]})),
+    ]);
+    assert_eq!(sent(&out, "workspace/codeLens/refresh").len(), 1, "after generating");
+    let target = dir.join(".zed/http/endpoints/server.ts.http");
+    let out = talk(vec![
+        init(&dir),
+        notify("workspace/didChangeWatchedFiles", json!({"changes": [{"uri": uri(&target), "type": 3}]})),
+        open(&target, "GET /x\n"),
+        open(&src, EXPRESS),
+    ]);
+    assert_eq!(
+        sent(&out, "workspace/codeLens/refresh").len(),
+        2,
+        "a watched change and a .http file, not a source file"
+    );
 }

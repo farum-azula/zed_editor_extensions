@@ -426,3 +426,13 @@ fn no_log_keeps_the_response_off_disk() {
     let store = std::fs::read_to_string(out.join("responses.json")).unwrap_or_default();
     assert!(!store.contains("\"login\""), "not kept for later runs: {store}");
 }
+
+#[test]
+fn only_no_log_requests_write_nothing() {
+    let dir = Dir::new();
+    let server = Server::start();
+    let file = project(&dir, &server, "# @no-log\nGET {{baseUrl}}/json\n");
+    assert_eq!(run_args(args(&["run", &file, "--all"])), 0);
+    let out = std::path::Path::new(&file).parent().unwrap().join(".zed-http");
+    assert!(!out.exists(), "no .zed-http/ at all");
+}
