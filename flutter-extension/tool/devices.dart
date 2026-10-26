@@ -242,9 +242,9 @@ Directory flutterApp(Directory start, {String? activeFile}) {
   }
   final file = activeFile ?? Platform.environment['ZED_FILE'];
   if (file != null && file.isNotEmpty) {
-    final path = File(file).absolute.path;
+    final path = _canonical(file);
     for (final app in apps) {
-      if (path.startsWith('${app.absolute.path}${Platform.pathSeparator}')) {
+      if (path.startsWith('${_canonical(app.path)}${Platform.pathSeparator}')) {
         return app;
       }
     }
@@ -253,6 +253,19 @@ Directory flutterApp(Directory start, {String? activeFile}) {
     'this folder holds several Flutter apps (${apps.map((a) => _relative(a, start)).join(', ')}); '
     'open a file of the one to run, or set "cwd" in a scenario of your own.',
   );
+}
+
+/// [path] to compare with another: absolute, links resolved (on Windows also the short 8.3 names
+/// of folders, `RUNNER~1`, which a path may hold or not), and lower case on Windows, whose paths
+/// ignore case.
+String _canonical(String path) {
+  var canonical = File(path).absolute.path;
+  try {
+    canonical = File(path).resolveSymbolicLinksSync();
+  } on FileSystemException {
+    // Not there (any more): as given.
+  }
+  return Platform.isWindows ? canonical.toLowerCase() : canonical;
 }
 
 /// Whether [dir] is a Flutter app: its pubspec.yaml depends on the Flutter SDK and it has a
