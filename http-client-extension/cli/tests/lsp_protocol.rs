@@ -865,3 +865,17 @@ fn lenses_are_refreshed_when_http_files_change() {
         "a watched change and a .http file, not a source file"
     );
 }
+
+#[test]
+fn changing_or_closing_an_http_file_refreshes_the_lenses() {
+    let dir = Dir::new();
+    let file = dir.write("api.http", "GET http://localhost/a\n");
+    let out = talk(vec![
+        init(&dir),
+        open(&file, "GET http://localhost/a\n"),
+        json!({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {
+            "textDocument": {"uri": uri(&file)}, "contentChanges": [{"text": "GET http://localhost/b\n"}]}}),
+        json!({"jsonrpc": "2.0", "method": "textDocument/didClose", "params": {"textDocument": {"uri": uri(&file)}}}),
+    ]);
+    assert_eq!(sent(&out, "workspace/codeLens/refresh").len(), 3, "open, change and close");
+}

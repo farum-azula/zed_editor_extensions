@@ -247,9 +247,14 @@ def check_build_runner_projects(tmp):
     package(ws / "g", "name: g\ndev_dependencies:\n  test: ^1.0.0\nflutter:\n  build_runner: true\n")
     package(ws / "h", 'name: h\ndev_dependencies:\n  "build_runner": ^2.0.0\n')
     package(ws / "i", "name: i\ndev_dependencies:\n  foo:\n    git:\n      build_runner: x\n")
+    package(ws / "build" / "out", PUBSPEC)
+    package(ws / "node_modules" / "m", PUBSPEC)
+    package(ws / "j" / "k" / "l" / "m", PUBSPEC)
+    package(ws / "j" / "k" / "l" / "m" / "n", PUBSPEC)
     check(
-        projects(ws) == [(ws / n).resolve() for n in ("", "a", "f", "h")],
-        "the root and the directories under it that have build_runner in dev_dependencies, not hidden ones, deeper ones, or other sections",
+        projects(ws) == [(ws / n).resolve() for n in ("", "a", "d/inner", "f", "h", "j/k/l/m")],
+        "the root and the packages below it that have build_runner in dev_dependencies, not hidden ones, "
+        "build output, other sections, or deeper than 4 levels",
     )
     mono = tmp / "mono"
     package(mono / "x", PUBSPEC)
@@ -294,6 +299,17 @@ def check_build_runner_projects(tmp):
     check(
         watch_args(members_only) == [((members_only / "app").resolve(), "--workspace")],
         "a root without build_runner: the member's watch builds the workspace",
+    )
+    monorepo = tmp / "monorepo"
+    package(monorepo, "name: root\nworkspace:\n  - core\n  - example/cli\n")
+    package(monorepo / "core", "name: core\nresolution: workspace\n" + PUBSPEC.split("\n", 1)[1])
+    package(monorepo / "example" / "cli", "name: cli\nresolution: workspace\n" + PUBSPEC.split("\n", 1)[1])
+    package(monorepo / "example" / "flutter_app", PUBSPEC)
+    lock(monorepo, "2.17.1")
+    check(
+        watch_args(monorepo)
+        == [((monorepo / "core").resolve(), "--workspace"), ((monorepo / "example" / "flutter_app").resolve(), "--delete-conflicting-outputs")],
+        "a member two levels down is built by the workspace's watch; an app outside the workspace gets its own",
     )
 
 

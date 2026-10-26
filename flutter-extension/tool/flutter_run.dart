@@ -75,7 +75,7 @@ class HotReloadOnSave {
       given == null,
     );
     final lib = Directory('${app.path}/lib');
-    reloader._watch = (lib.existsSync() ? lib : app).watch(recursive: true).listen(
+    reloader._watch = watchTree(lib.existsSync() ? lib : app).listen(
       (event) {
         if (event.path.endsWith('.dart')) {
           reloader._pending?.cancel();

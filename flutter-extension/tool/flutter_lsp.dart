@@ -12,7 +12,8 @@
 //   differs from one OS to the next. On start, this server copies them and what they import
 //   (runnerFiles) from next to itself to ~/.zed-flutter/, when they differ.
 // - For each project of the workspace that has `build_runner` in the `dev_dependencies` of its
-//   pubspec.yaml (the root, and the directories right under it), it runs
+//   pubspec.yaml (the root and the packages below it, down to [maxProjectDepth] levels: a
+//   monorepo's `example/flutter_app` too), it runs
 //   `dart run build_runner watch --delete-conflicting-outputs` while the server lives, and shows
 //   its output in Zed's language server log. A pub workspace gets one watch for all its packages
 //   (`--workspace`, build_runner 2.14 and later), run in its root, or in a member when the root
@@ -318,10 +319,17 @@ bool buildRunnerEnabled(Object? initializationOptions, Map<String, String> envir
   return !off(option) && !off(environment['FLUTTER_TOOLS_BUILD_RUNNER']);
 }
 
-/// The package directories to run build_runner in: [root] and the directories right under it (the
-/// members of a pub workspace, the packages of a monorepo), hidden ones left out, whose
-/// pubspec.yaml has `build_runner` in `dev_dependencies`. Of a pub workspace whose build_runner
-/// builds workspaces (see [workspaceBuildRoot]), only the first: its watch builds them all.
+/// How deep below the root packages are looked for (`example/flutter_app` is 2).
+const maxProjectDepth = 4;
+
+/// Directories never looked into for packages: build output, other tools' dependencies.
+const _skippedDirectories = {'build', 'node_modules', 'Pods', 'target'};
+
+/// The package directories to run build_runner in: [root] and the packages below it, down to
+/// [maxProjectDepth] levels (the members of a pub workspace, the packages of a monorepo, apps in
+/// its `example/`), hidden directories and build output left out, whose pubspec.yaml has
+/// `build_runner` in `dev_dependencies`. Of a pub workspace whose build_runner builds workspaces
+/// (see [workspaceBuildRoot]), only the first: its watch builds them all.
 List<Directory> buildRunnerProjects(Directory root) {
   final projects = <Directory>[];
   final workspaces = <String>{};
@@ -346,18 +354,20 @@ List<String> buildRunnerArgumentsFor(Directory project) => [
 /// workspace with `--workspace`; otherwise null, and each package is watched on its own.
 Directory? workspaceBuildRoot(Directory project) {
   final path = _normalized(project);
-  for (final candidate in [project, project.parent]) {
+  // The root may be any ancestor: `workspace: [example/app]` lists a member two levels down.
+  for (var candidate = project; ; candidate = candidate.parent) {
     final members = workspaceMembers(candidate);
     final isRoot =
         members.isNotEmpty &&
         (_normalized(candidate) == path || members.any((member) => _normalized(member) == path));
-    if (!isRoot) {
-      continue;
+    if (isRoot) {
+      final version = _lockedVersion(candidate, 'build_runner');
+      return version != null && _atLeast(version, const [2, 14]) ? candidate : null;
     }
-    final version = _lockedVersion(candidate, 'build_runner');
-    return version != null && _atLeast(version, const [2, 14]) ? candidate : null;
+    if (_normalized(candidate.parent) == _normalized(candidate)) {
+      return null; // the file system's root
+    }
   }
-  return null;
 }
 
 /// [directory] as an absolute path without `.`, `..` or a trailing separator, to compare.
@@ -398,23 +408,30 @@ bool _atLeast(String version, List<int> minimum) {
 }
 
 List<Directory> _packagesUsingBuildRunner(Directory root) {
-  final packages = <Directory>[root];
-  try {
-    packages.addAll(
-      root
-          .listSync(followLinks: false)
-          .whereType<Directory>()
-          .where((directory) => !_basename(directory.path).startsWith('.'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path)),
-    );
-  } on FileSystemException {
-    // A root that cannot be listed is just the one package.
+  final packages = <Directory>[];
+  void visit(Directory directory, int depth) {
+    if (_readPubspec(directory) case final text? when devDependsOnBuildRunner(text)) {
+      packages.add(directory);
+    }
+    if (depth == maxProjectDepth) {
+      return;
+    }
+    final List<Directory> children;
+    try {
+      children = directory.listSync(followLinks: false).whereType<Directory>().where((child) {
+        final name = _basename(child.path);
+        return !name.startsWith('.') && !_skippedDirectories.contains(name);
+      }).toList()..sort((a, b) => a.path.compareTo(b.path));
+    } on FileSystemException {
+      return; // a directory that cannot be listed has no packages for us
+    }
+    for (final child in children) {
+      visit(child, depth + 1);
+    }
   }
-  return [
-    for (final package in packages)
-      if (_readPubspec(package) case final text? when devDependsOnBuildRunner(text)) package,
-  ];
+
+  visit(root, 0);
+  return packages;
 }
 
 String? _readPubspec(Directory package) {

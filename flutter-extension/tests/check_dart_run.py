@@ -95,6 +95,10 @@ def main():
         fake_flutter = tmp / "fake" / "flutter"
         fake_flutter.write_text(FAKE_FLUTTER)
         fake_flutter.chmod(fake_flutter.stat().st_mode | stat.S_IEXEC)
+        if sys.platform == "win32":
+            # The tool starts `dart` / `flutter` through cmd.exe, which runs only .exe, .bat, ...
+            for name in ("dart", "flutter"):
+                (tmp / "fake" / f"{name}.bat").write_text(f'@"{sys.executable}" "%~dp0{name}" %*\n')
 
         generated = package(
             tmp, "generated",

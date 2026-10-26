@@ -367,3 +367,66 @@ String _relative(Directory dir, Directory root) {
   final path = dir.absolute.path;
   return path.startsWith(prefix) ? path.substring(prefix.length) : path;
 }
+
+/// Changes under [root] and every directory below it, on every platform. Dart watches
+/// subdirectories itself on macOS and Windows; on Linux (inotify) it does not, so there each
+/// directory gets its own watch, and directories created later are added as they appear.
+/// Directories whose name [skip] accepts (default: hidden ones and `build`) are not watched on
+/// Linux; elsewhere their events still come, so callers filter paths as well.
+/// [perDirectory] forces either way (tests run the Linux way on any OS).
+Stream<FileSystemEvent> watchTree(
+  Directory root, {
+  bool Function(String name)? skip,
+  bool? perDirectory,
+}) {
+  if (!(perDirectory ?? Platform.isLinux)) {
+    return root.watch(recursive: true);
+  }
+  final skipped = skip ?? (name) => name.startsWith('.') || name == 'build';
+  final watches = <String, StreamSubscription<FileSystemEvent>>{};
+  late final StreamController<FileSystemEvent> controller;
+
+  void watchTreeOf(Directory directory) {
+    if (watches.containsKey(directory.path)) {
+      return;
+    }
+    try {
+      watches[directory.path] = directory.watch().listen((event) {
+        controller.add(event);
+        if (event is FileSystemCreateEvent && event.isDirectory) {
+          watchTreeOf(Directory(event.path));
+        } else if (event is FileSystemDeleteEvent || event is FileSystemMoveEvent) {
+          watches.remove(event.path)?.cancel();
+        }
+      }, onError: controller.addError);
+    } on FileSystemException catch (error) {
+      controller.addError(error);
+      return;
+    }
+    final List<FileSystemEntity> children;
+    try {
+      children = directory.listSync(followLinks: false);
+    } on FileSystemException {
+      return; // gone again, or not readable
+    }
+    for (final child in children) {
+      if (child is Directory) {
+        final name = child.uri.pathSegments.where((s) => s.isNotEmpty).last;
+        if (!skipped(name)) {
+          watchTreeOf(child);
+        }
+      }
+    }
+  }
+
+  controller = StreamController<FileSystemEvent>.broadcast(
+    onListen: () => watchTreeOf(root),
+    onCancel: () {
+      for (final watch in watches.values) {
+        watch.cancel();
+      }
+      watches.clear();
+    },
+  );
+  return controller.stream;
+}

@@ -88,7 +88,8 @@ debugs a Dart program:
 ### build_runner
 
 When a project has `build_runner` in the `dev_dependencies` of its `pubspec.yaml` (the workspace
-folder itself, and the folders right under it), the Flutter Tools language server starts
+folder itself and the packages below it, down to 4 levels, e.g. `example/flutter_app` of a
+monorepo; hidden folders and `build/` are skipped), the Flutter Tools language server starts
 `dart run build_runner watch --delete-conflicting-outputs` there once, when the project opens, and
 stops it, with what it started, when Zed closes the server. Its output is in Zed's language server
 log (`dev: open language server logs`, `flutter-tools`); each `Succeeded` / `Failed` line of a

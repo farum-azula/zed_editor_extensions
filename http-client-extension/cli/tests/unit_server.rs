@@ -129,3 +129,67 @@ fn feign_urls_come_from_the_configuration() {
     let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
     assert_eq!(endpoint.url, "https://catalog.example/api/books/{{isbn}}");
 }
+
+#[test]
+fn edge_cases_of_placeholders_and_config_files() {
+    let p = props(&[("loop", "${loop}"), ("a:b", "colon")]);
+    // A placeholder that refers to itself stops after ten levels.
+    assert_eq!(resolve("${loop}", &p).0, "${loop}");
+    // An unclosed placeholder stays as it is.
+    assert_eq!(resolve("x${open", &p), ("x${open".into(), vec![]));
+    // A nested placeholder in the key comes before the default's `:`.
+    assert_eq!(resolve("${${k}:d}", &p).0, "d");
+    // Nothing usable for a variable name.
+    assert_eq!(variable_for("..."), "baseUrl");
+    // A context path that already starts with a slash.
+    assert_eq!(spring_base_url(&props(&[("server.servlet.context-path", "/api/")])), "http://localhost:8080/api");
+    // A quoted YAML key holding a colon.
+    let yaml = parse_yaml("\"a:b\": 1\n'c': 2\n");
+    assert_eq!(yaml.get("a:b").map(String::as_str), Some("1"));
+    assert_eq!(yaml.get("c").map(String::as_str), Some("2"));
+}
+
+#[test]
+fn environment_files_ensure_env_leaves_alone_or_completes() {
+    let dir = project(
+        "env-odd",
+        &[("pubspec.yaml", "name: shop\n"), ("lib/resources/application.properties", "server.port=9090\n")],
+    );
+    let source = dir.join("lib/src/api.dart");
+    let base = dir.join(".zed/http");
+    let env = base.join("http-client.env.json");
+    fs::create_dir_all(&base).unwrap();
+    // Not a JSON object: left alone.
+    fs::write(&env, "[1, 2]").unwrap();
+    assert_eq!(ensure_env(&base, &source).unwrap(), None);
+    // No environment yet: a `dev` one is added.
+    fs::write(&env, "{}").unwrap();
+    assert_eq!(ensure_env(&base, &source).unwrap(), Some(env.clone()));
+    assert!(fs::read_to_string(&env).unwrap().contains("\"dev\""));
+    // No dev / local / development: the first environment gets the address.
+    fs::write(&env, "{\"$shared\": {}, \"staging\": {\"token\": \"t\"}}").unwrap();
+    assert_eq!(ensure_env(&base, &source).unwrap(), Some(env.clone()));
+    let text = fs::read_to_string(&env).unwrap();
+    assert!(text.contains("\"staging\"") && text.contains("http://localhost:9090"));
+    // An environment that is not an object: left alone.
+    fs::write(&env, "{\"dev\": 1}").unwrap();
+    assert_eq!(ensure_env(&base, &source).unwrap(), None);
+}
+
+#[test]
+fn feign_urls_without_a_scheme_or_a_value() {
+    let dir = project(
+        "feign-odd",
+        &[("pubspec.yaml", "name: shop\n"), ("lib/resources/application.properties", "mail.host=localhost:9000\n")],
+    );
+    let source = dir.join("lib/src/client.dart");
+    let catalog = zed_http::catalog::for_source(&source).unwrap();
+    // A configured address without a scheme: http.
+    let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: r'${mail.host}')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
+    let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
+    assert_eq!(endpoint.url, "http://localhost:9000/inbox");
+    // An empty url and no name: the environment's baseUrl.
+    let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: '')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
+    let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
+    assert_eq!(endpoint.url, "{{baseUrl}}/inbox");
+}

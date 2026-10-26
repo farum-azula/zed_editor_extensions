@@ -27,7 +27,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'devices.dart' show flutterCommand;
+import 'devices.dart' show flutterCommand, watchTree;
 
 Future<void> main(List<String> args) async {
   if (args.isEmpty) {
@@ -155,7 +155,7 @@ final class HotReloader {
   /// Starts watching.
   void start() {
     try {
-      _watch = package.watch(recursive: true).listen((event) {
+      _watch = watchTree(package).listen((event) {
         if (watched(event.path, package.path)) {
           _timer?.cancel();
           _timer = Timer(const Duration(milliseconds: 200), _reload);

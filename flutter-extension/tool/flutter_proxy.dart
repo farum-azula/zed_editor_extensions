@@ -323,7 +323,7 @@ class Proxy {
     }
     final lib = Directory('$root${Platform.pathSeparator}lib');
     final dir = lib.existsSync() ? lib : Directory(root);
-    _watch = dir.watch(recursive: true).listen((event) {
+    _watch = watchTree(dir).listen((event) {
       if (event.path.endsWith('.dart')) {
         _pending?.cancel();
         _pending = Timer(debounce, _reload);

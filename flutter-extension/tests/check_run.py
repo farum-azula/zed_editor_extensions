@@ -191,8 +191,9 @@ def main():
 
         admin = package(root, "apps/admin")
         result, state = run(root, ["web"], {})
-        check(result.returncode == 1 and "apps/admin" in result.stderr and "apps/shop" in result.stderr,
-              "several apps: it names them")
+        # Relative paths with the platform's separator (apps\\admin on Windows).
+        check(result.returncode == 1 and os.path.join("apps", "admin") in result.stderr
+              and os.path.join("apps", "shop") in result.stderr, "several apps: it names them")
         check(not state.get("run_cwds"), "and does not run")
         result, state = run(root, ["web"], {}, extra_env={"ZED_FILE": str(admin / "lib" / "main.dart")})
         check(state.get("run_cwds") == [str(admin)], "several apps: the one with the active file")
