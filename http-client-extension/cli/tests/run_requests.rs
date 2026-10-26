@@ -408,3 +408,21 @@ fn an_unreadable_environment_file_is_reported() {
     let file = dir.write("api.http", "GET http://127.0.0.1:1/x\n");
     assert_eq!(run_args(args(&["run", file.to_str().unwrap(), "--all"])), 2);
 }
+
+#[test]
+fn no_log_keeps_the_response_off_disk() {
+    let dir = Dir::new();
+    let server = Server::start();
+    let file = project(
+        &dir,
+        &server,
+        "### login\n# @name login\n# @no-log\nGET {{baseUrl}}/json\n\n### use it\nGET {{baseUrl}}/echo?id={{login.response.body.$.id}}\n",
+    );
+    assert_eq!(run_args(args(&["run", &file, "--all"])), 0);
+    // Later requests of the same run still see the response.
+    assert_eq!(server.last().path, "/echo?id=1");
+    let out = std::path::Path::new(&file).parent().unwrap().join(".zed-http");
+    assert!(!out.join("login.json").exists(), "no saved response file");
+    let store = std::fs::read_to_string(out.join("responses.json")).unwrap_or_default();
+    assert!(!store.contains("\"login\""), "not kept for later runs: {store}");
+}

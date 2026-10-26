@@ -6,7 +6,7 @@ use zed_http::vars::{Context, Environments};
 
 #[test]
 fn dynamic_variables() {
-    let ctx = Context { vars: HashMap::new(), responses: Default::default() };
+    let ctx = Context { vars: HashMap::new(), ..Default::default() };
     let uuid = ctx.resolve("{{$uuid}}").unwrap();
     assert_eq!(uuid.len(), 36);
     assert_eq!(uuid.chars().nth(14), Some('4'), "version 4");
@@ -34,7 +34,7 @@ fn dynamic_variables() {
 #[test]
 fn malformed_and_recursive_references() {
     let vars = HashMap::from([("a".to_string(), "{{b}}".to_string()), ("b".to_string(), "{{a}}".to_string())]);
-    let ctx = Context { vars, responses: Default::default() };
+    let ctx = Context { vars, ..Default::default() };
     assert!(ctx.resolve("{{a}}").unwrap_err().contains("recursion too deep"));
     assert_eq!(ctx.resolve("text {{unterminated").unwrap(), "text {{unterminated", "left as is");
 }
@@ -45,7 +45,7 @@ fn response_values() {
             r#"{"r": {"status": 201, "headers": {"X-Trace": "t-1"}, "body": {"list": [{"id": 9}], "flag": true, "name": "x"}}}"#,
         )
         .unwrap();
-    let ctx = Context { vars: HashMap::new(), responses };
+    let ctx = Context { vars: HashMap::new(), responses, ..Default::default() };
     assert_eq!(ctx.resolve("{{r.response.status}}").unwrap(), "201");
     assert_eq!(ctx.resolve("{{r.response.headers.x-trace}}").unwrap(), "t-1");
     assert_eq!(ctx.resolve("{{r.response.body.name}}").unwrap(), "x");
@@ -62,7 +62,7 @@ fn response_values() {
     assert!(ctx.resolve("{{other.response.status}}").unwrap_err().contains("run it first"));
 
     let responses = serde_json::from_str(r#"{"list": {"body": [{"id": 1}, {"id": 2}]}}"#).unwrap();
-    let ctx = Context { vars: HashMap::new(), responses };
+    let ctx = Context { vars: HashMap::new(), responses, ..Default::default() };
     assert_eq!(ctx.resolve("{{list.response.body[1].id}}").unwrap(), "2", "index at the root of the body");
 }
 
@@ -106,7 +106,7 @@ fn resolves_nested_and_responses() {
         "login".into(),
         serde_json::json!({"status": 200, "headers": {"X-Id": "7"}, "body": {"data": {"items": [{"token": "abc"}]}}}),
     );
-    let ctx = Context { vars, responses };
+    let ctx = Context { vars, responses, ..Default::default() };
     assert_eq!(ctx.resolve("http://{{host}}/x").unwrap(), "http://localhost:8080/x");
     assert_eq!(ctx.resolve("{{login.response.body.data.items[0].token}}").unwrap(), "abc");
     assert_eq!(ctx.resolve("{{login.response.body.$.data.items[0].token}}").unwrap(), "abc");

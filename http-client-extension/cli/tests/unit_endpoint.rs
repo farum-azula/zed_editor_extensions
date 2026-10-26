@@ -16,6 +16,7 @@ fn renders_a_full_request() {
     let expected = "\
 ### post-users
 # @name post-users
+# @no-log
 # Requires `token` in .zed/http/http-client.env.json
 @id = 1
 @page = 1
@@ -38,7 +39,7 @@ Content-Type: application/json
     assert!(render("GET", "{{baseUrl}}/x?a=1", "get-x", &spec).contains("/x?a=1&b={{b}}"));
     assert_eq!(
         render("GET", "{{baseUrl}}/x", "get-x", &Spec::default()),
-        "### get-x\n# @name get-x\nGET {{baseUrl}}/x\nAccept: application/json\n"
+        "### get-x\n# @name get-x\n# @no-log\nGET {{baseUrl}}/x\nAccept: application/json\n"
     );
 }
 

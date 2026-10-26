@@ -4,7 +4,7 @@ An HTTP client for the [Zed](https://zed.dev) editor, modeled on the built-in HT
 
 - **Run requests.** Write them in `.http` / `.rest` files and click the **▶ run button in the gutter**
   (the left margin, next to the request line); the response appears in Zed's terminal.
-- **Generate requests from your code.** In a route or HTTP client call in 48 supported frameworks,
+- **Generate requests from your code.** In a route or HTTP client call in 50 supported frameworks,
   click the **🌐 Generate .http request** lens above the line and get a ready request, with query
   parameters, headers and a JSON body filled in from the handler and its models.
 
@@ -15,7 +15,7 @@ so existing `.http` files and `http-client.env.json` can be used unchanged.
 
 ## Supported Languages and Frameworks
 
-48 frameworks and HTTP clients across 10 languages. In any of these files, every route or HTTP call
+50 frameworks and HTTP clients across 10 languages. In any of these files, every route or HTTP call
 gets a **🌐 Generate .http request** lens that turns it into a ready `.http` request
 (see [Generating a Request from Code](#generating-a-request-from-code)).
 Each one has a runnable example in [`examples/code/`](examples/code), and the catalog itself lives in
@@ -25,7 +25,7 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
 |---|---|---|
 | **Java** | `.java` | [Spring Web (MVC / WebFlux / OpenFeign)](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html) · [example](examples/code/java/SpringUserController.java)<br>[JAX-RS (Quarkus, Jakarta EE, Helidon, Dropwizard)](https://quarkus.io/guides/rest) · [example](examples/code/java/JaxRsGreetingResource.java)<br>[Micronaut HTTP](https://docs.micronaut.io/latest/guide/#routing) · [example](examples/code/java/MicronautBookController.java)<br>[Retrofit](https://square.github.io/retrofit/) · [example](examples/code/java/RetrofitGitHubApi.java)<br>[OpenFeign (native annotations)](https://github.com/OpenFeign/feign) · [example](examples/code/java/FeignRepoClient.java) |
 | **Kotlin** | `.kt`, `.kts` | [Spring Web (Kotlin)](https://docs.spring.io/spring-framework/reference/languages/kotlin.html) · [example](examples/code/kotlin/SpringOrderController.kt)<br>[Ktor server](https://ktor.io/docs/server-routing.html) · [example](examples/code/kotlin/KtorServerRoutes.kt)<br>[Ktor client](https://ktor.io/docs/client-requests.html) · [example](examples/code/kotlin/KtorClientApi.kt)<br>[Retrofit (Kotlin)](https://square.github.io/retrofit/) · [example](examples/code/kotlin/RetrofitUserApi.kt)<br>[JAX-RS (Quarkus Kotlin)](https://quarkus.io/guides/kotlin) · [example](examples/code/kotlin/JaxRsHelloResource.kt) |
-| **Dart / Flutter** | `.dart` | [Dio](https://pub.dev/packages/dio) · [example](examples/code/dart/dio_client.dart)<br>[package:http](https://pub.dev/packages/http) · [example](examples/code/dart/http_client.dart)<br>[retrofit.dart](https://pub.dev/packages/retrofit) · [example](examples/code/dart/retrofit_api.dart)<br>[Chopper](https://pub.dev/packages/chopper) · [example](examples/code/dart/chopper_service.dart)<br>[shelf_router](https://pub.dev/packages/shelf_router) · [example](examples/code/dart/shelf_router_routes.dart) |
+| **Dart / Flutter** | `.dart` | [Spring Web for Dart (spring_boot_starter_web)](https://pub.dev/packages/spring_boot_starter_web) · [example](examples/code/dart/spring_web_controller.dart)<br>[Feign for Dart (spring_boot_starter_feign)](https://pub.dev/packages/spring_boot_starter_feign) · [example](examples/code/dart/spring_feign_client.dart)<br>[Dio](https://pub.dev/packages/dio) · [example](examples/code/dart/dio_client.dart)<br>[package:http](https://pub.dev/packages/http) · [example](examples/code/dart/http_client.dart)<br>[retrofit.dart](https://pub.dev/packages/retrofit) · [example](examples/code/dart/retrofit_api.dart)<br>[Chopper](https://pub.dev/packages/chopper) · [example](examples/code/dart/chopper_service.dart)<br>[shelf_router](https://pub.dev/packages/shelf_router) · [example](examples/code/dart/shelf_router_routes.dart) |
 | **TypeScript / JavaScript** | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.mts`, `.cts` | [Express](https://expressjs.com/en/guide/routing.html) · [example](examples/code/typescript/express_server.ts)<br>[Fastify](https://fastify.dev/docs/latest/Reference/Routes/) · [example](examples/code/typescript/fastify_server.ts)<br>[Hono](https://hono.dev/docs/api/routing) · [example](examples/code/typescript/hono_server.ts)<br>[Koa router](https://github.com/koajs/router) · [example](examples/code/typescript/koa_server.ts)<br>[NestJS](https://docs.nestjs.com/controllers) · [example](examples/code/typescript/nestjs_controller.ts)<br>[Axios](https://axios-http.com/docs/api_intro) · [example](examples/code/typescript/axios_client.ts)<br>[Angular HttpClient](https://angular.dev/guide/http/making-requests) · [example](examples/code/typescript/angular_service.ts)<br>[fetch](https://developer.mozilla.org/docs/Web/API/Fetch_API) · [example](examples/code/typescript/fetch_client.ts) |
 | **Python** | `.py` | [FastAPI](https://fastapi.tiangolo.com/tutorial/first-steps/) · [example](examples/code/python/fastapi_main.py)<br>[Flask](https://flask.palletsprojects.com/en/stable/quickstart/#routing) · [example](examples/code/python/flask_app.py)<br>[Django URLconf](https://docs.djangoproject.com/en/stable/topics/http/urls/) · [example](examples/code/python/django_urls.py)<br>[requests / httpx / aiohttp](https://requests.readthedocs.io/) · [example](examples/code/python/http_clients.py) |
 | **Go** | `.go` | [gorilla/mux](https://github.com/gorilla/mux) · [example](examples/code/go/gorilla_mux_server.go)<br>[net/http (server and client)](https://pkg.go.dev/net/http) · [example](examples/code/go/net_http_server.go)<br>[Gin](https://gin-gonic.com/docs/examples/) · [example](examples/code/go/gin_server.go)<br>[Echo](https://echo.labstack.com/docs/routing) · [example](examples/code/go/echo_server.go)<br>[chi](https://go-chi.io/#/pages/routing) · [example](examples/code/go/chi_server.go)<br>[Fiber](https://docs.gofiber.io/guide/routing) · [example](examples/code/go/fiber_server.go) |
@@ -89,6 +89,7 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
   - saving the response to a file (`>>` and `>>!`);
   - shorthand Basic authorization;
   - disabling redirects (`# @no-redirect`);
+  - not saving a response (`# @no-log`, on by default in generated requests);
   - colored output: status, time, size, headers, formatted JSON;
   - auto-saving every response to `.zed-http/` for viewing in Zed.
 
@@ -272,6 +273,7 @@ Comments between headers are skipped.
 | `# @name login` | Request name: for `--name`, response references and the task's title |
 | `# @env prod` | The environment: of the whole file above the first `###`, of one request below it |
 | `# @no-redirect` | Do not follow 3xx redirects |
+| `# @no-log` | Do not save the response: no file in `.zed-http/`, and later runs cannot reference it (requests after it in the same run still can). Generated requests have it; delete the line to keep their responses |
 
 ## Variables
 
@@ -730,6 +732,40 @@ A framework is active in a file only when the file contains one of its `imports`
 Path parameters (`{id}`, `:id`, `<id>`, `<int:id>`, `$id`, `${user.id}`) become `{{id}}`,
 and relative paths get the `{{baseUrl}}` prefix. Bare `https://…` literals get a `cmd+.` action but no lens.
 
+#### The server's address
+
+Requests to your own application use `{{baseUrl}}` from `.zed/http/http-client.env.json`. When the
+project is a Spring application — Spring Boot (Java/Kotlin) or Spring for Dart — the extension reads
+where it listens from its configuration, so the port is right without editing anything:
+
+- the project is the nearest directory with `pubspec.yaml`, `pom.xml` or `build.gradle(.kts)` above
+  the source file; its `application.yml` / `application.yaml` / `application.properties` are read from
+  `lib/resources/` (Spring for Dart), `src/main/resources/`, `resources/`, `config/` or the root
+  (`.properties` wins over YAML, as in Spring Boot; documents for a profile are skipped);
+- `server.port` (a placeholder's default too: `${PORT:9090}` → 9090; `0`, a random port, keeps
+  8080), `server.servlet.context-path` (`/shop` is added to the URL), `server.address`, and TLS
+  (`server.ssl.certificate`, `key-store` or `bundle` → `https`).
+
+The first generated request creates the environment file with that address:
+`"baseUrl": "http://localhost:9090/shop"`. If the file exists and its `baseUrl` is missing or still
+the generic `http://localhost:8080`, it is set to the application's address (other values and
+environments are kept). A `baseUrl` you set yourself is never changed; a generated request then
+notes where the application listens:
+
+```http
+### get-api-books-by-isbn
+# @name get-api-books-by-isbn
+# The application's configuration gives http://localhost:9090/shop; baseUrl in http-client.env.json is http://localhost:7000
+```
+
+**Clients go where the client goes.** A Feign client (`@FeignClient`, Java and Dart) is a request
+to another service, not to your server: its `url` is used, with `${...}` placeholders resolved from
+the same configuration (`url = "${catalog.url}"` with `catalog.url=https://catalog.example` →
+`GET https://catalog.example/api/books/{{isbn}}`), its `path` added. Without a `url`, the client's
+`spring.cloud.openfeign.client.config.<name>.url` is used. Whatever cannot be resolved becomes a
+variable named after the property (`{{catalogUrl}}`, `{{mailUrl}}`), to fill in the environment
+file. In the catalog this is a framework's `base` patterns (see `frameworks.schema.json`).
+
 #### URLs kept in a variable
 
 Client calls rarely spell the URL out: `http.post(_endpoint, …)`, `axios.get(endpoint)`,
@@ -826,7 +862,7 @@ uses it for completion and validation while you edit.
 
 ### Try it
 
-[`examples/code/`](examples/code) has one file per framework — 48 files, one folder per language.
+[`examples/code/`](examples/code) has one file per framework — 50 files, one folder per language.
 Open any of them in Zed, put the cursor on a route and press `cmd+.` (or click the lens). Or from the terminal:
 
 ```sh

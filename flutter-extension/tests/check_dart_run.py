@@ -3,7 +3,9 @@ PATH that records the commands it gets:
 
 - in a package with `build_runner` in `dev_dependencies` it builds first
   (`dart run build_runner build --delete-conflicting-outputs`), in the package directory, then runs
-  the file with the arguments after it; a failed build stops with its exit code;
+  the file with the arguments after it, with the VM service on for hot reload on save
+  (`dart --enable-vm-service=0 --no-dds --write-service-info=... <file> <arguments>`; plain
+  `dart run` with FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE=off); a failed build stops with its exit code;
 - without `build_runner` (or with it only in `dependencies`) it just runs the file;
 - it exits with the program's exit code;
 - in a Flutter package (`flutter: sdk: flutter` in `dependencies`) it runs the file with
@@ -56,7 +58,12 @@ def package(root, name, pubspec):
     return main
 
 
-def run(tmp, file, *args, build_exit=0, run_exit=0):
+def program(file, *args):
+    """The command line of a Dart program run with hot reload on save."""
+    return ["--enable-vm-service=0", "--no-dds", "--write-service-info=*", str(file), *args]
+
+
+def run(tmp, file, *args, build_exit=0, run_exit=0, extra_env=None):
     log = tmp / "log.jsonl"
     log.write_text("")
     env = dict(
@@ -65,13 +72,16 @@ def run(tmp, file, *args, build_exit=0, run_exit=0):
         FAKE_DART_LOG=str(log),
         FAKE_DART_BUILD_EXIT=str(build_exit),
         FAKE_DART_RUN_EXIT=str(run_exit),
+        **(extra_env or {}),
     )
     result = subprocess.run(
         [shutil.which("dart"), str(RUN), str(file), *args],
         cwd=tmp, env=env, capture_output=True, text=True, timeout=120,
     )
     calls = [json.loads(line) for line in log.read_text().splitlines()]
-    return result, [(c["args"], Path(c["cwd"]).resolve()) for c in calls]
+    # The service info file is a temporary one.
+    normalize = lambda a: "--write-service-info=*" if a.startswith("--write-service-info=") else a
+    return result, [([normalize(a) for a in c["args"]], Path(c["cwd"]).resolve()) for c in calls]
 
 
 def main():
@@ -110,12 +120,16 @@ def main():
         result, calls = run(tmp, generated, "--verbose", "x")
         package_dir = tmp / "generated"
         check(result.returncode == 0, "it succeeds")
-        check(calls == [(build, package_dir), (["run", str(generated), "--verbose", "x"], package_dir)],
-              "it builds first, then runs the file with its arguments, both in the package directory")
+        check(calls == [(build, package_dir), (program(generated, "--verbose", "x"), package_dir)],
+              "it builds first, then runs the file with its arguments (VM service on), both in the "
+              "package directory")
+        result, calls = run(tmp, generated, "x", extra_env={"FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE": "off"})
+        check(calls == [(build, package_dir), (["run", str(generated), "x"], package_dir)],
+              "FLUTTER_TOOLS_HOT_RELOAD_ON_SAVE=off: plain dart run")
 
         print("== a file below the package root")
         result, calls = run(tmp, nested / "tool.dart")
-        check([c[0] for c in calls] == [build, ["run", str(nested / "tool.dart")]] and calls[0][1] == package_dir,
+        check([c[0] for c in calls] == [build, program(nested / "tool.dart")] and calls[0][1] == package_dir,
               "the nearest pubspec.yaml above the file is the package")
 
         print("== a failed build")
@@ -126,7 +140,7 @@ def main():
         print("== without build_runner")
         for name, main_file in (("plain", plain), ("runtime", runtime)):
             result, calls = run(tmp, main_file, "a")
-            check(calls == [(["run", str(main_file), "a"], tmp / name)],
+            check(calls == [(program(main_file, "a"), tmp / name)],
                   f"{name}: it just runs the file, in the package directory")
 
         print("== a Flutter package")
@@ -136,8 +150,8 @@ def main():
               "it builds first, then runs the file with flutter run -t, in the package directory")
         check(result.returncode == 5, "it exits with flutter's exit code")
         result, calls = run(tmp, flutter_dev)
-        check(calls == [(["run", str(flutter_dev)], tmp / "flutter_dev")],
-              "the Flutter SDK only in dev_dependencies: dart run")
+        check(calls == [(program(flutter_dev), tmp / "flutter_dev")],
+              "the Flutter SDK only in dev_dependencies: the Dart VM")
 
         print("== the program's exit code")
         result, calls = run(tmp, generated, run_exit=3)

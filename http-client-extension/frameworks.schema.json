@@ -38,6 +38,7 @@
         "docs": { "type": "string", "format": "uri" },
         "imports": { "type": "array", "items": { "type": "string" }, "description": "The framework is active only if the file contains one of these strings. Empty = always." },
         "prefix": { "$ref": "#/definitions/patterns", "description": "Path prefix declarations capturing {path}, e.g. @RequestMapping(\"{path}\")." },
+        "base": { "$ref": "#/definitions/patterns", "description": "Where a client class's requests go, at class level: {path} is the URL (${...} placeholders resolved from the project's application.yml / application.properties, else a {{variable}}), or {name} the client name, whose spring.cloud.openfeign.client.config.<name>.url is used. E.g. @FeignClient(...url = \"{path}\"." },
         "prefix_scope": { "enum": ["class", "file"], "description": "class: an annotation right above a class declaration (default). file: the first match in the file." },
         "controller_token": { "type": "string", "description": "Token in the prefix replaced by the controller class name without the Controller suffix, e.g. [controller]." },
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" }, "minItems": 1, "description": "At one position the first matching pattern wins." },

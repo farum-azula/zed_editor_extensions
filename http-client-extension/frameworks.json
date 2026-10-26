@@ -35,7 +35,8 @@
           "name": "Spring Web (MVC / WebFlux / OpenFeign)",
           "docs": "https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html",
           "imports": ["org.springframework"],
-          "prefix": ["@RequestMapping(\"{path}\"", "@RequestMapping(value = \"{path}\"", "@RequestMapping(path = \"{path}\""],
+          "prefix": ["@RequestMapping(\"{path}\"", "@RequestMapping(value = \"{path}\"", "@RequestMapping(path = \"{path}\"", "@FeignClient(...path = \"{path}\""],
+          "base": ["@FeignClient(...url = \"{path}\"", "@FeignClient(...name = \"{name}\"", "@FeignClient(...value = \"{name}\"", "@FeignClient(\"{name}\""],
           "routes": [
             "@{method}Mapping(\"{path}\"",
             "@{method}Mapping(value = \"{path}\"",
@@ -329,6 +330,64 @@
           "headers": ["headers[\"{name}\"]"],
           "examples": [
             { "code": "import 'package:shelf_router/shelf_router.dart';\nvoid main() {\n  app.get('/hello/<name>', h);\n}", "expect": ["GET {{baseUrl}}/hello/{{name}}"] }
+          ]
+        },
+        "spring_boot_starter_web": {
+          "name": "Spring Web for Dart (spring_boot_starter_web)",
+          "docs": "https://pub.dev/packages/spring_boot_starter_web",
+          "imports": ["package:spring_boot_starter_web/"],
+          "prefix": ["@RequestMapping(\"{path}\")", "@RequestMapping(r\"{path}\")", "@RequestMapping.of(...path: \"{path}\""],
+          "routes": [
+            "@{method}Mapping(\"{path}\")",
+            "@{method}Mapping(r\"{path}\")",
+            "@{method}Mapping.of(...path: \"{path}\"",
+            "@{method}Mapping.of(...path: r\"{path}\"",
+            "@RequestMapping.of(...path: \"{path}\"...method: HttpMethod.{method}",
+            "@{method}Mapping()",
+            "@{method}Mapping.of(",
+            { "pattern": "@RequestMapping(\"{path}\")", "method": "GET" }
+          ],
+          "path_params": ["braces"],
+          "query": [
+            "@RequestParam(\"{name}\") {type} {_}",
+            "@RequestParam.of(...name: \"{name}\"...) {type} {_}",
+            "@RequestParam() {type} {name}",
+            "@RequestParam.of(...) {type} {name}"
+          ],
+          "headers": ["@RequestHeader(\"{name}\")", "@RequestHeader.of(...name: \"{name}\""],
+          "body": ["@RequestBody(...) @{_}() {type} {_}", "@RequestBody(...) {type} {_}"],
+          "auth": ["@PreAuthorize", "@Secured", "Principal "],
+          "examples": [
+            { "code": "import 'package:spring_boot_starter_web/spring_boot_starter_web.dart';\n@RestController()\n@RequestMapping('/api/books')\nclass BookController {\n  @GetMapping('/{isbn}')\n  Future<Book> find(@PathVariable() String isbn) => books.find(isbn);\n  @GetMapping()\n  Future<List<Book>> search(@RequestParam('q') String query) => books.search(query);\n  @PostMapping()\n  Future<Book> create(@RequestBody() @Valid() NewBook book) => books.create(book);\n  @DeleteMapping.of(path: '/{isbn}', produces: 'application/json')\n  void delete(@PathVariable() String isbn) {}\n}\nclass NewBook {\n  final String title;\n}", "expect": ["GET {{baseUrl}}/api/books/{{isbn}}", "GET {{baseUrl}}/api/books", "POST {{baseUrl}}/api/books", "DELETE {{baseUrl}}/api/books/{{isbn}}"] }
+          ]
+        },
+        "spring_boot_starter_feign": {
+          "name": "Feign clients for Dart (spring_boot_starter_feign)",
+          "docs": "https://pub.dev/packages/spring_boot_starter_feign",
+          "imports": ["package:spring_boot_starter_feign/"],
+          "prefix": ["@FeignClient(...path: \"{path}\"", "@FeignClient(...path: r\"{path}\""],
+          "base": ["@FeignClient(...url: r\"{path}\"", "@FeignClient(...url: \"{path}\"", "@FeignClient(\"{name}\""],
+          "routes": [
+            "@{method}Mapping(\"{path}\")",
+            "@{method}Mapping(r\"{path}\")",
+            "@{method}Mapping.of(...path: \"{path}\"",
+            "@{method}Mapping.of(...path: r\"{path}\"",
+            "@RequestMapping.of(...path: \"{path}\"...method: HttpMethod.{method}",
+            "@{method}Mapping()",
+            "@{method}Mapping.of(",
+            { "pattern": "@RequestMapping(\"{path}\")", "method": "GET" }
+          ],
+          "path_params": ["braces"],
+          "query": [
+            "@RequestParam(\"{name}\") {type} {_}",
+            "@RequestParam.of(...name: \"{name}\"...) {type} {_}",
+            "@RequestParam() {type} {name}",
+            "@RequestParam.of(...) {type} {name}"
+          ],
+          "headers": ["@RequestHeader(\"{name}\")", "@RequestHeader.of(...name: \"{name}\""],
+          "body": ["@RequestBody(...) @{_}() {type} {_}", "@RequestBody(...) {type} {_}"],
+          "examples": [
+            { "code": "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient('catalog', url: r'${catalog.url}', path: '/api')\nabstract interface class CatalogClient {\n  @GetMapping('/books/{isbn}')\n  Future<Book> find(@PathVariable() String isbn);\n  @PostMapping('/books')\n  Future<Book> create(@RequestBody() Book book);\n}\n@FeignClient('github', url: 'https://api.github.com')\nabstract interface class GitHub {\n  @GetMapping('/repos/{owner}')\n  Future<Object> repos(@PathVariable() String owner);\n}\n@FeignClient('mail')\nabstract interface class Mail {\n  @PostMapping('/send')\n  Future<void> send(@RequestBody() Object m);\n}", "expect": ["GET {{catalogUrl}}/api/books/{{isbn}}", "POST {{catalogUrl}}/api/books", "GET https://api.github.com/repos/{{owner}}", "POST {{mailUrl}}/send"] }
           ]
         }
       }

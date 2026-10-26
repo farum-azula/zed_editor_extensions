@@ -11,4 +11,5 @@ pub mod launcher;
 pub mod lsp;
 pub mod parser;
 pub mod pattern;
+pub mod server;
 pub mod vars;

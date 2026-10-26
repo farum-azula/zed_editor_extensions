@@ -195,8 +195,11 @@ struct Generation {
     current: Option<String>,
     /// The text that adds the request at the end of `current`.
     added: String,
-    /// The environment file to create, when the project has none.
-    env_file: Option<PathBuf>,
+    /// `.zed/http/` of the project: its environment file is created (or pointed at the
+    /// application's server) when the request is added.
+    base: PathBuf,
+    /// The source file the request comes from (its application's configuration gives the port).
+    source: PathBuf,
 }
 
 fn generation(
@@ -219,8 +222,16 @@ fn generation(
     let current = docs.get(&path_to_uri(&target)).cloned().or_else(|| fs::read_to_string(&target).ok());
     let existing = current.as_deref().and_then(|t| endpoint::find_request(t, &name));
     let added = endpoint::append_text(current.as_deref().unwrap_or_default(), &content);
-    let env_file = find_env_dir(&dir).is_none().then(|| base.join("http-client.env.json"));
-    Some(Generation { title: format!("{} {}", ep.method, ep.url), name, target, existing, current, added, env_file })
+    Some(Generation {
+        title: format!("{} {}", ep.method, ep.url),
+        name,
+        target,
+        existing,
+        current,
+        added,
+        base,
+        source: file,
+    })
 }
 
 /// Adds the generated request. A `.http` file open in Zed is edited in its buffer, which Zed then
@@ -232,10 +243,7 @@ fn add_request(
     next_id: &mut u64,
     out: &mut dyn Write,
 ) -> io::Result<()> {
-    if let Some(env) = &g.env_file {
-        fs::create_dir_all(env.parent().expect("a file in .zed/http"))?;
-        fs::write(env, endpoint::DEFAULT_ENV)?;
-    }
+    endpoint::ensure_env(&g.base, &g.source)?;
     let uri = path_to_uri(&g.target);
     match g.current.as_deref().filter(|_| docs.contains_key(&uri)) {
         Some(open) => {
@@ -539,6 +547,7 @@ fn hover(t: &Target) -> Option<Value> {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default(),
+        ..Default::default()
     };
     ctx.vars.extend(file.variables.iter().cloned());
 

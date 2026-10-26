@@ -105,7 +105,8 @@ pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
         serde_json::to_string_pretty(&obj).expect("sample values always serialize")
     });
 
-    let mut out = format!("### {name}\n# @name {name}\n");
+    // Generated requests keep no response log; delete `# @no-log` to save responses to `.zed-http/`.
+    let mut out = format!("### {name}\n# @name {name}\n# @no-log\n");
     if spec.auth {
         out.push_str("# Requires `token` in .zed/http/http-client.env.json\n");
     }
@@ -119,12 +120,81 @@ pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
     out
 }
 
-/// Detects the route on `line` of `source` and renders a full request for it.
+/// Detects the route on `line` of `source` and renders a full request for it. When the
+/// application's configuration gives another address than the environment's `baseUrl` (set by
+/// hand), the request says so in a comment.
 pub fn generate(catalog: &Catalog, text: &str, source: &Path, line: usize) -> Option<(Endpoint, String, String)> {
     let (ep, spec, _) = catalog.request(text, source, line)?;
     let name = default_name(&ep.method, &ep.url);
-    let content = render(&ep.method, &ep.url, &name, &spec);
+    let mut content = render(&ep.method, &ep.url, &name, &spec);
+    if ep.url.starts_with("{{baseUrl}}") {
+        if let (Some(server), Some(current)) = (local_server_for(source), env_base_url(source)) {
+            if current != server && current != LOCAL_SERVER {
+                let note = format!(
+                    "# The application's configuration gives {server}; baseUrl in http-client.env.json is {current}\n"
+                );
+                let header = format!("### {name}\n# @name {name}\n");
+                content = content.replacen(&header, &format!("{header}{note}"), 1);
+            }
+        }
+    }
     Some((ep, name, content))
+}
+
+/// Where the application `source` belongs to listens, from its Spring configuration
+/// (`server.port`, `server.servlet.context-path`, TLS): `None` without one.
+pub fn local_server_for(source: &Path) -> Option<String> {
+    crate::server::project_properties(source).map(|props| crate::server::spring_base_url(&props))
+}
+
+/// The `baseUrl` of the default environment found above `source`.
+fn env_base_url(source: &Path) -> Option<String> {
+    let dir = crate::vars::find_env_dir(source.parent()?)?;
+    let envs = crate::vars::Environments::load(&dir).ok()?;
+    let env = envs.select(None).ok()??;
+    envs.vars(Some(&env)).get("baseUrl").cloned()
+}
+
+/// The environment file for a project whose server is at `base_url`.
+pub fn default_env(base_url: &str) -> String {
+    format!("{{\n  \"dev\": {{\n    \"baseUrl\": \"{base_url}\",\n    \"token\": \"\"\n  }}\n}}\n")
+}
+
+/// Makes sure `<base>/http-client.env.json` (or one above) points at the application of `source`:
+/// creates it with the address from the application's configuration, or sets that address in
+/// the default environment when its `baseUrl` is missing or still the generic default. A
+/// `baseUrl` set by hand is kept. Returns the file written, if any.
+pub fn ensure_env(base: &Path, source: &Path) -> std::io::Result<Option<PathBuf>> {
+    let server = local_server_for(source);
+    let Some(dir) = crate::vars::find_env_dir(base) else {
+        let file = base.join("http-client.env.json");
+        std::fs::create_dir_all(base)?;
+        std::fs::write(&file, default_env(server.as_deref().unwrap_or(LOCAL_SERVER)))?;
+        return Ok(Some(file));
+    };
+    let Some(server) = server else { return Ok(None) };
+    let file = dir.join("http-client.env.json");
+    let Ok(text) = std::fs::read_to_string(&file) else { return Ok(None) };
+    let Ok(serde_json::Value::Object(mut root)) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Ok(None);
+    };
+    let names: Vec<String> = root.keys().filter(|k| !k.starts_with('$')).cloned().collect();
+    let env = ["dev", "local", "development"]
+        .iter()
+        .map(|s| s.to_string())
+        .find(|d| names.contains(d))
+        .or_else(|| names.first().cloned())
+        .unwrap_or_else(|| "dev".into());
+    let entry = root.entry(env).or_insert_with(|| serde_json::Value::Object(Default::default()));
+    let Some(values) = entry.as_object_mut() else { return Ok(None) };
+    let current = values.get("baseUrl").and_then(|v| v.as_str()).map(str::to_string);
+    if current.as_deref().is_some_and(|c| c != LOCAL_SERVER) || current.as_deref() == Some(server.as_str()) {
+        return Ok(None);
+    }
+    values.insert("baseUrl".into(), serde_json::Value::String(server));
+    let pretty = serde_json::to_string_pretty(&serde_json::Value::Object(root)).expect("JSON values serialize");
+    std::fs::write(&file, format!("{pretty}\n"))?;
+    Ok(Some(file))
 }
 
 /// `.http` file collecting all requests generated from `source`: `<dir>/<source file name>.http`

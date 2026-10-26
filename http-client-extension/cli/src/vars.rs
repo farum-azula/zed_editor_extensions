@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Default)]
 pub struct Context {
     pub vars: HashMap<String, String>,
     pub responses: serde_json::Map<String, Value>,
+    /// Responses of `# @no-log` requests, left out when the store is saved.
+    pub unlogged: std::collections::HashSet<String>,
 }
 
 impl Context {

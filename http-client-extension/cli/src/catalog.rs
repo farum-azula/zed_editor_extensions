@@ -134,6 +134,11 @@ struct FrameworkDef {
     prefix: Vec<String>,
     #[serde(default)]
     prefix_scope: Scope,
+    /// Where a client's requests go (`@FeignClient(url = "${catalog.url}")`), at class level:
+    /// `{path}` is the URL (placeholders resolved from the project's configuration), or
+    /// `{name}` the client name, whose `spring.cloud.openfeign.client.config.<name>.url` is used.
+    #[serde(default)]
+    base: Vec<String>,
     #[serde(default)]
     controller_token: Option<String>,
     routes: Vec<RouteSpec>,
@@ -259,6 +264,7 @@ pub struct Framework {
     pub imports: Vec<String>,
     prefix: Option<Matcher>,
     prefix_scope: Scope,
+    base: Option<Matcher>,
     controller_token: Option<String>,
     routes: Matcher,
     route_defs: Vec<RouteDef>,
@@ -382,7 +388,7 @@ impl Catalog {
                 }
                 let end_line = line_of(&starts, hit.end.saturating_sub(1));
                 let def = &fw.route_defs[hit.alt];
-                let Some(endpoint) = self.endpoint(lang, fw, def, &hit, text, &starts, line) else { continue };
+                let Some(endpoint) = self.endpoint(lang, fw, def, &hit, text, &starts, line, path) else { continue };
                 let replace = match by_line.get(&line) {
                     None => true,
                     Some(r) => r.endpoint.weak && !endpoint.weak,
@@ -412,6 +418,7 @@ impl Catalog {
         text: &str,
         starts: &[usize],
         line: usize,
+        source: &Path,
     ) -> Option<Endpoint> {
         let method =
             hit.get("method").map(str::to_uppercase).or_else(|| def.method.clone()).unwrap_or_else(|| "GET".into());
@@ -426,7 +433,13 @@ impl Catalog {
                 path = join(&prefix, &path);
             }
         }
-        let path = convert_params(&path, &fw.path_params);
+        let mut path = convert_params(&path, &fw.path_params);
+        if !absolute {
+            if let Some(base) = self.base(lang, fw, text, starts, line, source) {
+                path = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
+                path = path.trim_end_matches('/').to_string();
+            }
+        }
         Some(Endpoint { method, url: endpoint::to_http_url(&path), weak: def.weak })
     }
 
@@ -461,13 +474,15 @@ impl Catalog {
         let m = fw.prefix.as_ref()?;
         let found = match fw.prefix_scope {
             Scope::File => m.first(text),
-            Scope::Class => m
-                .hits(text)
-                .filter(|h| {
-                    let l = line_of(starts, h.start);
-                    l < line && lang.is_class_level(text, starts, l)
-                })
-                .last(),
+            Scope::Class => {
+                let owner = lang.enclosing_class(text, starts, line);
+                m.hits(text)
+                    .filter(|h| {
+                        let l = line_of(starts, h.start);
+                        l < line && owner.is_some() && lang.class_after(text, starts, l) == owner
+                    })
+                    .last()
+            }
         }?;
         let mut prefix = found.get("path").unwrap_or_default().to_string();
         if let Some(token) = fw.controller_token.as_deref().filter(|t| prefix.contains(*t)) {
@@ -477,6 +492,47 @@ impl Catalog {
             }
         }
         Some(prefix)
+    }
+
+    /// The base URL of a client class (`@FeignClient(url = ...)`) above `line`: an absolute URL
+    /// once the project's configuration resolves its placeholders, else `{{variable}}` for what is
+    /// missing (`${catalog.url}` → `{{catalogUrl}}`).
+    fn base(
+        &self,
+        lang: &Language,
+        fw: &Framework,
+        text: &str,
+        starts: &[usize],
+        line: usize,
+        source: &Path,
+    ) -> Option<String> {
+        let m = fw.base.as_ref()?;
+        let owner = lang.enclosing_class(text, starts, line)?;
+        let hit = m
+            .hits(text)
+            .filter(|h| {
+                let l = line_of(starts, h.start);
+                l < line && lang.class_after(text, starts, l) == Some(owner)
+            })
+            .last()?;
+        let raw = match (hit.get("path"), hit.get("name")) {
+            (Some(url), _) if !url.trim().is_empty() => url.trim().to_string(),
+            (_, Some(name)) => format!("${{spring.cloud.openfeign.client.config.{name}.url}}"),
+            _ => return None,
+        };
+        if !raw.contains("${") {
+            return Some(raw);
+        }
+        let props = crate::server::project_properties(source).unwrap_or_default();
+        let (mut resolved, missing) = crate::server::resolve(&raw, &props);
+        for key in missing {
+            resolved =
+                resolved.replace(&format!("${{{key}}}"), &format!("{{{{{}}}}}", crate::server::variable_for(&key)));
+        }
+        if !resolved.contains("://") && !resolved.starts_with("{{") {
+            resolved = format!("http://{resolved}");
+        }
+        Some(resolved)
     }
 
     /// The route on `line` and the request inferred for it.
@@ -782,13 +838,27 @@ impl Language {
     /// An annotation on `line` belongs to a class if the first line after the annotation block
     /// (other decorators, blank lines) declares a class.
     fn is_class_level(&self, text: &str, starts: &[usize], line: usize) -> bool {
-        let Some(re) = &self.class_keywords else { return false };
+        self.class_after(text, starts, line).is_some()
+    }
+
+    /// The line of the class declaration that the decorator on `line` belongs to.
+    fn class_after(&self, text: &str, starts: &[usize], line: usize) -> Option<usize> {
+        let re = self.class_keywords.as_ref()?;
         let from = starts.get(line).copied().unwrap_or(text.len());
-        text[from..]
+        let (offset, found) = text[from..]
             .lines()
+            .enumerate()
             .skip(1)
-            .find(|l| !l.trim().is_empty() && !self.starts_decorated(l))
-            .is_some_and(|l| re.is_match(l))
+            .find(|(_, l)| !l.trim().is_empty() && !self.starts_decorated(l))?;
+        re.is_match(found).then_some(line + offset)
+    }
+
+    /// The line of the last class declaration above `line` (the class a route belongs to).
+    fn enclosing_class(&self, text: &str, starts: &[usize], line: usize) -> Option<usize> {
+        let re = self.class_keywords.as_ref()?;
+        let lines: Vec<&str> = text.lines().collect();
+        let _ = starts;
+        (0..line.min(lines.len())).rev().find(|&l| !self.starts_decorated(lines[l]) && re.is_match(lines[l]))
     }
 
     fn starts_decorated(&self, line: &str) -> bool {
@@ -871,6 +941,7 @@ impl Framework {
             imports: f.imports,
             prefix: c(&f.prefix, "prefix")?,
             prefix_scope: f.prefix_scope,
+            base: c(&f.base, "base")?,
             controller_token: f.controller_token,
             routes: c(&patterns, "routes")?.ok_or_else(|| format!("{ctx}.routes: empty"))?,
             route_defs,

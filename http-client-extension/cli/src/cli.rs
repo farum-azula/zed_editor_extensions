@@ -160,7 +160,7 @@ fn run(o: Opts) -> Result<bool, String> {
                 chosen.push(envs.select(vars::requested_env(own, &src).as_deref())?);
             }
             let store_path = dir.join(".zed-http").join("responses.json");
-            let mut ctx = Context { vars: Default::default(), responses: load_store(&store_path) };
+            let mut ctx = Context { responses: load_store(&store_path), ..Default::default() };
 
             let mut ok = true;
             let mut shown = None;
@@ -184,6 +184,7 @@ fn run(o: Opts) -> Result<bool, String> {
                     }
                 }
             }
+            ctx.responses.retain(|k, _| !ctx.unlogged.contains(k));
             save_store(&store_path, &ctx.responses);
             Ok(ok)
         }
@@ -319,7 +320,10 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     let ext = extension_for(&content_type, json.is_some());
     let out_dir = dir.join(".zed-http");
     let saved = out_dir.join(format!("{}.{ext}", sanitize(&key)));
-    if fs::create_dir_all(&out_dir).is_ok() {
+    if req.no_log {
+        // Usable by the requests after it in this run, but not written anywhere.
+        ctx.unlogged.insert(key);
+    } else if fs::create_dir_all(&out_dir).is_ok() {
         let data = if json.is_some() { pretty.into_bytes() } else { bytes.clone() };
         if fs::write(&saved, data).is_ok() {
             println!("\n{DIM}saved: {}{RESET}", saved.display());
@@ -482,10 +486,10 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let base = root.join(vars::ZED_HTTP_DIR);
     let dir = base.join("endpoints");
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    if vars::find_env_dir(&dir).is_none() {
-        let env = base.join("http-client.env.json");
-        fs::write(&env, endpoint::DEFAULT_ENV).map_err(|e| format!("{}: {e}", env.display()))?;
-        println!("{GREEN}created:{RESET} {}", env.display());
+    let had_env = vars::find_env_dir(&dir).is_some();
+    let env_source = source.clone().unwrap_or_else(|| root.clone());
+    if let Some(env) = endpoint::ensure_env(&base, &env_source).map_err(|e| format!("{}: {e}", base.display()))? {
+        println!("{GREEN}{}:{RESET} {}", if had_env { "updated" } else { "created" }, env.display());
     }
 
     let text = match generated {

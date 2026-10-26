@@ -10,6 +10,8 @@ pub struct Request {
     pub start_line: usize,
     pub end_line: usize,
     pub no_redirect: bool,
+    /// `# @no-log`: the response is neither saved to `.zed-http/` nor kept for later runs.
+    pub no_log: bool,
     /// The request's own `# @env NAME` and its line (0-based); it wins over the file's.
     pub env: Option<(usize, String)>,
     /// Below a `###` of its own, rather than in the file's header (where `# @env` is the file's).
@@ -142,6 +144,8 @@ fn parse_section(
                 }
             } else if c.starts_with("@no-redirect") {
                 req.no_redirect = true;
+            } else if c.starts_with("@no-log") {
+                req.no_log = true;
             } else if let Some(env) = env_directive(line).filter(|_| req.env.is_none()) {
                 req.env = Some((i, env));
             }
