@@ -257,6 +257,45 @@ def check_build_runner_projects(tmp):
     check(projects(mono) == [(mono / "x").resolve()], "a root without a pubspec, a package of it")
     check(projects(tmp / "nowhere") == [], "a root that is not there")
 
+    def lock(directory, version):
+        (directory / "pubspec.lock").write_text(
+            f'packages:\n  build_runner:\n    dependency: "direct dev"\n    source: hosted\n    version: "{version}"\n'
+        )
+
+    def watch_args(root):
+        probe = tmp / "probe_args.dart"
+        probe.write_text(
+            f"import 'dart:io';\nimport '{(HERE.parent / 'tool' / 'flutter_lsp.dart').as_uri()}';\n"
+            "void main(List<String> a) { for (final p in buildRunnerProjects(Directory(a[0]))) "
+            "print('${p.path} ${buildRunnerArgumentsFor(p).last}'); }\n"
+        )
+        run = subprocess.run([shutil.which("dart"), str(probe), str(root)], capture_output=True, text=True, timeout=120)
+        return [(Path(line.rsplit(" ", 1)[0]).resolve(), line.rsplit(" ", 1)[1]) for line in run.stdout.splitlines()]
+
+    workspace = tmp / "workspace"
+    package(workspace, "name: root\nworkspace:\n  - app\n  - core\n" + PUBSPEC.split("\n", 1)[1])
+    package(workspace / "app", "name: app\nresolution: workspace\n" + PUBSPEC.split("\n", 1)[1])
+    package(workspace / "core", "name: core\nresolution: workspace\n")
+    lock(workspace, "2.17.1")
+    check(
+        watch_args(workspace) == [(workspace.resolve(), "--workspace")],
+        "a pub workspace: one watch with --workspace in its root, none per member",
+    )
+    lock(workspace, "2.13.0")
+    check(
+        [path for path, _ in watch_args(workspace)] == [workspace.resolve(), (workspace / "app").resolve()]
+        and all(arg != "--workspace" for _, arg in watch_args(workspace)),
+        "build_runner before 2.14: a watch per package, as before",
+    )
+    members_only = tmp / "members_only"
+    package(members_only, "name: root\nworkspace:\n  - app\n")
+    package(members_only / "app", "name: app\nresolution: workspace\n" + PUBSPEC.split("\n", 1)[1])
+    lock(members_only, "2.17.1")
+    check(
+        watch_args(members_only) == [((members_only / "app").resolve(), "--workspace")],
+        "a root without build_runner: the member's watch builds the workspace",
+    )
+
 
 def serve(home, folder, env, options=None):
     """Starts the server on `folder` as Zed does: initialize, then initialized."""

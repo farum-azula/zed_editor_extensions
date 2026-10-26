@@ -14,7 +14,9 @@
 // - For each project of the workspace that has `build_runner` in the `dev_dependencies` of its
 //   pubspec.yaml (the root, and the directories right under it), it runs
 //   `dart run build_runner watch --delete-conflicting-outputs` while the server lives, and shows
-//   its output in Zed's language server log. `"initialization_options": {"build_runner": false}`
+//   its output in Zed's language server log. A pub workspace gets one watch for all its packages
+//   (`--workspace`, build_runner 2.14 and later), run in its root, or in a member when the root
+//   does not depend on build_runner itself. `"initialization_options": {"build_runner": false}`
 //   in the settings of `flutter-tools`, or FLUTTER_TOOLS_BUILD_RUNNER=off in the environment,
 //   turns that off.
 //
@@ -23,6 +25,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'devices.dart' show workspaceMembers;
 import 'protocol.dart';
 
 /// Where the tasks find the runner: the same path on every machine.
@@ -317,8 +320,83 @@ bool buildRunnerEnabled(Object? initializationOptions, Map<String, String> envir
 
 /// The package directories to run build_runner in: [root] and the directories right under it (the
 /// members of a pub workspace, the packages of a monorepo), hidden ones left out, whose
-/// pubspec.yaml has `build_runner` in `dev_dependencies`.
+/// pubspec.yaml has `build_runner` in `dev_dependencies`. Of a pub workspace whose build_runner
+/// builds workspaces (see [workspaceBuildRoot]), only the first: its watch builds them all.
 List<Directory> buildRunnerProjects(Directory root) {
+  final projects = <Directory>[];
+  final workspaces = <String>{};
+  for (final project in _packagesUsingBuildRunner(root)) {
+    final workspace = workspaceBuildRoot(project);
+    if (workspace == null || workspaces.add(workspace.absolute.path)) {
+      projects.add(project);
+    }
+  }
+  return projects;
+}
+
+/// The `dart` arguments of the watch in [project]: [buildRunnerArguments], with `--workspace` in
+/// a pub workspace whose build_runner builds workspaces.
+List<String> buildRunnerArgumentsFor(Directory project) => [
+  ...buildRunnerArguments,
+  if (workspaceBuildRoot(project) != null) '--workspace',
+];
+
+/// The root of the pub workspace [project] belongs to (itself, or the parent listing it in
+/// `workspace:`), when its pubspec.lock has build_runner 2.14 or later, which builds a whole
+/// workspace with `--workspace`; otherwise null, and each package is watched on its own.
+Directory? workspaceBuildRoot(Directory project) {
+  final path = _normalized(project);
+  for (final candidate in [project, project.parent]) {
+    final members = workspaceMembers(candidate);
+    final isRoot = members.isNotEmpty &&
+        (_normalized(candidate) == path || members.any((member) => _normalized(member) == path));
+    if (!isRoot) {
+      continue;
+    }
+    final version = _lockedVersion(candidate, 'build_runner');
+    return version != null && _atLeast(version, const [2, 14]) ? candidate : null;
+  }
+  return null;
+}
+
+/// [directory] as an absolute path without `.`, `..` or a trailing separator, to compare.
+String _normalized(Directory directory) =>
+    directory.absolute.uri.normalizePath().toFilePath().replaceFirst(RegExp(r'[\\/]$'), '');
+
+/// The version of [package] in [root]'s pubspec.lock, e.g. `2.17.1`.
+String? _lockedVersion(Directory root, String package) {
+  final String text;
+  try {
+    text = File('${root.path}/pubspec.lock').readAsStringSync();
+  } on FileSystemException {
+    return null;
+  }
+  var inPackage = false;
+  for (final line in LineSplitter.split(text)) {
+    if (RegExp(r'^  \S').hasMatch(line)) {
+      inPackage = line.trim() == '$package:';
+    } else if (inPackage) {
+      final version = RegExp(r'''^    version:\s*['"]?([^'"\s]+)''').firstMatch(line);
+      if (version != null) {
+        return version.group(1);
+      }
+    }
+  }
+  return null;
+}
+
+bool _atLeast(String version, List<int> minimum) {
+  final parts = version.split(RegExp(r'[.+-]')).map(int.tryParse).toList();
+  for (var i = 0; i < minimum.length; i++) {
+    final part = i < parts.length ? parts[i] ?? 0 : 0;
+    if (part != minimum[i]) {
+      return part > minimum[i];
+    }
+  }
+  return true;
+}
+
+List<Directory> _packagesUsingBuildRunner(Directory root) {
   final packages = <Directory>[root];
   try {
     packages.addAll(
@@ -404,7 +482,7 @@ class BuildRunnerWatches {
       // The Dart that runs this server: the one of the Flutter SDK, or fvm's.
       process = await Process.start(
         Platform.resolvedExecutable,
-        buildRunnerArguments,
+        buildRunnerArgumentsFor(project),
         workingDirectory: project.path,
       );
     } on ProcessException catch (error) {
