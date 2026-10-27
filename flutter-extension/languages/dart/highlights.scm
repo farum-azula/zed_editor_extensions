@@ -127,6 +127,30 @@
   "@" @attribute
   name: (identifier) @attribute)
 
+; A qualified name: an import prefix (`@meta.immutable`, `@web.Get()`) is part of the annotation.
+(annotation
+  "@" @attribute
+  name: (scoped_identifier
+    scope: (identifier) @attribute
+    name: (identifier) @attribute))
+
+; A named constructor (`@RequestParam.of(...)`): the class as an annotation, the constructor as
+; one called anywhere (`EdgeInsets.all(8)`).
+((annotation
+  name: (scoped_identifier
+    scope: (identifier) @attribute
+    name: (identifier) @function.method))
+  (#match? @attribute "^_?[A-Z]"))
+
+; Both (`@web.RequestParam.of(...)`).
+(annotation
+  "@" @attribute
+  name: (scoped_identifier
+    scope: (scoped_identifier
+      scope: (identifier) @attribute
+      name: (identifier) @attribute)
+    name: (identifier) @function.method))
+
 ; properties
 (unconditional_assignable_selector
   (identifier) @property)

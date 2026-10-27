@@ -66,6 +66,27 @@ enum Status { active, inactive }
 //   ^ type
 //            ^ property
 
+@meta.immutable
+// <- attribute
+//^ attribute
+//    ^ attribute
+class Prefixed {}
+
+void search(
+  @RequestParam('q') String query, {
+//^ attribute
+// ^ attribute
+  @RequestParam.of(name: 'page') int page = 0,
+//^ attribute
+// ^ attribute
+//              ^ function.method
+  @web.RequestParam.of(name: 'size') int size = 10,
+//^ attribute
+// ^ attribute
+//     ^ attribute
+//                  ^ function.method
+}) {}
+
 void greet(String name) {
 //   ^ function.method
 //                ^ variable.parameter

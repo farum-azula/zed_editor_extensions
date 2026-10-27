@@ -130,6 +130,30 @@
   "@" @attribute.dartdoc
   name: (identifier) @attribute.dartdoc)
 
+; A qualified name: an import prefix (`@meta.immutable`, `@web.Get()`) is part of the annotation.
+(annotation
+  "@" @attribute.dartdoc
+  name: (scoped_identifier
+    scope: (identifier) @attribute.dartdoc
+    name: (identifier) @attribute.dartdoc))
+
+; A named constructor (`@RequestParam.of(...)`): the class as an annotation, the constructor as
+; one called anywhere (`EdgeInsets.all(8)`).
+((annotation
+  name: (scoped_identifier
+    scope: (identifier) @attribute.dartdoc
+    name: (identifier) @function.method.dartdoc))
+  (#match? @attribute.dartdoc "^_?[A-Z]"))
+
+; Both (`@web.RequestParam.of(...)`).
+(annotation
+  "@" @attribute.dartdoc
+  name: (scoped_identifier
+    scope: (scoped_identifier
+      scope: (identifier) @attribute.dartdoc
+      name: (identifier) @attribute.dartdoc)
+    name: (identifier) @function.method.dartdoc))
+
 ; properties
 (unconditional_assignable_selector
   (identifier) @property.dartdoc)
