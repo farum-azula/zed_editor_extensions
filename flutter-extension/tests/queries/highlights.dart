@@ -91,6 +91,7 @@ void search(
 class Importer {
   ImportBatch import(List<String> books) => ImportBatch();
 //            ^ function.method
+//                                          ^ type
   int get set => 1;
 //        ^ property
   void run(Importer other, {bool get = false}) {
@@ -104,6 +105,31 @@ class Importer {
     run(other, get: true);
 //             ^ variable.parameter
   }
+}
+
+// A variable after `=>` stays a variable.
+void listen(List<String> heard, List<String> all) {
+  all.forEach((String line) => heard.add(line));
+//                             ^ variable
+}
+
+// A closure's parameters apart from a function's.
+void closures(List<String> all, Map<String, int> counts) {
+//                         ^ variable.parameter
+  all.forEach((line) => print(line));
+//             ^ variable.parameter.closure
+  all.forEach((String line) {
+//                    ^ variable.parameter.closure
+    print(line);
+  });
+  counts.forEach((key, value) => print(value));
+//                ^ variable.parameter.closure
+//                     ^ variable.parameter.closure
+  final f = ({int size = 1}) => size;
+//                ^ variable.parameter.closure
+  final g = (int a, [int b = 0]) => a + b;
+//               ^ variable.parameter.closure
+//                       ^ variable.parameter.closure
 }
 
 void greet(String name) {

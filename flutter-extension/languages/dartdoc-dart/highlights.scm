@@ -9,8 +9,10 @@
 ; --------------------
 (super) @function.dartdoc
 
-(function_expression_body
+; `=> Book(...)`: a class after `=>`; a variable there (`=> heard.add(...)`) stays a variable.
+((function_expression_body
   (identifier) @type.dartdoc)
+  (#match? @type.dartdoc "^_?[A-Z]"))
 
 ; ((identifier)(selector (argument_part)) @function)
 (((identifier) @function.dartdoc
@@ -430,6 +432,19 @@
   (#any-of? @variable.parameter.dartdoc
     "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
     "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+
+; A closure's parameters (`(alert) => ...`, `(String line) {...}`, `({a}) => ...`) apart from those
+; of functions and methods.
+(function_expression
+  (formal_parameter_list
+    (formal_parameter
+      (identifier) @variable.parameter.closure.dartdoc)))
+
+(function_expression
+  (formal_parameter_list
+    (optional_formal_parameters
+      (formal_parameter
+        (identifier) @variable.parameter.closure.dartdoc))))
 
 [
   "if"
