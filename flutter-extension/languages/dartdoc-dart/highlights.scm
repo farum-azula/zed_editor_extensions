@@ -231,6 +231,41 @@
 (assignment_expression
   left: (assignable_expression) @variable.dartdoc)
 
+; A field or a top-level variable where it is declared, in the colour of its uses (`books.size`,
+; and with semantic tokens, a bare `size`): `final int size;`, `static const name = '';`,
+; `final events = <String>[];` at the top of a file. Not the initializer (`= other`).
+(declaration
+  (initialized_identifier_list
+    (initialized_identifier
+      .
+      (identifier) @property.dartdoc)))
+
+(declaration
+  (static_final_declaration_list
+    (static_final_declaration
+      .
+      (identifier) @property.dartdoc)))
+
+(declaration
+  (identifier_list
+    (identifier) @property.dartdoc))
+
+(program
+  (initialized_identifier_list
+    (initialized_identifier
+      .
+      (identifier) @property.dartdoc)))
+
+(program
+  (static_final_declaration_list
+    (static_final_declaration
+      .
+      (identifier) @property.dartdoc)))
+
+(program
+  (identifier_list
+    (identifier) @property.dartdoc))
+
 (this) @variable.builtin.dartdoc
 
 ; Parameters

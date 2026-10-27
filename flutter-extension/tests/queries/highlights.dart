@@ -132,6 +132,35 @@ void closures(List<String> all, Map<String, int> counts) {
 //                       ^ variable.parameter.closure
 }
 
+// Fields and top-level variables where they are declared, as where they are used.
+final List<String> events = <String>[];
+//                 ^ property
+const limit = 10, other = limit;
+//    ^ property
+//                ^ property
+//                        ^ variable
+late final Clock clock;
+//               ^ property
+
+class Fields {
+  static const String name = 'fields';
+//                    ^ property
+  final SimpleMapScope _scope = SimpleMapScope();
+//                     ^ property
+  int count = 0, total = count;
+//    ^ property
+//               ^ property
+//                       ^ variable
+  late final Clock clock;
+//                 ^ property
+  void run() {
+    final local = 1;
+//        ^ variable
+    _scope.remove(name);
+//  ^ variable
+  }
+}
+
 void greet(String name) {
 //   ^ function.method
 //                ^ variable.parameter

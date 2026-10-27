@@ -1,0 +1,24 @@
+// How Dart's semantic tokens are coloured, when they are on ("semantic_tokens": "combined" for Dart
+// in the settings): the Dart analysis server's and dart_spring's (Spring for Dart).
+//
+// A rule without a style takes the token's colour away, so that the highlights (highlights.scm)
+// colour it. Zed honours such a rule only when it is the first one here that applies to the token's
+// type, so each type has at most one, before the type's other rules.
+[
+  // The analysis server marks every variable `variable` where it is declared, a field, a top-level
+  // variable and a local alike: the highlights tell them apart (fields and top-level variables in
+  // the colour of their uses, `property`).
+  { "token_type": "variable", "token_modifiers": ["declaration"] },
+  // An annotation's name, which it marks as a class (`@Autowired`), a property (`@override`) or a
+  // constructor (`@RequestParam.of`), and `@ . ( )`: annotations keep the highlights' colours.
+  { "token_type": "class", "token_modifiers": ["annotation"] },
+  { "token_type": "property", "token_modifiers": ["annotation"] },
+  { "token_type": "method", "token_modifiers": ["annotation"] },
+  { "token_type": "annotation" },
+  // It marks every parameter `parameter`, a closure's too; dart_spring marks a closure's
+  // parameters, where declared and where its body uses them, `closureParameter`.
+  { "token_type": "parameter" },
+  { "token_type": "closureParameter", "style": ["variable.parameter.closure"] },
+  // A field named in a constructor (`this._scope`), in a field's colour.
+  { "token_type": "variable", "token_modifiers": ["instance"], "style": ["property"] }
+]

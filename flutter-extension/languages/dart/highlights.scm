@@ -228,6 +228,41 @@
 (assignment_expression
   left: (assignable_expression) @variable)
 
+; A field or a top-level variable where it is declared, in the colour of its uses (`books.size`,
+; and with semantic tokens, a bare `size`): `final int size;`, `static const name = '';`,
+; `final events = <String>[];` at the top of a file. Not the initializer (`= other`).
+(declaration
+  (initialized_identifier_list
+    (initialized_identifier
+      .
+      (identifier) @property)))
+
+(declaration
+  (static_final_declaration_list
+    (static_final_declaration
+      .
+      (identifier) @property)))
+
+(declaration
+  (identifier_list
+    (identifier) @property))
+
+(program
+  (initialized_identifier_list
+    (initialized_identifier
+      .
+      (identifier) @property)))
+
+(program
+  (static_final_declaration_list
+    (static_final_declaration
+      .
+      (identifier) @property)))
+
+(program
+  (identifier_list
+    (identifier) @property))
+
 (this) @variable.builtin
 
 ; Parameters
