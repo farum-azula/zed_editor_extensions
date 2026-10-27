@@ -335,7 +335,7 @@
         "spring_boot_starter_web": {
           "name": "Spring Web for Dart (spring_boot_starter_web)",
           "docs": "https://pub.dev/packages/spring_boot_starter_web",
-          "imports": ["package:spring_boot_starter_web/"],
+          "imports": ["package:spring_boot_starter_web/", "package:spring_boot_starter_security/"],
           "prefix": ["@RequestMapping(\"{path}\")", "@RequestMapping(r\"{path}\")", "@RequestMapping.of(...path: \"{path}\""],
           "routes": [
             "@{method}Mapping(\"{path}\")",
@@ -356,9 +356,10 @@
           ],
           "headers": ["@RequestHeader(\"{name}\")", "@RequestHeader.of(...name: \"{name}\""],
           "body": ["@RequestBody(...) @{_}() {type} {_}", "@RequestBody(...) {type} {_}"],
-          "auth": ["@PreAuthorize", "@Secured", "Principal "],
+          "auth": ["@PreAuthorize", "@Secured", "Principal ", "Authentication ", "@AuthenticationPrincipal"],
           "examples": [
-            { "code": "import 'package:spring_boot_starter_web/spring_boot_starter_web.dart';\n@RestController()\n@RequestMapping('/api/books')\nclass BookController {\n  @GetMapping('/{isbn}')\n  Future<Book> find(@PathVariable() String isbn) => books.find(isbn);\n  @GetMapping()\n  Future<List<Book>> search(@RequestParam('q') String query) => books.search(query);\n  @PostMapping()\n  Future<Book> create(@RequestBody() @Valid() NewBook book) => books.create(book);\n  @DeleteMapping.of(path: '/{isbn}', produces: 'application/json')\n  void delete(@PathVariable() String isbn) {}\n}\nclass NewBook {\n  final String title;\n}", "expect": ["GET {{baseUrl}}/api/books/{{isbn}}", "GET {{baseUrl}}/api/books", "POST {{baseUrl}}/api/books", "DELETE {{baseUrl}}/api/books/{{isbn}}"] }
+            { "code": "import 'package:spring_boot_starter_web/spring_boot_starter_web.dart';\n@RestController()\n@RequestMapping('/api/books')\nclass BookController {\n  @GetMapping('/{isbn}')\n  Future<Book> find(@PathVariable() String isbn) => books.find(isbn);\n  @GetMapping()\n  Future<List<Book>> search(@RequestParam('q') String query) => books.search(query);\n  @PostMapping()\n  Future<Book> create(@RequestBody() @Valid() NewBook book) => books.create(book);\n  @DeleteMapping.of(path: '/{isbn}', produces: 'application/json')\n  void delete(@PathVariable() String isbn) {}\n}\nclass NewBook {\n  final String title;\n}", "expect": ["GET {{baseUrl}}/api/books/{{isbn}}", "GET {{baseUrl}}/api/books", "POST {{baseUrl}}/api/books", "DELETE {{baseUrl}}/api/books/{{isbn}}"] },
+            { "code": "import 'package:spring_boot_starter_security/spring_boot_starter_security.dart';\n@RestController()\nclass AccountController {\n  @GetMapping('/account')\n  String account(@AuthenticationPrincipal() UserDetails user) => user.username;\n}\n@RestController()\n@RequestMapping('/api')\nclass BookController {\n  @DeleteMapping('/books/{id}')\n  Future<void> remove(@PathVariable() String id) async {}\n}", "expect": ["GET {{baseUrl}}/account", "DELETE {{baseUrl}}/api/books/{{id}}"] }
           ]
         },
         "spring_boot_starter_feign": {
