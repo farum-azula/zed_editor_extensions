@@ -17,7 +17,7 @@ class BookController {
   @GetMapping()
   Future<List<Book>> search(
     @RequestParam('q') String query, {
-    @RequestParam.of(name: 'page', defaultValue: '0') int page = 0,
+    @RequestParam('page') int page = 0,
   }) => books.search(query, page: page);
 
   @PostMapping()
