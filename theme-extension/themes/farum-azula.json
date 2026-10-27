@@ -133,6 +133,9 @@
           "variable": {
             "color": "#d6d6d6"
           },
+          "variable.builtin": {
+            "color": "#6388d4"
+          },
           "variable.special": {
             "color": "#9cdcfe"
           },
@@ -360,7 +363,7 @@
             "color": "#016d47"
           },
           "variable.builtin.dartdoc": {
-            "color": "#808080"
+            "color": "#3b527f"
           },
           "variable.dartdoc": {
             "color": "#808080"
@@ -613,6 +616,9 @@
           "variable": {
             "color": "#d6d6d6"
           },
+          "variable.builtin": {
+            "color": "#6388d4"
+          },
           "variable.special": {
             "color": "#bab6c0",
             "font_style": "italic"
@@ -845,7 +851,7 @@
             "color": "#016d47"
           },
           "variable.builtin.dartdoc": {
-            "color": "#808080"
+            "color": "#3b527f"
           },
           "variable.dartdoc": {
             "color": "#808080"

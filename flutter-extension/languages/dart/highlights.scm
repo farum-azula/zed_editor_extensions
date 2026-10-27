@@ -337,6 +337,97 @@
     "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
     "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
 
+; ...but one naming a method, a property or a parameter keeps that name's colour, like any other
+; name: `ImportBatch import(...)`, `books.import(...)`, `settings.get`, `{bool set}`, `set: true`.
+((function_signature
+  name: (identifier) @function.method)
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((getter_signature
+  (identifier) @property)
+  (#any-of? @property
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((setter_signature
+  name: (identifier) @property)
+  (#any-of? @property
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((unconditional_assignable_selector
+  (identifier) @property)
+  (#any-of? @property
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((conditional_assignable_selector
+  (identifier) @property)
+  (#any-of? @property
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((cascade_selector
+  (identifier) @property)
+  (#any-of? @property
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((unconditional_assignable_selector
+  (identifier) @function.method)
+  .
+  (selector
+    (argument_part
+      (arguments)))
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((conditional_assignable_selector
+  (identifier) @function.method)
+  .
+  (selector
+    (argument_part
+      (arguments)))
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((selector
+  (unconditional_assignable_selector
+    (identifier) @function.method))
+  .
+  (selector
+    (argument_part
+      (arguments)))
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((selector
+  (conditional_assignable_selector
+    (identifier) @function.method))
+  .
+  (selector
+    (argument_part
+      (arguments)))
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((cascade_section
+  (cascade_selector
+    (identifier) @function.method)
+  .
+  (argument_part
+    (arguments)))
+  (#any-of? @function.method
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((formal_parameter
+  (identifier) @variable.parameter)
+  (#any-of? @variable.parameter
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+((named_argument
+  (label
+    (identifier) @variable.parameter))
+  (#any-of? @variable.parameter
+    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
+    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
+
 [
   "if"
   "else"

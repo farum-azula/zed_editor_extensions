@@ -87,6 +87,25 @@ void search(
 //                  ^ function.method
 }) {}
 
+// Built-in words as names (import, get, set) keep the name's colour.
+class Importer {
+  ImportBatch import(List<String> books) => ImportBatch();
+//            ^ function.method
+  int get set => 1;
+//        ^ property
+  void run(Importer other, {bool get = false}) {
+//                               ^ variable.parameter
+    other.import([]);
+//        ^ function.method
+    other..import([]);
+//         ^ function.method
+    final n = other.set;
+//                  ^ property
+    run(other, get: true);
+//             ^ variable.parameter
+  }
+}
+
 void greet(String name) {
 //   ^ function.method
 //                ^ variable.parameter
