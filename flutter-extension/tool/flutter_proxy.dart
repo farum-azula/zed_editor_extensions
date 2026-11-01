@@ -116,9 +116,19 @@ class Proxy {
         final cwd = arguments['cwd'];
         if (cwd is String) {
           try {
-            final app = flutterApp(Directory(cwd)).path;
-            if (app != cwd) {
-              arguments = {...arguments, 'cwd': app};
+            final app = flutterApp(Directory(cwd));
+            if (app.path != cwd) {
+              arguments = {...arguments, 'cwd': app.path};
+            }
+            // The scenarios default to lib/main.dart; a renamed main file is found instead.
+            final program = arguments['program'];
+            if (program == null || program == defaultEntryPoint) {
+              final entry = entryPoint(app);
+              if (entry != null && entry != program) {
+                arguments = {...arguments, 'program': entry};
+              }
+            }
+            if (!identical(arguments, message['arguments'])) {
               message = {...message, 'arguments': arguments};
             }
           } on DeviceException catch (error) {

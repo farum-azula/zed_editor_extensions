@@ -17,12 +17,17 @@
 //   `dart run build_runner watch --delete-conflicting-outputs` while the server lives, and shows
 //   its output in Zed's language server log. A pub workspace gets one watch for all its packages
 //   (`--workspace`, build_runner 2.14 and later), run in its root, or in a member when the root
-//   does not depend on build_runner itself. `"initialization_options": {"build_runner": false}`
+//   does not depend on build_runner itself. The projects are looked at again every few seconds:
+//   a watch starts for a new one, stops for a removed one, and restarts when its pubspec.yaml,
+//   pubspec.lock or package_config.json changed (a workspace turned into a single package, a
+//   `pub get`), since build_runner reads them once. A watch that ends by itself (build_runner
+//   stops it when another build_runner command, like `build`, takes its lock) starts again. `"initialization_options": {"build_runner": false}`
 //   in the settings of `flutter-tools`, or FLUTTER_TOOLS_BUILD_RUNNER=off in the environment,
 //   turns that off.
 //
 // It writes nothing into projects itself (build_runner writes the generated files).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -99,7 +104,7 @@ Future<void> main() async {
         }
       case 'initialized':
         if (watchBuilds) {
-          watches.start([for (final root in roots) ...buildRunnerProjects(root)]);
+          watches.follow(() => [for (final root in roots) ...buildRunnerProjects(root)]);
         }
       case 'textDocument/didOpen':
         final document = params['textDocument'] as Map;
@@ -476,20 +481,109 @@ class BuildRunnerWatches {
   BuildRunnerWatches(this._send);
 
   final void Function(Map<String, Object?>) _send;
-  final _started = <String>{};
-  final _processes = <Process>[];
+
+  /// The watches, by [_key]: their process (null while it starts), the [_stamp] of the files
+  /// they were started after, and when they started.
+  final _watches = <String, ({Process? process, String stamp, DateTime started})>{};
+
+  /// How long changes count as the watch's own: `dart run` resolves the packages first when
+  /// pubspec.lock is older than pubspec.yaml, which writes the files the stamp is made of.
+  static Duration get settling => Duration(
+    milliseconds:
+        int.tryParse(Platform.environment['FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS'] ?? '') ?? 10000,
+  );
+
+  /// A change seen by [sync], applied once the next sync sees the same (a `pub get` writes
+  /// several files).
+  String? _pending;
+  Timer? _timer;
   var _stopped = false;
 
-  /// Starts a watch in each of [projects] that has none yet.
-  void start(Iterable<Directory> projects) {
-    for (final project in projects) {
-      if (!_stopped && _started.add(project.path)) {
-        _watch(project);
+  /// How often [follow] looks at the projects again.
+  static Duration get interval => Duration(
+    milliseconds:
+        int.tryParse(Platform.environment['FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS'] ?? '') ?? 2000,
+  );
+
+  /// Runs the watches [projects] asks for, now and every [interval].
+  void follow(List<Directory> Function() projects) {
+    sync(projects(), immediately: true);
+    _timer = Timer.periodic(interval, (_) => sync(projects()));
+  }
+
+  /// Starts a watch in each of [projects] that has none, stops those of projects no longer in
+  /// it, and restarts those whose pubspec.yaml, pubspec.lock or package_config.json changed.
+  /// Unless [immediately], a change waits for the next call that sees it unchanged.
+  void sync(List<Directory> projects, {bool immediately = false}) {
+    if (_stopped) {
+      return;
+    }
+    final wanted = {
+      for (final project in projects)
+        if (buildRunnerArgumentsFor(project) case final arguments)
+          _key(project, arguments): (project, arguments),
+    };
+    final stamps = {for (final MapEntry(:key, :value) in wanted.entries) key: _stamp(value.$1)};
+    // Changes right after a start are the start's own (see [settling]): the new stamp is kept.
+    final now = DateTime.now();
+    for (final MapEntry(:key, value: stamp) in stamps.entries) {
+      final watch = _watches[key];
+      if (watch != null && watch.stamp != stamp && now.difference(watch.started) < settling) {
+        _watches[key] = (process: watch.process, stamp: stamp, started: watch.started);
+      }
+    }
+    final changed =
+        wanted.length != _watches.length ||
+        stamps.entries.any((e) => _watches[e.key]?.stamp != e.value);
+    if (!changed) {
+      _pending = null;
+      return;
+    }
+    final state = stamps.entries.map((e) => '${e.key}=${e.value}').join('\n');
+    if (!immediately && _pending != state) {
+      _pending = state;
+      return;
+    }
+    _pending = null;
+    for (final key in [..._watches.keys]) {
+      if (stamps[key] != _watches[key]!.stamp) {
+        final process = _watches.remove(key)!.process;
+        if (process != null) {
+          killTree(process);
+        }
+      }
+    }
+    for (final MapEntry(:key, :value) in wanted.entries) {
+      if (!_watches.containsKey(key)) {
+        final stamp = stamps[key]!;
+        final started = DateTime.now();
+        _watches[key] = (process: null, stamp: stamp, started: started);
+        _watch(key, started, value.$1, value.$2);
       }
     }
   }
 
-  Future<void> _watch(Directory project) async {
+  static String _key(Directory project, List<String> arguments) =>
+      '${project.path}\u0000${arguments.join(' ')}';
+
+  /// When [project]'s pubspec.yaml, pubspec.lock and package_config.json last changed.
+  static String _stamp(Directory project) =>
+      ['pubspec.yaml', 'pubspec.lock', '.dart_tool/package_config.json']
+          .map((name) {
+            try {
+              return File('${project.path}/$name').lastModifiedSync().microsecondsSinceEpoch;
+            } on FileSystemException {
+              return 0;
+            }
+          })
+          .join(',');
+
+  Future<void> _watch(
+    String key,
+    DateTime started,
+    Directory project,
+    List<String> arguments,
+  ) async {
     final name = _basename(project.path);
     void message(String method, int type, String text) => _send({
       'method': method,
@@ -500,18 +594,23 @@ class BuildRunnerWatches {
       // The Dart that runs this server: the one of the Flutter SDK, or fvm's.
       process = await Process.start(
         Platform.resolvedExecutable,
-        buildRunnerArgumentsFor(project),
+        arguments,
         workingDirectory: project.path,
       );
     } on ProcessException catch (error) {
       message('window/logMessage', 1, 'could not start: ${error.message}');
       return;
     }
-    if (_stopped) {
+    // Stopped, or replaced by a newer watch, while starting.
+    final watch = _watches[key];
+    if (_stopped || watch == null || watch.process != null || watch.started != started) {
       killTree(process);
       return;
     }
-    _processes.add(process);
+    _watches[key] = (process: process, stamp: watch.stamp, started: started);
+    // Whether build_runner gave its lock to another build_runner command (a `build` run by
+    // hand or by a task): build_runner 2.17+ stops a watch for that.
+    var yielded = false;
     void forward(Stream<List<int>> output, int type) {
       output
           .transform(const Utf8Decoder(allowMalformed: true))
@@ -519,6 +618,9 @@ class BuildRunnerWatches {
           .listen((line) {
             if (line.trim().isEmpty) {
               return;
+            }
+            if (line.contains(_yieldedLock)) {
+              yielded = true;
             }
             message('window/logMessage', type, line);
             if (_buildSummary.firstMatch(line) case final summary?) {
@@ -530,9 +632,19 @@ class BuildRunnerWatches {
     forward(process.stdout, 3);
     forward(process.stderr, 2);
     process.exitCode.then((code) {
-      _processes.remove(process);
-      if (!_stopped) {
-        message('window/logMessage', code == 0 ? 3 : 1, 'exited with code $code');
+      // Not stopped by this server, and still the watch for its project: it ended by itself.
+      final current = _watches[key]?.process == process;
+      if (_stopped || !current) {
+        return;
+      }
+      message('window/logMessage', code == 0 ? 3 : 1, 'exited with code $code');
+      // A watch that gave way to another build_runner, or ran for a while, starts again with the
+      // next sync: the new one waits for the other command's lock ("Waiting for
+      // already-running build_runner"). One that fails right after starting stays stopped until
+      // its pubspec changes, so a broken setup does not restart over and over.
+      if (yielded || DateTime.now().difference(started) >= settling) {
+        _watches.remove(key);
+        message('window/logMessage', 3, 'restarting');
       }
     });
   }
@@ -540,12 +652,18 @@ class BuildRunnerWatches {
   /// Stops the watches, for good.
   void stop() {
     _stopped = true;
-    for (final process in _processes) {
-      killTree(process);
+    _timer?.cancel();
+    for (final watch in _watches.values) {
+      if (watch.process case final process?) {
+        killTree(process);
+      }
     }
-    _processes.clear();
+    _watches.clear();
   }
 }
+
+/// What build_runner prints when it stops a watch for another build_runner command.
+const _yieldedLock = 'Exiting as requested by another build_runner process';
 
 /// Kills [process] and what it started: `dart run` runs the program in a process of its own, and
 /// build_runner the build script in another, which would run on without it.

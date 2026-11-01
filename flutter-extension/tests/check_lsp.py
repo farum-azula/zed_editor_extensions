@@ -11,7 +11,8 @@
   with material); edits to the file count;
 - it runs `dart run build_runner watch --delete-conflicting-outputs` in the workspace's projects
   that have build_runner in their dev_dependencies (the root and the directories right under it),
-  once each, forwards its output as log messages and its Succeeded / Failed lines as messages to
+  once each (again when a pubspec.yaml changes, once the start has settled, and when a watch
+  ends because another build_runner command took its lock), forwards its output as log messages and its Succeeded / Failed lines as messages to
   show, stops it (and what it started) on shutdown, and does nothing when turned off by the
   `build_runner` initialization option or FLUTTER_TOOLS_BUILD_RUNNER=off; against a stand-in
   build_runner, a package that only prints;
@@ -217,6 +218,13 @@ Future<void> main(List<String> args) async {
   final beats = File(Platform.environment['FAKE_BUILD_RUNNER_BEATS']!);
   Timer.periodic(const Duration(milliseconds: 100), (_) {
     beats.writeAsStringSync('.', mode: FileMode.append);
+    // Another build_runner command asked for the lock: build_runner 2.17 stops the watch.
+    final request = File('yield');
+    if (request.existsSync()) {
+      request.deleteSync();
+      print('Exiting as requested by another build_runner process.');
+      exit(0);
+    }
   });
 }
 """
@@ -358,7 +366,12 @@ def check_build_runner(home, tmp):
             "env": serve(home, project("env"), env("env", FLUTTER_TOOLS_BUILD_RUNNER="off")),
             "option": serve(home, project("option"), env("option"), {"build_runner": False}),
         }
-        on = serve(home, project("on"), env("on"))
+        on_project = project("on")
+        on = serve(
+            home,
+            on_project,
+            env("on", FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200", FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS="3000"),
+        )
         servers = [on, *off.values()]
         on.wait(lambda m: m.get("method") == "window/showMessage" and m["params"]["type"] == 1, 180, "the message that the build failed")
 
@@ -378,6 +391,30 @@ def check_build_runner(home, tmp):
         while not (beats["on"].exists() and beats["on"].stat().st_size) and time.monotonic() < deadline:
             time.sleep(0.1)
         check(beats["on"].exists() and beats["on"].stat().st_size > 0, "build_runner is running")
+
+        # After the settling time, a changed pubspec.yaml restarts the watch.
+        time.sleep(3.5)
+        check(sum("args:" in message for _, message in sent("window/logMessage")) == 1, "no restart while nothing changes")
+        with (on_project / "pubspec.yaml").open("a") as pubspec:
+            pubspec.write("# changed\n")
+        on.wait(
+            lambda m: m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]
+            and sum("args:" in x["params"]["message"] for x in on.seen if x.get("method") == "window/logMessage") >= 2,
+            60,
+            "the restarted watch",
+        )
+        check(sum("args:" in message for _, message in sent("window/logMessage")) == 2, "a changed pubspec.yaml restarts the watch once")
+
+        # A `build_runner build` by hand takes the lock: the watch exits, and starts again.
+        (on_project / "yield").write_text("")
+        on.wait(
+            lambda m: m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]
+            and sum("args:" in x["params"]["message"] for x in on.seen if x.get("method") == "window/logMessage") >= 3,
+            60,
+            "the watch started again after giving way",
+        )
+        logs = sent("window/logMessage")
+        check((3, "build_runner p_on: restarting") in logs, "a watch that gave its lock away starts again")
         for name, lsp in off.items():
             lsp.drain(1)
             seen = [m for m in lsp.seen if "build_runner" in json.dumps(m)]

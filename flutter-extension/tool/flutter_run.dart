@@ -39,6 +39,12 @@ Future<void> main(List<String> args) async {
     exit(1);
   }
   final runArgs = args.skip(1).toList();
+  // An entry point other than lib/main.dart (a renamed main file) goes to Flutter as `-t`.
+  final entry = entryPoint(app);
+  final hasTarget = runArgs.any((a) => a == '-t' || a == '--target' || a.startsWith('--target='));
+  if (entry != null && entry != defaultEntryPoint && !hasTarget) {
+    runArgs.insertAll(0, ['-t', entry]);
+  }
   final reloader = reloadOnSave ? HotReloadOnSave.start(app, runArgs) : null;
   final run = await Process.start(
     flutter.first,

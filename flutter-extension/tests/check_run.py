@@ -201,6 +201,23 @@ def main():
     if sys.platform != "win32":
         check_hot_reload_on_save(package)
 
+    print("== a renamed main file")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "lib").mkdir()
+        (root / "pubspec.yaml").write_text(flutter_pubspec.format("neon"))
+        (root / "lib" / "neon.dart").write_text("@SpringBootApplication()\nvoid main() => runApp(App());\n")
+        (root / "lib" / "neon.beans.dart").write_text("void main() {}\n")  # generated: not an entry point
+        (root / "lib" / "tool.dart").write_text("void main() {}\n")
+        result, state = run(root, ["web"], {})
+        check(state["calls"][-1] == ["run", "-d", "web-server", "-t", "lib/neon.dart"],
+              "flutter run gets -t with the @SpringBootApplication file")
+        result, state = run(root, ["web", "-t", "lib/tool.dart"], {})
+        check(state["calls"][-1] == ["run", "-d", "web-server", "-t", "lib/tool.dart"], "a -t of the user's wins")
+        (root / "lib" / "main.dart").write_text("void main() {}\n")
+        result, state = run(root, ["web"], {})
+        check(state["calls"][-1] == ["run", "-d", "web-server"], "with lib/main.dart, no -t")
+
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)
 

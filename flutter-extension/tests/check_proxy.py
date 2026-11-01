@@ -236,6 +236,13 @@ def check_workspace():
         check("hotReload" in received(dap), "saving under the app's lib/ reloads")
         dap.close()
 
+        print("== a renamed main file")
+        (root / "app" / "lib" / "main.dart").rename(root / "app" / "lib" / "neon.dart")
+        dap = session(root)
+        check(launched(dap)["program"] == "lib/neon.dart", "Flutter launches the renamed main file")
+        dap.close()
+        (root / "app" / "lib" / "neon.dart").rename(root / "app" / "lib" / "main.dart")
+
         print("== several apps")
         (root / "core" / "ui" / "lib" / "main.dart").write_text("void main() {}\n")
         dap = start()

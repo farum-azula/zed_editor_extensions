@@ -218,8 +218,8 @@ List<String> flutterCommand(Directory dir) {
 
 /// The directory of the Flutter app to run from [start] (the worktree root, as tasks and
 /// scenarios give it): [start] itself when it is one; otherwise, in a monorepo or a pub
-/// workspace, the app under it, i.e. a package that depends on the Flutter SDK and has a
-/// `lib/main.dart`. The members of [start]'s `workspace:` are looked at first, then its
+/// workspace, the app under it, i.e. a package that depends on the Flutter SDK and has an
+/// [entryPoint]. The members of [start]'s `workspace:` are looked at first, then its
 /// subdirectories, a few levels down. Of several apps, the one holding [activeFile] (Zed's
 /// `ZED_FILE` by default) is taken; without one, a [DeviceException] lists them. With none,
 /// [start] is returned, and Flutter reports what it misses there.
@@ -268,15 +268,75 @@ String _canonical(String path) {
   return Platform.isWindows ? canonical.toLowerCase() : canonical;
 }
 
-/// Whether [dir] is a Flutter app: its pubspec.yaml depends on the Flutter SDK and it has a
-/// `lib/main.dart`.
+/// Whether [dir] is a Flutter app: its pubspec.yaml depends on the Flutter SDK and it has an
+/// [entryPoint].
 bool isFlutterApp(Directory dir) {
   final sep = Platform.pathSeparator;
   final pubspec = File('${dir.path}${sep}pubspec.yaml');
   return pubspec.existsSync() &&
-      File('${dir.path}${sep}lib${sep}main.dart').existsSync() &&
-      pubspecDependsOnFlutter(pubspec.readAsStringSync());
+      pubspecDependsOnFlutter(pubspec.readAsStringSync()) &&
+      entryPoint(dir) != null;
 }
+
+/// Flutter's default entry point, which `flutter run` takes without `-t`.
+const defaultEntryPoint = 'lib/main.dart';
+
+/// The entry point of the app in [app], relative to it: [defaultEntryPoint] when it exists;
+/// otherwise the file directly in `lib/` that declares a top-level `main`, the one annotated
+/// `@SpringBootApplication` first (spring_core_dart's entry point). Of several, the one that is
+/// [activeFile] (Zed's `ZED_FILE` by default), else none: null, as when there is no `main`.
+/// Generated files (`*.g.dart`, `*.beans.dart`, ...) do not count.
+String? entryPoint(Directory app, {String? activeFile}) {
+  final sep = Platform.pathSeparator;
+  if (File('${app.path}$sep${defaultEntryPoint.replaceAll('/', sep)}').existsSync()) {
+    return defaultEntryPoint;
+  }
+  final lib = Directory('${app.path}${sep}lib');
+  final List<File> files;
+  try {
+    files = lib.listSync(followLinks: false).whereType<File>().where((file) {
+      final name = file.uri.pathSegments.last;
+      return name.endsWith('.dart') && !_generated.hasMatch(name);
+    }).toList()..sort((a, b) => a.path.compareTo(b.path));
+  } on FileSystemException {
+    return null;
+  }
+  final mains = <File>[];
+  final boots = <File>[];
+  for (final file in files) {
+    final String text;
+    try {
+      text = file.readAsStringSync();
+    } on FileSystemException {
+      continue;
+    }
+    if (_topLevelMain.hasMatch(text)) {
+      mains.add(file);
+      if (text.contains('@SpringBootApplication')) {
+        boots.add(file);
+      }
+    }
+  }
+  final candidates = boots.isNotEmpty ? boots : mains;
+  File? chosen;
+  if (candidates.length == 1) {
+    chosen = candidates.single;
+  } else if (candidates.length > 1) {
+    final active = activeFile ?? Platform.environment['ZED_FILE'];
+    if (active != null && active.isNotEmpty) {
+      final path = File(active).absolute.path;
+      chosen = candidates.where((file) => file.absolute.path == path).firstOrNull;
+    }
+  }
+  return chosen == null ? null : 'lib/${chosen.uri.pathSegments.last}';
+}
+
+/// A `main` function at the top level of a library: at the start of a line, with an optional
+/// return type (`void`, `Future<void>`, ...).
+final _topLevelMain = RegExp(r'^(?:[\w<>?]+\s+)?main\s*\(', multiLine: true);
+
+/// Names of generated Dart files.
+final _generated = RegExp(r'\.(?:g|beans|freezed|gr|config|mocks)\.dart$');
 
 /// The directories of the `workspace:` list in [root]'s pubspec.yaml (pub workspaces).
 List<Directory> workspaceMembers(Directory root) {
