@@ -93,7 +93,18 @@ monorepo; hidden folders and `build/` are skipped), the Flutter Tools language s
 `dart run build_runner watch --delete-conflicting-outputs` there once, when the project opens, and
 stops it, with what it started, when Zed closes the server. Its output is in Zed's language server
 log (`dev: open language server logs`, `flutter-tools`); each `Succeeded` / `Failed` line of a
-build is also shown as a message. To turn it off, set in Zed's settings
+build is also shown as a message.
+
+In a pub workspace (build_runner 2.14 and later) one watch builds every member
+(`--workspace`). It starts again when a `pubspec.yaml`, `pubspec.lock` or
+`.dart_tool/package_config.json` changes, the workspace root's included: adding a member or a
+`pub get` gives the watch the new packages. Another build_runner command (a `build` by hand, the
+build before `dart run`) asks the watch for its lock; build_runner finishes the current build and
+gives it. A watch that still holds the lock 30 seconds after the request
+(`FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS`) is stopped and started again, so the command never waits
+for ever ("Waiting for already-running build_runner").
+
+To turn it off, set in Zed's settings
 
 ```json
 { "lsp": { "flutter-tools": { "initialization_options": { "build_runner": false } } } }

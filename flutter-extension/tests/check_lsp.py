@@ -370,7 +370,12 @@ def check_build_runner(home, tmp):
         on = serve(
             home,
             on_project,
-            env("on", FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200", FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS="3000"),
+            env(
+                "on",
+                FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200",
+                FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS="3000",
+                FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS="1500",
+            ),
         )
         servers = [on, *off.values()]
         on.wait(lambda m: m.get("method") == "window/showMessage" and m["params"]["type"] == 1, 180, "the message that the build failed")
@@ -415,6 +420,23 @@ def check_build_runner(home, tmp):
         )
         logs = sent("window/logMessage")
         check((3, "build_runner p_on: restarting") in logs, "a watch that gave its lock away starts again")
+
+        # Another build_runner asks for the lock and the watch keeps it (a stuck build_runner):
+        # it is stopped after FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS and started again.
+        requested = on_project / ".dart_tool" / "build" / "lock" / "build_runner.lock.requested"
+        requested.parent.mkdir(parents=True, exist_ok=True)
+        requested.write_text("")
+        on.wait(
+            lambda m: m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]
+            and sum("args:" in x["params"]["message"] for x in on.seen if x.get("method") == "window/logMessage") >= 4,
+            60,
+            "the watch started again after keeping its lock",
+        )
+        requested.unlink()
+        check(
+            any(t == 2 and "kept its lock" in message for t, message in sent("window/logMessage")),
+            "a watch that keeps its lock after a request is stopped and started again",
+        )
         for name, lsp in off.items():
             lsp.drain(1)
             seen = [m for m in lsp.seen if "build_runner" in json.dumps(m)]
@@ -428,6 +450,50 @@ def check_build_runner(home, tmp):
     finally:
         for lsp in servers:
             lsp.close()
+
+
+def check_build_runner_workspace(home, tmp):
+    print("== build_runner in a pub workspace")
+    # A build_runner that builds workspaces (2.14+), the watch in a member, since the root does
+    # not depend on build_runner itself.
+    fake = tmp / "ws_build_runner"
+    (fake / "bin").mkdir(parents=True)
+    (fake / "pubspec.yaml").write_text("name: build_runner\nversion: 2.17.1\nenvironment:\n  sdk: ^3.6.0\n")
+    (fake / "bin" / "build_runner.dart").write_text(FAKE_BUILD_RUNNER)
+    root = tmp / "ws"
+    member = root / "m"
+    member.mkdir(parents=True)
+    (root / "pubspec.yaml").write_text("name: ws\nenvironment:\n  sdk: ^3.6.0\nworkspace:\n  - m\n")
+    (member / "pubspec.yaml").write_text(
+        f"name: m\nenvironment:\n  sdk: ^3.6.0\nresolution: workspace\ndev_dependencies:\n  build_runner:\n    path: '{fake.as_posix()}'\n"
+    )
+    subprocess.run([shutil.which("dart"), "pub", "get"], cwd=root, capture_output=True, check=True, timeout=120)
+    beats = tmp / "ws.beats"
+    lsp = serve(
+        home,
+        root,
+        dict(
+            FAKE_BUILD_RUNNER_BEATS=str(beats),
+            FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200",
+            FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS="3000",
+        ),
+    )
+    try:
+        def starts():
+            return [m["params"]["message"] for m in lsp.seen if m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]]
+
+        lsp.wait(lambda m: m.get("method") == "window/logMessage" and "args:" in m["params"]["message"], 180, "the workspace watch")
+        check(starts() == ["build_runner m: args: watch --delete-conflicting-outputs --workspace"], "one `--workspace` watch, in the member")
+        time.sleep(3.5)
+        # A member added and `pub get` in the root: only the root's files change.
+        with (root / "pubspec.yaml").open("a") as pubspec:
+            pubspec.write("# a member added\n")
+        (root / ".dart_tool" / "package_config.json").touch()
+        lsp.wait(lambda m: len(starts()) >= 2, 60, "the watch restarted for the workspace's root")
+        check(len(starts()) == 2, "a change of the workspace's root restarts the `--workspace` watch")
+        stop(lsp)
+    finally:
+        lsp.close()
 
 
 def main():
@@ -460,6 +526,7 @@ def main():
         check_completions(home, app)
         check_build_runner_projects(tmp)
         check_build_runner(home, tmp)
+        check_build_runner_workspace(home, tmp)
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)

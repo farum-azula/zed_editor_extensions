@@ -20,8 +20,12 @@
 //   does not depend on build_runner itself. The projects are looked at again every few seconds:
 //   a watch starts for a new one, stops for a removed one, and restarts when its pubspec.yaml,
 //   pubspec.lock or package_config.json changed (a workspace turned into a single package, a
-//   `pub get`), since build_runner reads them once. A watch that ends by itself (build_runner
-//   stops it when another build_runner command, like `build`, takes its lock) starts again. `"initialization_options": {"build_runner": false}`
+//   `pub get`), since build_runner reads them once; for a `--workspace` watch those of the
+//   workspace's root too (a member added, a `pub get` in the root). A watch that ends by itself
+//   (build_runner stops it when another build_runner command, like `build`, takes its lock)
+//   starts again; one that does not give its lock away within [BuildRunnerWatches.yielding] of
+//   the other command's request is stopped and started again, so the command does not wait for
+//   ever. `"initialization_options": {"build_runner": false}`
 //   in the settings of `flutter-tools`, or FLUTTER_TOOLS_BUILD_RUNNER=off in the environment,
 //   turns that off.
 //
@@ -493,6 +497,16 @@ class BuildRunnerWatches {
         int.tryParse(Platform.environment['FLUTTER_TOOLS_BUILD_RUNNER_SETTLE_MS'] ?? '') ?? 10000,
   );
 
+  /// How long a watch may keep its lock after another build_runner command asked for it
+  /// (build_runner 2.17 finishes the current build, then exits) before it is stopped.
+  static Duration get yielding => Duration(
+    milliseconds:
+        int.tryParse(Platform.environment['FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS'] ?? '') ?? 30000,
+  );
+
+  /// Since when another build_runner command has asked for the lock of a watch, by [_key].
+  final _requestedSince = <String, DateTime>{};
+
   /// A change seen by [sync], applied once the next sync sees the same (a `pub get` writes
   /// several files).
   String? _pending;
@@ -524,8 +538,9 @@ class BuildRunnerWatches {
           _key(project, arguments): (project, arguments),
     };
     final stamps = {for (final MapEntry(:key, :value) in wanted.entries) key: _stamp(value.$1)};
-    // Changes right after a start are the start's own (see [settling]): the new stamp is kept.
     final now = DateTime.now();
+    _stopStuck(wanted, now);
+    // Changes right after a start are the start's own (see [settling]): the new stamp is kept.
     for (final MapEntry(:key, value: stamp) in stamps.entries) {
       final watch = _watches[key];
       if (watch != null && watch.stamp != stamp && now.difference(watch.started) < settling) {
@@ -566,17 +581,69 @@ class BuildRunnerWatches {
   static String _key(Directory project, List<String> arguments) =>
       '${project.path}\u0000${arguments.join(' ')}';
 
-  /// When [project]'s pubspec.yaml, pubspec.lock and package_config.json last changed.
-  static String _stamp(Directory project) =>
-      ['pubspec.yaml', 'pubspec.lock', '.dart_tool/package_config.json']
-          .map((name) {
-            try {
-              return File('${project.path}/$name').lastModifiedSync().microsecondsSinceEpoch;
-            } on FileSystemException {
-              return 0;
-            }
-          })
-          .join(',');
+  /// When [project]'s pubspec.yaml, pubspec.lock and package_config.json last changed, and
+  /// those of its workspace's root for a `--workspace` watch: a member's own pubspec.lock and
+  /// package_config.json do not exist, the root's change when a member is added or `pub get`
+  /// runs.
+  static String _stamp(Directory project) {
+    final root = workspaceBuildRoot(project);
+    return [
+      for (final directory in [
+        project,
+        if (root != null && _normalized(root) != _normalized(project)) root,
+      ])
+        for (final name in ['pubspec.yaml', 'pubspec.lock', '.dart_tool/package_config.json'])
+          _modified(File('${directory.path}/$name')),
+    ].join(',');
+  }
+
+  static int _modified(File file) {
+    try {
+      return file.lastModifiedSync().microsecondsSinceEpoch;
+    } on FileSystemException {
+      return 0;
+    }
+  }
+
+  /// The files another build_runner command writes to ask [project]'s watch for its lock: the
+  /// package's, and the workspace's for a `--workspace` watch.
+  static List<File> _lockRequests(Directory project) {
+    final root = workspaceBuildRoot(project);
+    return [
+      File('${project.path}/.dart_tool/build/lock/build_runner.lock.requested'),
+      if (root != null)
+        File('${root.path}/.dart_tool/build/lock/build_runner.workspace.lock.requested'),
+    ];
+  }
+
+  /// Stops the watches that keep their lock longer than [yielding] after another build_runner
+  /// command asked for it; the next [sync] starts them again, and the new watch waits for the
+  /// other command ("Waiting for already-running build_runner").
+  void _stopStuck(Map<String, (Directory, List<String>)> wanted, DateTime now) {
+    for (final MapEntry(:key, value: (project, _)) in wanted.entries) {
+      final process = _watches[key]?.process;
+      if (process == null || !_lockRequests(project).any((file) => file.existsSync())) {
+        _requestedSince.remove(key);
+        continue;
+      }
+      final since = _requestedSince.putIfAbsent(key, () => now);
+      if (now.difference(since) < yielding) {
+        continue;
+      }
+      _requestedSince.remove(key);
+      _watches.remove(key);
+      killTree(process);
+      _send({
+        'method': 'window/logMessage',
+        'params': {
+          'type': 2,
+          'message':
+              'build_runner ${_basename(project.path)}: kept its lock ${yielding.inSeconds} s '
+              'after another build_runner asked for it: restarting',
+        },
+      });
+    }
+  }
 
   Future<void> _watch(
     String key,
