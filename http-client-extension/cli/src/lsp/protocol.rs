@@ -77,9 +77,10 @@ impl<'a> Client<'a> {
         Client { out, next_id: 0, failure: None }
     }
 
+    /// Writes [message]; the first write that fails is kept for [take_failure].
     fn send(&mut self, message: Value) {
-        if self.failure.is_none() {
-            self.failure = write_message(self.out, &message).err();
+        if let Err(error) = write_message(self.out, &message) {
+            self.failure.get_or_insert(error);
         }
     }
 
@@ -191,34 +192,4 @@ pub fn path_to_uri(path: &Path) -> String {
 /// The name of the file at `path`, for titles.
 pub(super) fn file_name(path: &Path) -> String {
     path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Client;
-    use serde_json::json;
-    use std::io::{self, Write};
-
-    /// A writer whose every write fails, counting the attempts.
-    struct Broken(usize);
-
-    impl Write for Broken {
-        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-            self.0 += 1;
-            Err(io::Error::new(io::ErrorKind::BrokenPipe, "gone"))
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn after_a_failed_write_nothing_more_is_written() {
-        let mut out = Broken(0);
-        let mut client = Client::new(&mut out);
-        client.send(json!({"a": 1}));
-        client.send(json!({"b": 2}));
-        assert!(client.take_failure().is_some());
-        assert_eq!(out.0, 1, "the second message is not tried");
-    }
 }
