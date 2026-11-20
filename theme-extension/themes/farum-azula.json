@@ -91,6 +91,14 @@
           "property": {
             "color": "#9cdcfe"
           },
+          "property.unresolved": {
+            "color": "#f48771",
+            "font_style": "italic"
+          },
+          "string.default": {
+            "color": "#808080",
+            "font_style": "italic"
+          },
           "punctuation": {
             "color": "#808080"
           },
@@ -138,6 +146,21 @@
           },
           "variable.parameter.closure": {
             "color": "#c07a9a"
+          },
+          "namespace": {
+            "color": "#4ec9b0",
+            "font_style": "italic"
+          },
+          "label": {
+            "color": "#c586c0",
+            "font_style": "italic"
+          },
+          "title": {
+            "color": "#569cd6",
+            "font_weight": 700
+          },
+          "link_uri": {
+            "color": "#3794ff"
           },
           "variable.special": {
             "color": "#9cdcfe"
@@ -270,10 +293,15 @@
             "color": "#3b527f"
           },
           "label.dartdoc": {
-            "color": "#7f7f7f"
+            "color": "#765073",
+            "font_style": "italic"
           },
           "lifetime.dartdoc": {
             "color": "#7f7f7f"
+          },
+          "namespace.dartdoc": {
+            "color": "#2f796a",
+            "font_style": "italic"
           },
           "nested.dartdoc": {
             "color": "#7f7f7f"
@@ -471,7 +499,7 @@
         "warning.border": "#0f0f0f",
         "editor.indent_guide": "#fce56626",
         "editor.indent_guide_active": "#fce56666",
-        "accents": ["#7bd88f", "#f9a825", "#fc618d"],
+        "accents": ["#5a9e69", "#b57a1b", "#b84767"],
         "panel.indent_guide": "#3a3a3a12",
         "panel.indent_guide_hover": "#3a3a3a16",
         "panel.indent_guide_active": "#3a3a3a1a",
@@ -578,6 +606,14 @@
           "property": {
             "color": "#6ec5ff"
           },
+          "property.unresolved": {
+            "color": "#ff6188",
+            "font_style": "italic"
+          },
+          "string.default": {
+            "color": "#8b888f",
+            "font_style": "italic"
+          },
           "punctuation": {
             "color": "#8b888f"
           },
@@ -628,6 +664,10 @@
           },
           "variable.parameter.closure": {
             "color": "#c07a9a"
+          },
+          "namespace": {
+            "color": "#5ad4e6",
+            "font_style": "italic"
           },
           "variable.special": {
             "color": "#bab6c0",
@@ -769,6 +809,10 @@
           },
           "lifetime.dartdoc": {
             "color": "#949199"
+          },
+          "namespace.dartdoc": {
+            "color": "#367f8a",
+            "font_style": "italic"
           },
           "nested.dartdoc": {
             "color": "#949199"
