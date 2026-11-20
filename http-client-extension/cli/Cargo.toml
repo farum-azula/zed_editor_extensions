@@ -22,3 +22,8 @@ rand = "0.8"
 base64 = "0.22"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
+
+[dev-dependencies]
+# The queries of languages/http/ are tested against the grammar pinned in extension.toml.
+tree-sitter = "0.25"
+http-grammar = { path = "tests/http_grammar" }

@@ -1,3 +1,4 @@
+use rand::Rng;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -56,49 +57,95 @@ impl Context {
     }
 }
 
+/// A dynamic variable, `{{$name arguments}}`: a new value wherever it is used.
+struct DynamicVariable {
+    /// Whether `name` (without `$` and arguments) names this variable.
+    names: fn(name: &str) -> bool,
+    /// The value, from the name and the arguments after it.
+    value: fn(name: &str, arguments: &str) -> Result<String, String>,
+}
+
+const ALPHABETIC: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ALPHANUMERIC: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const HEXADECIMAL: &[u8] = b"0123456789abcdef";
+
+/// Every dynamic variable; supporting another is one more entry.
+const DYNAMIC_VARIABLES: [DynamicVariable; 9] = [
+    DynamicVariable { names: |name| matches!(name, "uuid" | "random.uuid"), value: |_, _| Ok(uuid()) },
+    DynamicVariable { names: |name| name == "timestamp", value: |_, _| Ok(chrono::Utc::now().timestamp().to_string()) },
+    DynamicVariable {
+        names: |name| name == "isoTimestamp",
+        value: |_, _| Ok(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+    },
+    DynamicVariable {
+        names: |name| matches!(name, "randomInt" | "random.integer"),
+        value: |_, arguments| Ok(random_integer(arguments)),
+    },
+    DynamicVariable {
+        names: |name| name == "random.float",
+        value: |_, _| Ok(rand::thread_rng().gen::<f64>().to_string()),
+    },
+    DynamicVariable {
+        names: |name| name == "random.alphabetic",
+        value: |_, arguments| Ok(random_text(arguments, ALPHABETIC)),
+    },
+    DynamicVariable {
+        names: |name| name == "random.alphanumeric",
+        value: |_, arguments| Ok(random_text(arguments, ALPHANUMERIC)),
+    },
+    DynamicVariable {
+        names: |name| name == "random.hexadecimal",
+        value: |_, arguments| Ok(random_text(arguments, HEXADECIMAL)),
+    },
+    DynamicVariable {
+        names: |name| name.starts_with("processEnv.") || name.starts_with("env."),
+        value: |name, _| process_env(name),
+    },
+];
+
 fn dynamic_var(name: &str) -> Result<String, String> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let (func, arg) = match name.split_once(' ') {
-        Some((f, a)) => (f, a.trim()),
+    let (function, arguments) = match name.split_once(' ') {
+        Some((function, arguments)) => (function, arguments.trim()),
         None => (name, ""),
     };
-    Ok(match func {
-        "uuid" | "random.uuid" => {
-            let b: [u8; 16] = rng.gen();
-            let mut b = b;
-            b[6] = (b[6] & 0x0f) | 0x40;
-            b[8] = (b[8] & 0x3f) | 0x80;
-            let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
-            format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
-        }
-        "timestamp" => chrono::Utc::now().timestamp().to_string(),
-        "isoTimestamp" => chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        "randomInt" | "random.integer" => {
-            let nums: Vec<i64> =
-                arg.split(|c: char| c == ',' || c.is_whitespace()).filter_map(|s| s.trim().parse().ok()).collect();
-            let (lo, hi) = match nums.as_slice() {
-                [a, b] if a < b => (*a, *b),
-                _ => (0, 1000),
-            };
-            rng.gen_range(lo..hi).to_string()
-        }
-        "random.float" => rng.gen::<f64>().to_string(),
-        "random.alphabetic" | "random.alphanumeric" | "random.hexadecimal" => {
-            let len: usize = arg.parse().unwrap_or(10);
-            let charset: &[u8] = match func {
-                "random.alphabetic" => b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                "random.hexadecimal" => b"0123456789abcdef",
-                _ => b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-            };
-            (0..len).map(|_| charset[rng.gen_range(0..charset.len())] as char).collect()
-        }
-        f if f.starts_with("processEnv.") || f.starts_with("env.") => {
-            let key = f.split_once('.').unwrap().1;
-            std::env::var(key).map_err(|_| format!("environment variable `{key}` is not set"))?
-        }
-        _ => return Err(format!("unknown dynamic variable `{{{{${name}}}}}`")),
-    })
+    let variable = DYNAMIC_VARIABLES
+        .iter()
+        .find(|variable| (variable.names)(function))
+        .ok_or_else(|| format!("unknown dynamic variable `{{{{${name}}}}}`"))?;
+    (variable.value)(function, arguments)
+}
+
+/// A random version 4 UUID.
+fn uuid() -> String {
+    let mut bytes: [u8; 16] = rand::thread_rng().gen();
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+}
+
+/// A random integer in `[low, high)` from arguments `low high` (or `low, high`); `[0, 1000)` otherwise.
+fn random_integer(arguments: &str) -> String {
+    let bounds: Vec<i64> =
+        arguments.split(|c: char| c == ',' || c.is_whitespace()).filter_map(|part| part.trim().parse().ok()).collect();
+    let (low, high) = match bounds.as_slice() {
+        [low, high] if low < high => (*low, *high),
+        _ => (0, 1000),
+    };
+    rand::thread_rng().gen_range(low..high).to_string()
+}
+
+/// Random characters of `charset`, as many as the arguments say (10 by default).
+fn random_text(arguments: &str, charset: &[u8]) -> String {
+    let length: usize = arguments.parse().unwrap_or(10);
+    let mut random = rand::thread_rng();
+    (0..length).map(|_| charset[random.gen_range(0..charset.len())] as char).collect()
+}
+
+/// `processEnv.NAME` / `env.NAME`: the variable `NAME` of the process environment.
+fn process_env(name: &str) -> Result<String, String> {
+    let key = name.split_once('.').map_or(name, |(_, key)| key);
+    std::env::var(key).map_err(|_| format!("environment variable `{key}` is not set"))
 }
 
 fn response_value(resp: &Value, path: &str) -> Option<String> {
@@ -139,7 +186,7 @@ fn response_value(resp: &Value, path: &str) -> Option<String> {
 /// `# @env NAME`, then `HTTP_CLIENT_ENV`. `None` leaves it to [`Environments::select`]'s defaults.
 pub fn requested_env(explicit: Option<String>, http_file: &str) -> Option<String> {
     explicit
-        .or_else(|| crate::parser::file_env(http_file).map(|(_, name)| name))
+        .or_else(|| crate::parser::file_env(http_file).map(|directive| directive.name))
         .or_else(|| std::env::var("HTTP_CLIENT_ENV").ok().filter(|s| !s.is_empty()))
 }
 

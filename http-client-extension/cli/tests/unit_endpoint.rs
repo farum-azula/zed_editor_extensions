@@ -2,15 +2,15 @@
 
 use std::path::{Path, PathBuf};
 use zed_http::endpoint::*;
-use zed_http::infer::{self, Spec};
+use zed_http::infer::{Field, FieldType, RequestSpec};
 
 #[test]
 fn renders_a_full_request() {
-    let spec = Spec {
-        query: vec![("page".into(), infer::Ty::Int), ("q".into(), infer::Ty::Str)],
+    let spec = RequestSpec {
+        query: vec![Field::new("page", FieldType::Integer), Field::new("q", FieldType::String)],
         headers: vec!["X-Request-Id".into()],
         auth: true,
-        body: Some(vec![("name".into(), infer::Ty::Str)]),
+        body: Some(vec![Field::new("name", FieldType::String)]),
     };
     let out = render("POST", "{{baseUrl}}/users/{{id}}", "post-users", &spec);
     let expected = "\
@@ -35,10 +35,10 @@ Content-Type: application/json
     assert_eq!(out, expected);
 
     // A URL that already has a query string gets `&`, and a plain GET stays minimal.
-    let spec = Spec { query: vec![("b".into(), infer::Ty::Str)], ..Default::default() };
+    let spec = RequestSpec { query: vec![Field::new("b", FieldType::String)], ..Default::default() };
     assert!(render("GET", "{{baseUrl}}/x?a=1", "get-x", &spec).contains("/x?a=1&b={{b}}"));
     assert_eq!(
-        render("GET", "{{baseUrl}}/x", "get-x", &Spec::default()),
+        render("GET", "{{baseUrl}}/x", "get-x", &RequestSpec::default()),
         "### get-x\n# @name get-x\n# @no-log\nGET {{baseUrl}}/x\nAccept: application/json\n"
     );
 }

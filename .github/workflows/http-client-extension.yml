@@ -103,6 +103,8 @@ jobs:
           workspaces: http-client-extension
       - name: Build
         run: cargo build --release --target wasm32-wasip2
+      - name: Test the extension's own code
+        run: cargo test
       - name: Check that the manifests agree on the version
         run: |
           python3 - <<'PY'

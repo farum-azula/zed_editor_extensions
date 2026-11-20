@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use zed_http::catalog::{convert_params, Catalog, Language, Style, BUILTIN};
-use zed_http::infer::{Spec, Ty};
+use zed_http::infer::{Field, FieldType, RequestSpec};
 
 fn ext_of(l: &Language) -> String {
     l.extensions.iter().find(|e| *e != "*").cloned().unwrap_or_else(|| "txt".into())
@@ -60,17 +60,6 @@ fn every_framework_has_an_example_file() {
     assert!(missing.is_empty(), "no example file for: {}", missing.join(", "));
 }
 
-/// The language server is attached to languages by their Zed names listed in extension.toml.
-#[test]
-fn zed_languages_registered() {
-    let manifest = include_str!("../../extension.toml");
-    for l in &Catalog::builtin().languages {
-        for z in &l.zed {
-            assert!(manifest.contains(&format!("\"{z}\"")), "{z} ({}) is missing in extension.toml", l.key);
-        }
-    }
-}
-
 #[test]
 fn project_catalog_extends_builtin() {
     let extra = r#"{ "languages": { "dart": { "frameworks": { "my-client": {
@@ -92,13 +81,12 @@ fn project_catalog_extends_builtin() {
     assert!(Catalog::from_sources(&[BUILTIN, typo]).err().unwrap().contains("routs"));
 }
 
-fn req(code: &str, file: &str, line: usize) -> Spec {
-    let (_, spec, _) = Catalog::builtin().request(code, Path::new(file), line).expect("route on line");
-    spec
+fn req(code: &str, file: &str, line: usize) -> RequestSpec {
+    Catalog::builtin().request(code, Path::new(file), line).expect("route on line").spec
 }
 
-fn names(v: &[(String, Ty)]) -> Vec<&str> {
-    v.iter().map(|(n, _)| n.as_str()).collect()
+fn names(fields: &[Field]) -> Vec<&str> {
+    fields.iter().map(|field| field.name.as_str()).collect()
 }
 
 #[test]
@@ -120,12 +108,15 @@ class Address {
 }
 "#;
     let s = req(java, "C.java", 4);
-    assert_eq!(s.query, vec![("page".into(), Ty::Int)]);
+    assert_eq!(s.query, vec![Field::new("page", FieldType::Integer)]);
     assert_eq!(s.headers, vec!["X-Request-Id"]);
     assert!(s.auth);
     let body = s.body.unwrap();
     assert_eq!(names(&body), vec!["name", "age", "tags", "address"]);
-    assert_eq!(body[3].1, Ty::Obj(vec![("city".into(), Ty::Str), ("primary".into(), Ty::Bool)]));
+    assert_eq!(
+        body[3].kind,
+        FieldType::Object(vec![Field::new("city", FieldType::String), Field::new("primary", FieldType::Boolean)])
+    );
 }
 
 #[test]
@@ -144,7 +135,7 @@ abstract class TaskApi {
 Future f(Dio dio, String token) => dio.post('/login', data: {'email': e, 'password': p}, options: Options(headers: {'Authorization': 'Bearer $token'}));
 "#;
     let s = req(dart, "a.dart", 8);
-    assert_eq!(s.query, vec![("notify".into(), Ty::Bool)]);
+    assert_eq!(s.query, vec![Field::new("notify", FieldType::Boolean)]);
     assert_eq!(s.headers, vec!["X-Trace"]);
     assert_eq!(names(&s.body.unwrap()), vec!["id", "title", "done"]);
     let s = req(dart, "a.dart", 11);
@@ -166,9 +157,16 @@ def create(item_id: int, item: ItemIn, q: str | None = None, x_token: str = Head
     pass
 "#;
     let s = req(py, "main.py", 6);
-    assert_eq!(s.query, vec![("q".into(), Ty::Str)]);
+    assert_eq!(s.query, vec![Field::new("q", FieldType::String)]);
     assert_eq!(s.headers, vec!["X-Token"]);
-    assert_eq!(s.body.unwrap(), vec![("name".into(), Ty::Str), ("price".into(), Ty::Float), ("tags".into(), Ty::List)]);
+    assert_eq!(
+        s.body.unwrap(),
+        vec![
+            Field::new("name", FieldType::String),
+            Field::new("price", FieldType::Float),
+            Field::new("tags", FieldType::List)
+        ]
+    );
 }
 
 #[test]
@@ -181,12 +179,12 @@ fn infer_express_go_rust() {
 
     let go = "import \"net/http\"\ntype Order struct {\n\tID    int    `json:\"id\"`\n\tItems []Item `json:\"items\"`\n}\nfunc main() {\n\tmux.HandleFunc(\"POST /orders\", createOrder)\n}\nfunc createOrder(w http.ResponseWriter, r *http.Request) {\n\tvar o Order\n\tjson.NewDecoder(r.Body).Decode(&o)\n\tr.URL.Query().Get(\"dry\")\n}";
     let s = req(go, "m.go", 6);
-    assert_eq!(s.body.unwrap(), vec![("id".into(), Ty::Int), ("items".into(), Ty::List)]);
+    assert_eq!(s.body.unwrap(), vec![Field::new("id", FieldType::Integer), Field::new("items", FieldType::List)]);
     assert_eq!(names(&s.query), vec!["dry"]);
 
     let rs = "use axum::Router;\n#[derive(Deserialize)]\nstruct CreateUser {\n    pub name: String,\n    admin: bool,\n}\nfn r() { Router::new().route(\"/users\", post(create_user)); }\nasync fn create_user(Json(body): Json<CreateUser>) {}";
     let s = req(rs, "m.rs", 6);
-    assert_eq!(s.body.unwrap(), vec![("name".into(), Ty::Str), ("admin".into(), Ty::Bool)]);
+    assert_eq!(s.body.unwrap(), vec![Field::new("name", FieldType::String), Field::new("admin", FieldType::Boolean)]);
 }
 
 /// A catalog for a made-up language, used to reach the corners of the engine.
@@ -220,8 +218,8 @@ fn demo() -> Catalog {
     Catalog::from_sources(&[BUILTIN, DEMO]).unwrap()
 }
 
-fn demo_spec(code: &str) -> Spec {
-    demo().request(code, Path::new("x.demo"), 0).expect("a route on line 1").1
+fn demo_spec(code: &str) -> RequestSpec {
+    demo().request(code, Path::new("x.demo"), 0).expect("a route on line 1").spec
 }
 
 #[test]
@@ -240,7 +238,7 @@ fn a_get_request_turns_body_fields_into_query_parameters() {
     let code = "route(\"GET\", \"/a\")\nbody(v)\nlet v: Filter\nmodel Filter { pub page: int\n tag: string }";
     let spec = demo_spec(code);
     assert_eq!(spec.body, None, "GET has no body");
-    assert_eq!(spec.query, vec![("page".into(), Ty::Int), ("tag".into(), Ty::Str)]);
+    assert_eq!(spec.query, vec![Field::new("page", FieldType::Integer), Field::new("tag", FieldType::String)]);
 }
 
 #[test]
@@ -251,21 +249,24 @@ fn model_declarations_that_are_skipped() {
     assert_eq!(demo_spec("route(\"POST\", \"/a\")\ntyped(Open)\nmodel Open { a: int").body, Some(vec![]));
     // A nested block inside a model is skipped, and its lines do not become fields.
     let code = "route(\"POST\", \"/a\")\ntyped(M)\nmodel M { a: int\n fn helper() {\n   hidden: string\n }\n b: bool }";
-    assert_eq!(demo_spec(code).body, Some(vec![("a".into(), Ty::Int), ("b".into(), Ty::Bool)]));
+    assert_eq!(
+        demo_spec(code).body,
+        Some(vec![Field::new("a", FieldType::Integer), Field::new("b", FieldType::Boolean)])
+    );
 }
 
 #[test]
 fn a_model_without_fields_is_a_string() {
     let code = "route(\"POST\", \"/a\")\ntyped(M)\nmodel M { inner: Empty }\nmodel Empty { }";
-    assert_eq!(demo_spec(code).body, Some(vec![("inner".into(), Ty::Str)]));
+    assert_eq!(demo_spec(code).body, Some(vec![Field::new("inner", FieldType::String)]));
 }
 
 #[test]
 fn type_mapping_corners() {
     let c = demo();
     let lang = c.languages.iter().find(|l| l.key == "demo").unwrap();
-    assert_eq!(c.ty_of(lang, "", "Map<String, String>", 0), Ty::Obj(vec![]), "a map is an open object");
-    assert_eq!(c.ty_of(lang, "", "whatever", 0), Ty::Str, "unknown lowercase types are strings");
+    assert_eq!(c.field_type(lang, "", "Map<String, String>"), FieldType::Object(vec![]), "a map is an open object");
+    assert_eq!(c.field_type(lang, "", "whatever"), FieldType::String, "unknown lowercase types are strings");
     assert_eq!(c.unwrap_type("Optional<Mono<Dto>>"), "Dto", "wrappers are unwrapped");
     assert_eq!(c.unwrap_type("Map<String, Dto>"), "Map<String, Dto>", "non-wrappers are kept");
 }
@@ -292,8 +293,11 @@ class Dto {
     let routes = c.routes(java, Path::new("C.java"));
     let urls: Vec<&str> = routes.iter().map(|r| r.endpoint.url.as_str()).collect();
     assert_eq!(urls, vec!["{{baseUrl}}/", "{{baseUrl}}/x"], "an empty class prefix still yields a path");
-    let (_, spec, _) = c.request(java, Path::new("C.java"), routes[0].line).unwrap();
-    assert_eq!(spec.body, Some(vec![("name".into(), Ty::Str), ("extra".into(), Ty::Obj(vec![]))]));
+    let spec = c.request(java, Path::new("C.java"), routes[0].line).unwrap().spec;
+    assert_eq!(
+        spec.body,
+        Some(vec![Field::new("name", FieldType::String), Field::new("extra", FieldType::Object(vec![]))])
+    );
 }
 
 #[test]
@@ -302,11 +306,11 @@ fn duplicates_are_collected_once() {
     let code =
         "route(\"POST\", \"/a\")\nquery({'page': 1})\nquery({'page': 2})\ntyped(M)\nmodel M { a: int\n a: string }";
     let spec = demo_spec(code);
-    assert_eq!(spec.query, vec![("page".into(), Ty::Str)]);
-    assert_eq!(spec.body, Some(vec![("a".into(), Ty::Int)]), "the first declaration wins");
+    assert_eq!(spec.query, vec![Field::new("page", FieldType::String)]);
+    assert_eq!(spec.body, Some(vec![Field::new("a", FieldType::Integer)]), "the first declaration wins");
 
     let java = "import org.springframework.web.bind.annotation.*;\n@PostMapping(\"/x\")\nvoid a(@RequestHeader(\"X-Id\") String a, @RequestHeader(\"x-id\") String b) {}";
-    let (_, spec, _) = Catalog::builtin().request(java, Path::new("C.java"), 1).unwrap();
+    let spec = Catalog::builtin().request(java, Path::new("C.java"), 1).unwrap().spec;
     assert_eq!(spec.headers, vec!["X-Id"], "headers are matched case-insensitively");
 }
 
@@ -415,21 +419,4 @@ fn urls_without_a_lookup_section() {
     let routes = c.routes("final endpoint = 'https://example.com';\nclient.get(endpoint);\n", Path::new("a.toy"));
     assert_eq!(routes[0].endpoint.url, "{{endpoint}}");
     assert!(c.routes("client.get(payload);\n", Path::new("a.toy")).is_empty());
-}
-
-/// Every tag set in `runnables.scm` is bound to a task in `tasks.json`, or its ▶ would do nothing.
-#[test]
-fn every_runnable_has_a_task() {
-    let query = include_str!("../../languages/http/runnables.scm");
-    let tasks: serde_json::Value = serde_json::from_str(include_str!("../../languages/http/tasks.json")).unwrap();
-    let tagged: BTreeSet<&str> = tasks
-        .as_array()
-        .unwrap()
-        .iter()
-        .flat_map(|t| t["tags"].as_array().into_iter().flatten())
-        .filter_map(|t| t.as_str())
-        .collect();
-    let tags: BTreeSet<&str> = query.split("(#set! tag ").skip(1).filter_map(|rest| rest.split(')').next()).collect();
-    assert_eq!(tags, BTreeSet::from(["http-request", "http-request-named"]));
-    assert_eq!(tags, tagged);
 }

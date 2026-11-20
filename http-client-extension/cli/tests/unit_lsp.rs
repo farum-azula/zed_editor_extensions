@@ -1,7 +1,17 @@
 //! Unit tests for `lsp.rs`.
 
 use std::path::{Path, PathBuf};
-use zed_http::lsp::{find_env_keys, find_file_variable, find_request_name, path_to_uri, uri_to_path, variable_at};
+use zed_http::lsp::{
+    find_env_keys, find_file_variable, find_request_name, path_to_uri, uri_to_path, variable_at, EnvKey, Position,
+};
+
+fn at(line: usize, character: usize) -> Position {
+    Position { line, character }
+}
+
+fn key(environment: &str, line: usize, character: usize) -> EnvKey {
+    EnvKey { environment: environment.into(), position: at(line, character) }
+}
 
 #[test]
 fn finds_variable_under_cursor() {
@@ -19,15 +29,18 @@ fn finds_variable_under_cursor() {
 fn finds_env_keys_per_environment() {
     let src = "{\n  \"$shared\": { \"baseUrl\": \"a\" },\n  \"dev\": {\n    \"baseUrl\": \"b\",\n    \"x\": {\"baseUrl\": 1}\n  }\n}";
     let keys = find_env_keys(src, "baseUrl");
-    assert_eq!(keys, vec![("$shared".into(), 1, 16), ("dev".into(), 3, 5)]);
+    assert_eq!(keys, vec![key("$shared", 1, 16), key("dev", 3, 5)]);
 }
 
 #[test]
 fn finds_declarations() {
     let text = "@token = abc\n### x\n# @name login\nGET /";
-    assert_eq!(find_file_variable(text, "token"), Some((0, 1)));
+    assert_eq!(find_file_variable(text, "token"), Some(at(0, 1)));
     assert_eq!(find_file_variable(text, "tok"), None);
-    assert_eq!(find_request_name(text, "login"), Some((2, 8)));
+    assert_eq!(find_request_name(text, "login"), Some(at(2, 8)));
+    let in_header = "### x\nGET /\nX-Note: @name login\n### y\n// @name = login  \nGET /";
+    assert_eq!(find_request_name(in_header, "login"), Some(at(4, 11)), "only a comment names a request");
+    assert_eq!(find_request_name("# @namespace login\nGET /", "login"), None);
 }
 
 #[test]

@@ -36,7 +36,8 @@ const RED: &str = "\x1b[31m";
 const CYAN: &str = "\x1b[36m";
 
 #[derive(Default)]
-struct Opts {
+/// The options of `run`, `list` and `envs`.
+struct RunOptions {
     command: String,
     file: PathBuf,
     line: Option<usize>,
@@ -47,30 +48,30 @@ struct Opts {
     timeout: u64,
 }
 
-fn parse_args(args: impl Iterator<Item = String>) -> Result<Opts, String> {
+fn parse_args(args: impl Iterator<Item = String>) -> Result<RunOptions, String> {
     let mut args = args.peekable();
-    let mut o = Opts { timeout: 60, ..Default::default() };
-    o.command = args.next().ok_or(USAGE)?;
-    if matches!(o.command.as_str(), "-h" | "--help" | "help") {
+    let mut options = RunOptions { timeout: 60, ..Default::default() };
+    options.command = args.next().ok_or(USAGE)?;
+    if matches!(options.command.as_str(), "-h" | "--help" | "help") {
         return Err(USAGE.into());
     }
     while let Some(a) = args.next() {
         let mut val = |n: &str| args.next().ok_or_else(|| format!("{n} requires a value"));
         match a.as_str() {
-            "--line" | "-l" => o.line = Some(val("--line")?.parse().map_err(|_| "invalid --line")?),
-            "--name" | "-n" => o.name = Some(val("--name")?),
-            "--env" | "-e" => o.env = Some(val("--env")?),
-            "--timeout" => o.timeout = val("--timeout")?.parse().map_err(|_| "invalid --timeout")?,
-            "--all" | "-a" => o.all = true,
-            "--raw" => o.raw = true,
+            "--line" | "-l" => options.line = Some(val("--line")?.parse().map_err(|_| "invalid --line")?),
+            "--name" | "-n" => options.name = Some(val("--name")?),
+            "--env" | "-e" => options.env = Some(val("--env")?),
+            "--timeout" => options.timeout = val("--timeout")?.parse().map_err(|_| "invalid --timeout")?,
+            "--all" | "-a" => options.all = true,
+            "--raw" => options.raw = true,
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),
-            s => o.file = PathBuf::from(s),
+            s => options.file = PathBuf::from(s),
         }
     }
-    if o.file.as_os_str().is_empty() {
+    if options.file.as_os_str().is_empty() {
         return Err(format!("missing <file.http>\n\n{USAGE}"));
     }
-    Ok(o)
+    Ok(options)
 }
 
 /// Runs one command and converts its exit code. `args` are the arguments after the program name.
@@ -78,48 +79,49 @@ pub fn run_main(args: Vec<String>) -> ExitCode {
     ExitCode::from(run_args(args))
 }
 
+/// A command with arguments of its own (`run`, `list` and `envs` share theirs).
+struct Subcommand {
+    name: &'static str,
+    /// Runs it with the arguments after its name; returns the exit code.
+    run: fn(arguments: Vec<String>) -> u8,
+}
+
+/// Commands besides `run` / `list` / `envs`; adding one is one more entry.
+const SUBCOMMANDS: [Subcommand; 4] = [
+    Subcommand {
+        name: "lsp",
+        run: |_| {
+            lsp::serve();
+            0
+        },
+    },
+    Subcommand { name: "new", run: |arguments| exit_code(new_endpoint(arguments.into_iter()).map(|()| true)) },
+    Subcommand {
+        name: "frameworks",
+        run: |arguments| exit_code(frameworks(arguments.into_iter().next()).map(|()| true)),
+    },
+    Subcommand { name: "detect", run: |arguments| exit_code(detect(arguments.into_iter())) },
+];
+
 /// Runs one command, returning the process exit code: 0 ok, 1 request failed, 2 usage/IO error.
 pub fn run_args(args: Vec<String>) -> u8 {
-    if args.first().map(String::as_str) == Some("lsp") {
-        lsp::serve();
-        return 0;
+    let subcommand = args.first().and_then(|name| SUBCOMMANDS.iter().find(|subcommand| subcommand.name == name));
+    if let Some(subcommand) = subcommand {
+        return (subcommand.run)(args.into_iter().skip(1).collect());
     }
-    if args.first().map(String::as_str) == Some("new") {
-        return match new_endpoint(args.into_iter().skip(1)) {
-            Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{RED}error:{RESET} {e}");
-                2
-            }
-        };
-    }
-    if args.first().map(String::as_str) == Some("frameworks") {
-        return match frameworks(args.into_iter().nth(1)) {
-            Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{RED}error:{RESET} {e}");
-                2
-            }
-        };
-    }
-    if args.first().map(String::as_str) == Some("detect") {
-        return match detect(args.into_iter().skip(1)) {
-            Ok(true) => 0,
-            Ok(false) => 1,
-            Err(e) => {
-                eprintln!("{RED}error:{RESET} {e}");
-                2
-            }
-        };
-    }
-    let opts = match parse_args(args.into_iter()) {
-        Ok(o) => o,
+    let options = match parse_args(args.into_iter()) {
+        Ok(options) => options,
         Err(e) => {
             eprintln!("{e}");
             return 2;
         }
     };
-    match run(opts) {
+    exit_code(run(options))
+}
+
+/// 0 when it went well, 1 when a request failed or nothing was found, 2 on an error (reported).
+fn exit_code(result: Result<bool, String>) -> u8 {
+    match result {
         Ok(true) => 0,
         Ok(false) => 1,
         Err(e) => {
@@ -129,14 +131,14 @@ pub fn run_args(args: Vec<String>) -> u8 {
     }
 }
 
-fn run(o: Opts) -> Result<bool, String> {
-    let src = fs::read_to_string(&o.file).map_err(|e| format!("{}: {e}", o.file.display()))?;
+fn run(options: RunOptions) -> Result<bool, String> {
+    let src = fs::read_to_string(&options.file).map_err(|e| format!("{}: {e}", options.file.display()))?;
     let file = parser::parse(&src);
-    let dir = o.file.parent().map(Path::to_path_buf).unwrap_or_default();
+    let dir = options.file.parent().map(Path::to_path_buf).unwrap_or_default();
     let dir = if dir.as_os_str().is_empty() { PathBuf::from(".") } else { dir };
     let envs = Environments::load(&dir)?;
 
-    match o.command.as_str() {
+    match options.command.as_str() {
         "envs" => {
             for n in &envs.names {
                 println!("{n}");
@@ -151,17 +153,17 @@ fn run(o: Opts) -> Result<bool, String> {
             Ok(true)
         }
         "run" => {
-            let selected = select_requests(&file, &o)?;
+            let selected = select_requests(&file, &options)?;
             // Each request in its own environment: --env, then its `# @env`, then the file's.
             // All are checked before anything is sent.
             let mut chosen = Vec::new();
             for req in &selected {
-                let own = o.env.clone().or_else(|| req.env.as_ref().map(|(_, name)| name.clone()));
+                let own = options.env.clone().or_else(|| req.env.as_ref().map(|directive| directive.name.clone()));
                 chosen.push(envs.select(vars::requested_env(own, &src).as_deref())?);
             }
             let store_path = dir.join(".zed-http").join("responses.json");
-            let mut ctx = Context { responses: load_store(&store_path), ..Default::default() };
-            let stored = ctx.responses.clone();
+            let mut context = Context { responses: load_store(&store_path), ..Default::default() };
+            let stored = context.responses.clone();
 
             let mut ok = true;
             let mut shown = None;
@@ -175,9 +177,9 @@ fn run(o: Opts) -> Result<bool, String> {
                     }
                     shown = Some(env);
                 }
-                ctx.vars = envs.vars(env.as_deref());
-                ctx.vars.extend(file.variables.iter().cloned());
-                match execute(req, &mut ctx, &dir, &o) {
+                context.vars = envs.vars(env.as_deref());
+                context.vars.extend(file.variable_pairs());
+                match execute(req, &mut context, &dir, &options) {
                     Ok(success) => ok &= success,
                     Err(e) => {
                         eprintln!("{RED}error:{RESET} {e}");
@@ -185,10 +187,10 @@ fn run(o: Opts) -> Result<bool, String> {
                     }
                 }
             }
-            ctx.responses.retain(|k, _| !ctx.unlogged.contains(k));
+            context.responses.retain(|k, _| !context.unlogged.contains(k));
             // Nothing new to keep (only `# @no-log` requests, say): nothing is written.
-            if ctx.responses != stored {
-                save_store(&store_path, &ctx.responses);
+            if context.responses != stored {
+                save_store(&store_path, &context.responses);
             }
             Ok(ok)
         }
@@ -196,14 +198,14 @@ fn run(o: Opts) -> Result<bool, String> {
     }
 }
 
-fn select_requests<'a>(file: &'a HttpFile, o: &Opts) -> Result<Vec<&'a Request>, String> {
+fn select_requests<'a>(file: &'a HttpFile, options: &RunOptions) -> Result<Vec<&'a Request>, String> {
     if file.requests.is_empty() {
         return Err("no requests found in file".into());
     }
-    if o.all {
+    if options.all {
         return Ok(file.requests.iter().collect());
     }
-    if let Some(n) = &o.name {
+    if let Some(n) = &options.name {
         return file
             .requests
             .iter()
@@ -211,7 +213,7 @@ fn select_requests<'a>(file: &'a HttpFile, o: &Opts) -> Result<Vec<&'a Request>,
             .map(|r| vec![r])
             .ok_or_else(|| format!("request `{n}` not found"));
     }
-    let line = o.line.ok_or("specify --line, --name or --all")?;
+    let line = options.line.ok_or("specify --line, --name or --all")?;
     file.requests
         .iter()
         .find(|r| line >= r.start_line && line <= r.end_line)
@@ -220,22 +222,22 @@ fn select_requests<'a>(file: &'a HttpFile, o: &Opts) -> Result<Vec<&'a Request>,
         .ok_or_else(|| format!("no request at line {line}"))
 }
 
-fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<bool, String> {
-    let url = ctx.resolve(&req.url)?;
+fn execute(req: &Request, context: &mut Context, dir: &Path, options: &RunOptions) -> Result<bool, String> {
+    let url = context.resolve(&req.url)?;
     let url = if url.contains("://") { url } else { format!("http://{url}") };
     let mut headers = Vec::new();
     for (k, v) in &req.headers {
-        let mut v = ctx.resolve(v)?;
+        let mut v = context.resolve(v)?;
         if k.eq_ignore_ascii_case("authorization") {
             v = expand_basic_auth(&v);
         }
-        headers.push((ctx.resolve(k)?, v));
+        headers.push((context.resolve(k)?, v));
     }
     let body: Option<Vec<u8>> = match &req.body {
         None => None,
-        Some(Body::Inline(b)) => Some(resolve_body(ctx, b, dir)?.into_bytes()),
+        Some(Body::Inline(b)) => Some(resolve_body(context, b, dir)?.into_bytes()),
         Some(Body::File(p)) => {
-            let p = ctx.resolve(p)?;
+            let p = context.resolve(p)?;
             let path = dir.join(&p);
             Some(fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?)
         }
@@ -247,7 +249,7 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     }
 
     let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(o.timeout))
+        .timeout(Duration::from_secs(options.timeout))
         .redirects(if req.no_redirect { 0 } else { 10 })
         .build();
     let mut call = agent.request(&req.method, &url);
@@ -302,7 +304,7 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
 
     let text = String::from_utf8_lossy(&bytes);
     let json: Option<Value> = serde_json::from_slice(&bytes).ok();
-    let pretty = match (&json, o.raw) {
+    let pretty = match (&json, options.raw) {
         (Some(j), false) => serde_json::to_string_pretty(j).expect("a parsed JSON value re-serializes"),
         _ => text.to_string(),
     };
@@ -313,7 +315,7 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     }
 
     let key = req.name.clone().unwrap_or_else(|| format!("line-{}", req.start_line));
-    ctx.responses.insert(
+    context.responses.insert(
         key.clone(),
         serde_json::json!({
             "status": status,
@@ -326,17 +328,19 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     let saved = out_dir.join(format!("{}.{ext}", sanitize(&key)));
     if req.no_log {
         // Usable by the requests after it in this run, but not written anywhere.
-        ctx.unlogged.insert(key);
-    } else if fs::create_dir_all(&out_dir).is_ok() {
+        context.unlogged.insert(key);
+    } else {
         let data = if json.is_some() { pretty.into_bytes() } else { bytes.clone() };
-        if fs::write(&saved, data).is_ok() {
-            println!("\n{DIM}saved: {}{RESET}", saved.display());
+        match fs::create_dir_all(&out_dir).and_then(|()| fs::write(&saved, data)) {
+            Ok(()) => println!("\n{DIM}saved: {}{RESET}", saved.display()),
+            // The request went through either way: a response that cannot be kept is only reported.
+            Err(error) => eprintln!("{YELLOW}not saved:{RESET} {}: {error}", saved.display()),
         }
     }
 
-    if let Some((target, force)) = &req.redirect {
-        let target = dir.join(ctx.resolve(target)?);
-        let target = if !*force && target.exists() { unique_path(&target) } else { target };
+    if let Some(redirect) = &req.redirect {
+        let target = dir.join(context.resolve(&redirect.path)?);
+        let target = if !redirect.overwrite && target.exists() { unique_path(&target) } else { target };
         if let Some(p) = target.parent() {
             let _ = fs::create_dir_all(p);
         }
@@ -347,14 +351,14 @@ fn execute(req: &Request, ctx: &mut Context, dir: &Path, o: &Opts) -> Result<boo
     Ok(status < 400)
 }
 
-fn resolve_body(ctx: &Context, body: &str, dir: &Path) -> Result<String, String> {
+fn resolve_body(context: &Context, body: &str, dir: &Path) -> Result<String, String> {
     let mut out = Vec::new();
     for line in body.lines() {
         if let Some(p) = line.trim().strip_prefix("< ") {
-            let path = dir.join(ctx.resolve(p.trim())?);
+            let path = dir.join(context.resolve(p.trim())?);
             out.push(fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?);
         } else {
-            out.push(ctx.resolve(line)?);
+            out.push(context.resolve(line)?);
         }
     }
     Ok(out.join("\n"))
@@ -373,33 +377,38 @@ pub fn expand_basic_auth(v: &str) -> String {
     v.to_string()
 }
 
+/// Content types printed as text, besides `text/*` and an unknown one.
+const TEXTUAL: [&str; 7] = ["json", "xml", "javascript", "html", "yaml", "x-www-form-urlencoded", "graphql"];
+
 /// Whether a response of this content type should be printed as text.
 pub fn is_textual(ct: &str) -> bool {
-    ct.starts_with("text/")
-        || ["json", "xml", "javascript", "html", "yaml", "x-www-form-urlencoded", "graphql"]
-            .iter()
-            .any(|t| ct.contains(t))
-        || ct.is_empty()
+    ct.starts_with("text/") || TEXTUAL.iter().any(|t| ct.contains(t)) || ct.is_empty()
 }
+
+/// A saved response's file extension, by a word of its content type.
+struct SavedExtension {
+    content_type: &'static str,
+    extension: &'static str,
+}
+
+/// Tried in order, after JSON; other text is `txt`, anything else `bin`.
+const SAVED_EXTENSIONS: [SavedExtension; 5] = [
+    SavedExtension { content_type: "html", extension: "html" },
+    SavedExtension { content_type: "xml", extension: "xml" },
+    SavedExtension { content_type: "yaml", extension: "yaml" },
+    SavedExtension { content_type: "png", extension: "png" },
+    SavedExtension { content_type: "jpeg", extension: "jpg" },
+];
 
 /// File extension for a saved response.
 pub fn extension_for(ct: &str, is_json: bool) -> &'static str {
     if is_json {
-        "json"
-    } else if ct.contains("html") {
-        "html"
-    } else if ct.contains("xml") {
-        "xml"
-    } else if ct.contains("yaml") {
-        "yaml"
-    } else if ct.contains("png") {
-        "png"
-    } else if ct.contains("jpeg") {
-        "jpg"
-    } else if is_textual(ct) {
-        "txt"
-    } else {
-        "bin"
+        return "json";
+    }
+    match SAVED_EXTENSIONS.iter().find(|saved| ct.contains(saved.content_type)) {
+        Some(saved) => saved.extension,
+        None if is_textual(ct) => "txt",
+        None => "bin",
     }
 }
 
@@ -412,7 +421,14 @@ pub fn sanitize(s: &str) -> String {
 pub fn unique_path(p: &Path) -> PathBuf {
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("response");
     let ext = p.extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
-    (1..).map(|i| p.with_file_name(format!("{stem}-{i}{ext}"))).find(|c| !c.exists()).unwrap()
+    let mut counter = 1;
+    loop {
+        let candidate = p.with_file_name(format!("{stem}-{counter}{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        counter += 1;
+    }
 }
 
 /// Formats a byte count as B / KB / MB.
@@ -429,12 +445,14 @@ pub fn load_store(path: &Path) -> serde_json::Map<String, Value> {
     fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
 }
 
-/// Writes the stored responses, creating the directory; failures are ignored.
+/// Writes the stored responses, creating the directory. A failure is reported, not fatal: the
+/// requests have run either way, only later references to their responses miss them.
 pub fn save_store(path: &Path, store: &serde_json::Map<String, Value>) {
-    if let Some(p) = path.parent() {
-        let _ = fs::create_dir_all(p);
+    let text = serde_json::to_string_pretty(store).unwrap_or_default();
+    let written = fs::create_dir_all(path.parent().unwrap_or(Path::new(""))).and_then(|()| fs::write(path, text));
+    if let Err(error) = written {
+        eprintln!("{YELLOW}responses not kept:{RESET} {}: {error}", path.display());
     }
-    let _ = fs::write(path, serde_json::to_string_pretty(store).unwrap_or_default());
 }
 
 /// `zed-http new`: creates `<root>/.zed/http/endpoints/<name>.http` from a template.
@@ -456,11 +474,11 @@ fn new_endpoint(mut args: impl Iterator<Item = String>) -> Result<(), String> {
                 let line: usize = line.parse().map_err(|_| "invalid line in --from")?;
                 let src = fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
                 let catalog = catalog::for_source(Path::new(file))?;
-                let (ep, _, content) = endpoint::generate(&catalog, &src, Path::new(file), line.saturating_sub(1))
+                let request = endpoint::generate(&catalog, &src, Path::new(file), line.saturating_sub(1))
                     .ok_or_else(|| format!("no HTTP endpoint found at {from}"))?;
-                method.get_or_insert(ep.method);
-                url.get_or_insert(ep.url);
-                generated = Some(content);
+                method.get_or_insert(request.endpoint.method);
+                url.get_or_insert(request.endpoint.url);
+                generated = Some(request.content);
                 source = Some(PathBuf::from(file));
             }
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{USAGE}")),

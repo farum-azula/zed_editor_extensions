@@ -1,26 +1,29 @@
 //! Unit tests for `infer.rs`.
 
 use serde_json::Value;
-use zed_http::infer::{sample, sample_var, var_name, Ty};
+use zed_http::infer::{variable_name, Field, FieldType};
 
 #[test]
 fn sample_values_per_type() {
-    assert_eq!(sample(&Ty::Str), Value::String(String::new()));
-    assert_eq!(sample(&Ty::Int), Value::from(0));
-    assert_eq!(sample(&Ty::Float), Value::from(0.0));
-    assert_eq!(sample(&Ty::Bool), Value::Bool(false));
-    assert_eq!(sample(&Ty::List), Value::Array(vec![]));
-    assert_eq!(sample(&Ty::Obj(vec![("a".into(), Ty::Int)])), serde_json::json!({"a": 0}));
-    assert_eq!(sample_var(&Ty::Int), "1");
-    assert_eq!(sample_var(&Ty::Float), "1");
-    assert_eq!(sample_var(&Ty::Bool), "true");
-    assert_eq!(sample_var(&Ty::Str), "value");
-    assert_eq!(sample_var(&Ty::List), "value");
-    assert_eq!(sample_var(&Ty::Obj(vec![])), "value");
+    assert_eq!(FieldType::String.sample_value(), Value::String(String::new()));
+    assert_eq!(FieldType::Integer.sample_value(), Value::from(0));
+    assert_eq!(FieldType::Float.sample_value(), Value::from(0.0));
+    assert_eq!(FieldType::Boolean.sample_value(), Value::Bool(false));
+    assert_eq!(FieldType::List.sample_value(), Value::Array(vec![]));
+    assert_eq!(
+        FieldType::Object(vec![Field::new("a", FieldType::Integer)]).sample_value(),
+        serde_json::json!({"a": 0})
+    );
+    assert_eq!(FieldType::Integer.sample_variable(), "1");
+    assert_eq!(FieldType::Float.sample_variable(), "1");
+    assert_eq!(FieldType::Boolean.sample_variable(), "true");
+    assert_eq!(FieldType::String.sample_variable(), "value");
+    assert_eq!(FieldType::List.sample_variable(), "value");
+    assert_eq!(FieldType::Object(vec![]).sample_variable(), "value");
 }
 
 #[test]
 fn header_var_names() {
-    assert_eq!(var_name("X-Request-Id"), "xRequestId");
-    assert_eq!(var_name("x_token"), "xToken");
+    assert_eq!(variable_name("X-Request-Id"), "xRequestId");
+    assert_eq!(variable_name("x_token"), "xToken");
 }

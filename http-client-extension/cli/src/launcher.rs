@@ -13,10 +13,17 @@ use std::{env, fs, io};
 pub const DIR: &str = ".zed-http/bin";
 
 /// Copies the running binary to `~/.zed-http/bin`, unless the copy there is already this one.
-/// Failures are not worth reporting: the server runs either way, only tasks need the copy.
+/// A failure is reported on stderr, which Zed shows in the server's log: the server runs either
+/// way, only tasks need the copy.
 pub fn install() -> Option<PathBuf> {
     let home = env::var_os("HOME").or(env::var_os("USERPROFILE"))?;
-    install_into(Path::new(&home), &env::current_exe().ok()?).ok()
+    match env::current_exe().and_then(|exe| install_into(Path::new(&home), &exe)) {
+        Ok(installed) => Some(installed),
+        Err(error) => {
+            eprintln!("zed-http: cannot copy the runner to ~/{DIR} for tasks: {error}");
+            None
+        }
+    }
 }
 
 /// The part of [`install`] that does not read the environment.

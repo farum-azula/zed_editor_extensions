@@ -879,3 +879,30 @@ fn changing_or_closing_an_http_file_refreshes_the_lenses() {
     ]);
     assert_eq!(sent(&out, "workspace/codeLens/refresh").len(), 3, "open, change and close");
 }
+
+/// Stdout once the editor is gone: every write fails.
+struct Gone;
+
+impl std::io::Write for Gone {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the editor is gone"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_failed_write_stops_the_server() {
+    let dir = Dir::new();
+    let mut input = Vec::new();
+    for m in [init(&dir), request(2, "shutdown", json!(null))] {
+        let body = m.to_string();
+        input.extend_from_slice(format!("Content-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+    }
+    let length = input.len() as u64;
+    let mut reader = std::io::Cursor::new(input);
+    lsp::serve_io(&mut reader, &mut Gone);
+    assert!(reader.position() < length, "the answer to initialize fails, and nothing after it is read");
+}

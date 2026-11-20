@@ -120,7 +120,7 @@ fn unique_paths_do_not_overwrite() {
 
 #[test]
 fn store_paths_without_a_parent() {
-    // `Path::new("")` has no parent directory; writing simply fails and is ignored.
+    // `Path::new("")` has no parent directory; writing fails, which is reported and not fatal.
     save_store(Path::new(""), &serde_json::Map::new());
     assert!(load_store(Path::new("")).is_empty());
 }

@@ -1,0 +1,15 @@
+[package]
+name = "http-grammar"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "The tree-sitter-http grammar pinned in extension.toml, compiled for the query tests"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = "1"

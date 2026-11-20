@@ -1,16 +1,24 @@
 //! Unit tests for `parser.rs`.
 
-use zed_http::parser::{self, parse_var_decl, Body};
+use zed_http::parser::{self, parse_var_decl, Body, EnvDirective, Variable};
+
+fn variable(name: &str, value: &str) -> Variable {
+    Variable { name: name.into(), value: value.into() }
+}
+
+fn env(line: usize, name: &str) -> EnvDirective {
+    EnvDirective { line, name: name.into() }
+}
 
 #[test]
 fn variable_declarations_and_version_suffix() {
-    assert_eq!(parse_var_decl("@ok-name.v2 = 1"), Some(("ok-name.v2".into(), "1".into())));
+    assert_eq!(parse_var_decl("@ok-name.v2 = 1"), Some(variable("ok-name.v2", "1")));
     assert_eq!(parse_var_decl("@ = 2"), None, "empty name");
     assert_eq!(parse_var_decl("@bad name = 3"), None, "space in the name");
     assert_eq!(parse_var_decl("@no-equals"), None);
     assert_eq!(parse_var_decl("name = 4"), None, "no @");
     let f = parser::parse("@ok = 1\n\nGET /x HTTP/1.1\n");
-    assert_eq!(f.variables, vec![("ok".to_string(), "1".to_string())]);
+    assert_eq!(f.variables, vec![variable("ok", "1")]);
     assert_eq!(f.requests[0].url, "/x", "the HTTP version is dropped");
 
     let f = parser::parse("GET /y?q=a b\n");
@@ -37,7 +45,7 @@ fn comments_between_headers_are_skipped() {
 fn parses_sections() {
     let src = "@host = http://localhost\n\n### Get users\n# @name users\nGET {{host}}/users\nAccept: application/json\n\n###\nPOST {{host}}/users\nContent-Type: application/json\n\n{\"a\": 1}\n\n> {%\n client.log(1)\n%}\n";
     let f = parser::parse(src);
-    assert_eq!(f.variables, vec![("host".into(), "http://localhost".into())]);
+    assert_eq!(f.variables, vec![variable("host", "http://localhost")]);
     assert_eq!(f.requests.len(), 2);
     assert_eq!(f.requests[0].name.as_deref(), Some("users"));
     assert_eq!(f.requests[0].title.as_deref(), Some("Get users"));
@@ -56,9 +64,9 @@ fn multiline_url_and_no_method() {
 #[test]
 fn the_file_can_name_its_environment() {
     use zed_http::parser::file_env;
-    assert_eq!(file_env("# @env prod\nGET https://x\n"), Some((0, "prod".into())));
-    assert_eq!(file_env("// api\n//   @env = staging  \n### a\nGET https://x\n"), Some((1, "staging".into())));
-    assert_eq!(file_env("# @env dev\n# @env prod\n"), Some((0, "dev".into())), "the first one counts");
+    assert_eq!(file_env("# @env prod\nGET https://x\n"), Some(env(0, "prod")));
+    assert_eq!(file_env("// api\n//   @env = staging  \n### a\nGET https://x\n"), Some(env(1, "staging")));
+    assert_eq!(file_env("# @env dev\n# @env prod\n"), Some(env(0, "dev")), "the first one counts");
     assert_eq!(file_env("# @environment prod\n# @env\n@env = prod\nGET https://x\n"), None);
     assert_eq!(file_env("### a\n# @env prod\nGET https://x\n"), None, "below a ### it is the request's");
 }
@@ -70,8 +78,21 @@ fn a_request_can_name_its_own_environment() {
     );
     let [header, a, b] = &file.requests[..] else { panic!("{:?}", file.requests) };
     assert_eq!((header.own_block, &header.env), (false, &None), "the header's choice is the file's");
-    assert_eq!((a.own_block, &a.env), (true, &Some((4, "dev".to_string()))), "the first one counts");
+    assert_eq!((a.own_block, &a.env), (true, &Some(env(4, "dev"))), "the first one counts");
     assert_eq!((b.own_block, &b.env), (true, &None));
     assert_eq!(parser::request_at(&file, 6).map(|r| r.url.as_str()), Some("https://a"));
     assert!(parser::request_at(&file, 99).is_none());
+}
+
+#[test]
+fn a_directive_is_a_whole_word() {
+    let f =
+        parser::parse("# @namespace api\n# @no-logging\nGET https://x\n###\n# @name=login\n# @no-log\nGET https://y\n");
+    assert_eq!(f.requests[0].name, None, "@namespace is not @name");
+    assert!(!f.requests[0].no_log, "@no-logging is not @no-log");
+    assert_eq!(f.requests[1].name.as_deref(), Some("login"));
+    assert!(f.requests[1].no_log);
+    assert_eq!(parser::directive_argument("@name login", "@name"), Some(" login"));
+    assert_eq!(parser::directive_argument("@names", "@name"), None);
+    assert_eq!(parser::directive_argument("@no-log", "@no-log"), Some(""));
 }

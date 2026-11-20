@@ -30,28 +30,48 @@
 
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+/// A placeholder of the pattern language and the regex it expands to.
+pub struct Placeholder {
+    pub name: &'static str,
+    regex: &'static str,
+}
+
+/// Every placeholder; a name not listed here is an error in the pattern.
+pub const PLACEHOLDERS: [Placeholder; 13] = [
+    Placeholder { name: "method", regex: r"(?i:get|post|put|delete|patch|head|options)" },
+    Placeholder { name: "path", regex: r#"[^"'`\n]*"# },
+    Placeholder { name: "route", regex: r#"(?:/|https?://)[^"'`\n]*"# },
+    Placeholder { name: "host", regex: r#"[^"'`\n/]+"# },
+    Placeholder { name: "name", regex: r"[A-Za-z_$][\w$-]*" },
+    Placeholder {
+        name: "type",
+        regex: r"(?:\[\]|\*|&|map\[[^\]\n]*\])*[\w.$]+(?:<[^()=;{}\n]*>|\[[^\]\n]*\])?(?:\[\])*\??",
+    },
+    Placeholder { name: "var", regex: IDENTIFIER },
+    Placeholder { name: "ref", regex: r"[A-Za-z_$@][\w$]*(?:\.[A-Za-z_$][\w$]*)*" },
+    Placeholder { name: "expr", regex: r"[^\n;]*" },
+    Placeholder { name: "handler", regex: IDENTIFIER },
+    Placeholder {
+        name: "keys",
+        regex: r"(?:<[^>\n]*>\s*)?(?:\{(?:[^{}]|\{[^{}]*\})*\}|\[(?:[^\[\]]|\[[^\[\]]*\])*\])",
+    },
+    Placeholder { name: "generic", regex: r"(?:<[^()\n]*>)?" },
+    Placeholder { name: "_", regex: IDENTIFIER },
+];
+
+/// What `{var}`, `{handler}` and `{_}` match.
+const IDENTIFIER: &str = r"[A-Za-z_$][\w$]*";
+
+/// A quoted key of an object literal: `'a': 1`, `"a" => 1`.
+static QUOTED_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"^["']([\w-]+)["']\s*(?::|=>)"#).expect("the quoted key pattern is a valid regex"));
 
 /// The regex each placeholder expands to, or `None` if the name is not a placeholder.
 fn class_of(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "method" => r"(?i:get|post|put|delete|patch|head|options)",
-        "path" => r#"[^"'`\n]*"#,
-        "route" => r#"(?:/|https?://)[^"'`\n]*"#,
-        "host" => r#"[^"'`\n/]+"#,
-        "name" => r"[A-Za-z_$][\w$-]*",
-        "type" => r"(?:\[\]|\*|&|map\[[^\]\n]*\])*[\w.$]+(?:<[^()=;{}\n]*>|\[[^\]\n]*\])?(?:\[\])*\??",
-        "var" | "handler" | "_" => r"[A-Za-z_$][\w$]*",
-        "ref" => r"[A-Za-z_$@][\w$]*(?:\.[A-Za-z_$][\w$]*)*",
-        "expr" => r"[^\n;]*",
-        "keys" => r"(?:<[^>\n]*>\s*)?(?:\{(?:[^{}]|\{[^{}]*\})*\}|\[(?:[^\[\]]|\[[^\[\]]*\])*\])",
-        "generic" => r"(?:<[^()\n]*>)?",
-        _ => return None,
-    })
+    PLACEHOLDERS.iter().find(|placeholder| placeholder.name == name).map(|placeholder| placeholder.regex)
 }
-
-/// Placeholder names, for error messages.
-pub const PLACEHOLDERS: &[&str] =
-    &["method", "path", "route", "host", "name", "type", "var", "ref", "expr", "handler", "keys", "generic", "_"];
 
 /// Several patterns compiled into one matcher. At any position the first listed pattern wins.
 #[derive(Debug)]
@@ -83,10 +103,10 @@ impl Matcher {
         }
         let mut src = Vec::new();
         let mut alts = Vec::new();
-        for (i, p) in patterns.iter().enumerate() {
-            let (re, names) = compile(p, i, bind).map_err(|e| format!("pattern `{p}`: {e}"))?;
-            src.push(format!("(?P<a{i}>){re}"));
-            alts.push(names);
+        for (index, pattern) in patterns.iter().enumerate() {
+            let compiled = compile(pattern, index, bind).map_err(|error| format!("pattern `{pattern}`: {error}"))?;
+            src.push(format!("(?P<a{index}>){}", compiled.regex));
+            alts.push(compiled.captures);
         }
         let joined = src.iter().map(|s| format!("(?:{s})")).collect::<Vec<_>>().join("|");
         let re = Regex::new(&joined).map_err(|e| format!("patterns {patterns:?}: {e}"))?;
@@ -128,47 +148,48 @@ fn wordy(name: &str) -> bool {
     matches!(name, "method" | "name" | "type" | "var" | "handler" | "_")
 }
 
-enum Tok {
-    Lit(char),
+enum Token {
+    Literal(char),
     Space,
     Any,
-    Ph(String, bool),
+    Placeholder { name: String, optional: bool },
 }
 
-fn tokenize(p: &str) -> Result<Vec<Tok>, String> {
-    let chars: Vec<char> = p.chars().collect();
+fn tokenize(pattern: &str) -> Result<Vec<Token>, String> {
+    let chars: Vec<char> = pattern.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
         if c == '{' && chars.get(i + 1) == Some(&'{') {
-            out.push(Tok::Lit('{'));
+            out.push(Token::Literal('{'));
             i += 2;
         } else if c == '}' && chars.get(i + 1) == Some(&'}') {
-            out.push(Tok::Lit('}'));
+            out.push(Token::Literal('}'));
             i += 2;
         } else if c == '{' {
             let end = chars[i..].iter().position(|&c| c == '}').ok_or("unclosed `{`")? + i;
             let inner: String = chars[i + 1..end].iter().collect();
             let (name, optional) = match inner.strip_suffix('?') {
-                Some(n) => (n.to_string(), true),
+                Some(name) => (name.to_string(), true),
                 None => (inner, false),
             };
             if class_of(&name).is_none() {
-                return Err(format!("unknown placeholder `{{{name}}}`, expected one of {PLACEHOLDERS:?}"));
+                let names: Vec<&str> = PLACEHOLDERS.iter().map(|placeholder| placeholder.name).collect();
+                return Err(format!("unknown placeholder `{{{name}}}`, expected one of {names:?}"));
             }
-            out.push(Tok::Ph(name, optional));
+            out.push(Token::Placeholder { name, optional });
             i = end + 1;
         } else if c.is_whitespace() {
             while i < chars.len() && chars[i].is_whitespace() {
                 i += 1;
             }
-            out.push(Tok::Space);
+            out.push(Token::Space);
         } else if chars[i..].starts_with(&['.', '.', '.']) {
-            out.push(Tok::Any);
+            out.push(Token::Any);
             i += 3;
         } else {
-            out.push(Tok::Lit(c));
+            out.push(Token::Literal(c));
             i += 1;
         }
     }
@@ -176,46 +197,52 @@ fn tokenize(p: &str) -> Result<Vec<Tok>, String> {
 }
 
 /// Does the token start / end with a word character?
-fn starts_word(t: &Tok) -> bool {
-    match t {
-        Tok::Lit(c) => is_word(*c),
-        Tok::Ph(n, _) => wordy(n),
+fn starts_word(token: &Token) -> bool {
+    match token {
+        Token::Literal(c) => is_word(*c),
+        Token::Placeholder { name, .. } => wordy(name),
         _ => false,
     }
 }
 
-fn compile(p: &str, alt: usize, bind: &[(&str, &str)]) -> Result<(String, Vec<String>), String> {
-    let toks = tokenize(p)?;
+/// One pattern as a regex alternative, and the placeholders it captures.
+struct CompiledPattern {
+    regex: String,
+    captures: Vec<String>,
+}
+
+fn compile(pattern: &str, alt: usize, bind: &[(&str, &str)]) -> Result<CompiledPattern, String> {
+    let tokens = tokenize(pattern)?;
     let mut re = String::new();
     let mut names: Vec<String> = Vec::new();
     let mut in_str = false;
-    for (i, t) in toks.iter().enumerate() {
-        let prev = i.checked_sub(1).map(|j| &toks[j]);
-        let next = toks.get(i + 1);
+    for (index, token) in tokens.iter().enumerate() {
+        let prev = index.checked_sub(1).map(|before| &tokens[before]);
+        let next = tokens.get(index + 1);
         // Implicit optional whitespace between tokens, except inside string literals and between words.
-        if let Some(p) = prev {
-            let spaced = matches!(p, Tok::Space) || matches!(t, Tok::Space);
-            let words = starts_word(p) && starts_word(t);
-            let line_start = i == 1 && matches!(p, Tok::Lit('^'));
+        if let Some(previous) = prev {
+            let spaced = matches!(previous, Token::Space) || matches!(token, Token::Space);
+            let words = starts_word(previous) && starts_word(token);
+            let line_start = index == 1 && matches!(previous, Token::Literal('^'));
             if !in_str && !spaced && !words && !line_start {
                 re.push_str(r"\s*");
             }
         }
-        match t {
-            Tok::Lit('^') if i == 0 => re.push_str(r"(?m:^)[ \t]*"),
+        match token {
+            Token::Literal('^') if index == 0 => re.push_str(r"(?m:^)[ \t]*"),
             // An opening quote may carry an interpolation/raw prefix: $"…" (C#), f"…" (Python), r"…".
-            Tok::Lit('"') if !in_str => re.push_str(r#"[$fFrRbBuU]{0,2}["'`]"#),
-            Tok::Lit('"') => re.push_str(r#"["'`]"#),
-            Tok::Lit('?') => re.push_str(r"\??"),
-            Tok::Lit(c) => re.push_str(&regex::escape(&c.to_string())),
-            Tok::Any => re.push_str(r"[^()\n]*?"),
-            Tok::Space => {
+            Token::Literal('"') if !in_str => re.push_str(r#"[$fFrRbBuU]{0,2}["'`]"#),
+            Token::Literal('"') => re.push_str(r#"["'`]"#),
+            Token::Literal('?') => re.push_str(r"\??"),
+            Token::Literal(c) => re.push_str(&regex::escape(&c.to_string())),
+            Token::Any => re.push_str(r"[^()\n]*?"),
+            Token::Space => {
                 let between_words = prev.is_some_and(starts_word) && next.is_some_and(starts_word);
                 re.push_str(if between_words { r"\s+" } else { r"\s*" });
             }
-            Tok::Ph(name, optional) => {
-                let body = if let Some((_, v)) = bind.iter().find(|(k, _)| k == name) {
-                    regex::escape(v)
+            Token::Placeholder { name, optional } => {
+                let body = if let Some((_, value)) = bind.iter().find(|(bound, _)| bound == name) {
+                    regex::escape(value)
                 } else {
                     let class = class_of(name).expect("validated by tokenize");
                     if name == "_" || name == "generic" || names.contains(name) {
@@ -226,9 +253,9 @@ fn compile(p: &str, alt: usize, bind: &[(&str, &str)]) -> Result<(String, Vec<St
                     }
                 };
                 // `{type}` can end in `>`/`]`/`?`, so it gets no trailing boundary.
-                let w = wordy(name) && name != "type";
-                let before = w && !prev.is_some_and(starts_word) && !matches!(prev, Some(Tok::Space));
-                let after = w && !next.is_some_and(starts_word);
+                let bounded = wordy(name) && name != "type";
+                let before = bounded && !prev.is_some_and(starts_word) && !matches!(prev, Some(Token::Space));
+                let after = bounded && !next.is_some_and(starts_word);
                 let mut piece = String::new();
                 if before {
                     piece.push_str(r"\b");
@@ -244,11 +271,11 @@ fn compile(p: &str, alt: usize, bind: &[(&str, &str)]) -> Result<(String, Vec<St
                 }
             }
         }
-        if matches!(t, Tok::Lit('"')) {
+        if matches!(token, Token::Literal('"')) {
             in_str = !in_str;
         }
     }
-    Ok((re, names))
+    Ok(CompiledPattern { regex: re, captures: names })
 }
 
 /// Keys of a `{keys}` capture: quoted keys (`'a': 1`, `"a" => 1`) or destructured names (`{ a, b: c }`).
@@ -260,8 +287,8 @@ pub fn keys_of(literal: &str) -> Vec<String> {
         .trim_start_matches(['{', '['])
         .trim_end_matches(['}', ']']);
     let parts = fields(inner);
-    let quoted = Regex::new(r#"^["']([\w-]+)["']\s*(?::|=>)"#).unwrap();
-    let keys: Vec<String> = parts.iter().filter_map(|p| quoted.captures(p.trim())).map(|c| c[1].to_string()).collect();
+    let keys: Vec<String> =
+        parts.iter().filter_map(|part| QUOTED_KEY.captures(part.trim())).map(|key| key[1].to_string()).collect();
     if !keys.is_empty() {
         return keys;
     }

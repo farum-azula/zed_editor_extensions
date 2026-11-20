@@ -6,6 +6,11 @@ use std::path::PathBuf;
 use zed_http::endpoint::{ensure_env, generate, local_server_for, LOCAL_SERVER};
 use zed_http::server::*;
 
+/// The resolution of a text to `text`, with `missing` keys left in it.
+fn resolved(text: &str, missing: Vec<&str>) -> Resolution {
+    Resolution { text: text.into(), missing: missing.into_iter().map(String::from).collect() }
+}
+
 fn props(pairs: &[(&str, &str)]) -> HashMap<String, String> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
@@ -45,10 +50,10 @@ fn base_url_from_spring_properties() {
 #[test]
 fn placeholders() {
     let p = props(&[("catalog.url", "https://c.example"), ("host", "h"), ("url", "http://${host}:${port:1}")]);
-    assert_eq!(resolve("${catalog.url}/v1", &p), ("https://c.example/v1".into(), vec![]));
-    assert_eq!(resolve("${url}", &p), ("http://h:1".into(), vec![]));
-    assert_eq!(resolve("${missing}/x", &p), ("${missing}/x".into(), vec!["missing".into()]));
-    assert_eq!(resolve("${a:${host}}", &p), ("h".into(), vec![]));
+    assert_eq!(resolve("${catalog.url}/v1", &p), resolved("https://c.example/v1", vec![]));
+    assert_eq!(resolve("${url}", &p), resolved("http://h:1", vec![]));
+    assert_eq!(resolve("${missing}/x", &p), resolved("${missing}/x", vec!["missing"]));
+    assert_eq!(resolve("${a:${host}}", &p), resolved("h", vec![]));
     assert_eq!(variable_for("catalog.url"), "catalogUrl");
     assert_eq!(variable_for("spring.cloud.openfeign.client.config.mail.url"), "mailUrl");
 }
@@ -110,7 +115,7 @@ fn the_environment_follows_the_application() {
     fs::create_dir_all(source.parent().unwrap()).unwrap();
     fs::write(&source, code).unwrap();
     let catalog = zed_http::catalog::for_source(&source).unwrap();
-    let (_, _, content) = generate(&catalog, code, &source, 3).unwrap();
+    let content = generate(&catalog, code, &source, 3).unwrap().content;
     assert!(content.contains("gives http://localhost:9090; baseUrl in http-client.env.json is http://localhost:7000"));
 }
 
@@ -126,7 +131,7 @@ fn feign_urls_come_from_the_configuration() {
     let source = dir.join("lib/src/client.dart");
     let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient('catalog', url: r'${catalog.url}', path: '/api')\nabstract interface class Catalog {\n  @GetMapping('/books/{isbn}')\n  Future<Object> find(@PathVariable() String isbn);\n}\n";
     let catalog = zed_http::catalog::for_source(&source).unwrap();
-    let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
+    let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
     assert_eq!(endpoint.url, "https://catalog.example/api/books/{{isbn}}");
 }
 
@@ -134,11 +139,11 @@ fn feign_urls_come_from_the_configuration() {
 fn edge_cases_of_placeholders_and_config_files() {
     let p = props(&[("loop", "${loop}"), ("a:b", "colon")]);
     // A placeholder that refers to itself stops after ten levels.
-    assert_eq!(resolve("${loop}", &p).0, "${loop}");
+    assert_eq!(resolve("${loop}", &p).text, "${loop}");
     // An unclosed placeholder stays as it is.
-    assert_eq!(resolve("x${open", &p), ("x${open".into(), vec![]));
+    assert_eq!(resolve("x${open", &p), resolved("x${open", vec![]));
     // A nested placeholder in the key comes before the default's `:`.
-    assert_eq!(resolve("${${k}:d}", &p).0, "d");
+    assert_eq!(resolve("${${k}:d}", &p).text, "d");
     // Nothing usable for a variable name.
     assert_eq!(variable_for("..."), "baseUrl");
     // A context path that already starts with a slash.
@@ -186,10 +191,10 @@ fn feign_urls_without_a_scheme_or_a_value() {
     let catalog = zed_http::catalog::for_source(&source).unwrap();
     // A configured address without a scheme: http.
     let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: r'${mail.host}')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
-    let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
+    let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
     assert_eq!(endpoint.url, "http://localhost:9000/inbox");
     // An empty url and no name: the environment's baseUrl.
     let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: '')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
-    let (endpoint, _, _) = generate(&catalog, code, &source, 3).unwrap();
+    let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
     assert_eq!(endpoint.url, "{{baseUrl}}/inbox");
 }

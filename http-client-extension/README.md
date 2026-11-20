@@ -68,7 +68,8 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
 ## Features
 
 - **HTTP** language for `.http` and `.rest` files:
-  - highlighting of methods, URLs, headers, `{{...}}` variables, HTTP versions, `###` separators;
+  - highlighting of methods, URLs, headers, `{{...}}` variables (built-in ones like `{{$uuid}}` apart),
+    directive comments (`# @name login`, `# @env dev`), request titles after `###`, HTTP versions;
   - JSON, XML, and GraphQL highlighting inside the request body;
   - outline panel (`cmd+shift+o`) listing the file's requests;
   - `#` and `//` comments (`cmd+/`), auto-closing of brackets and quotes;
@@ -929,18 +930,36 @@ Run `zed: open keymap` and add:
 │   └── tasks.json              run tasks
 ├── cli/
 │   ├── Cargo.toml
-│   ├── tests/                  integration tests (commands, requests, LSP, binary, units)
+│   ├── tests/                  integration tests (commands, requests, LSP, binary, queries, units)
+│   │   └── http_grammar/       the grammar pinned in extension.toml, compiled for the query tests
 │   └── src/
 │       ├── main.rs             the binary: a thin wrapper around the library
 │       ├── lib.rs              the library behind the binary, so tests can drive it
 │       ├── cli.rs              arguments, request execution, output, new/detect
-│       ├── catalog.rs          loads frameworks.json, finds routes, infers requests
+│       ├── catalog/            frameworks.json and the engine that applies it
+│       │   ├── model.rs        the shape of frameworks.json
+│       │   ├── compile.rs      definitions → compiled languages and frameworks
+│       │   ├── source.rs       lines, classes, decorators, the lines that belong to a route
+│       │   ├── routes.rs       routes found in a file and their endpoints
+│       │   ├── urls.rs         the URL a variable holds
+│       │   ├── types.rs        source types → JSON shapes, fields of models
+│       │   └── spec.rs         what a request carries, by a chain of contributors
 │       ├── pattern.rs          the pattern language of frameworks.json
 │       ├── endpoint.rs         .http request rendering and files
 │       ├── infer.rs            request shape (query, headers, body) and sample values
-│       ├── lsp.rs              language server: definition, hover, code actions, code lenses
+│       ├── lsp/                language server: one handler per LSP method
+│       │   ├── protocol.rs     framed messages, the client, shared LSP types
+│       │   ├── lifecycle.rs    initialize, initialized, shutdown, exit
+│       │   ├── documents.rs    open documents and their changes
+│       │   ├── features.rs     code lenses and code actions per kind of document
+│       │   ├── generation.rs   generating requests from source files
+│       │   ├── environments.rs the environment switcher of .http files
+│       │   ├── commands.rs     workspace/executeCommand and its commands
+│       │   ├── variables.rs    definition and hover of {{variables}}
+│       │   └── catalogs.rs     the built-in or project catalog
 │       ├── launcher.rs         the copy of the runner that gutter tasks fall back to
 │       ├── parser.rs           .http file parsing
+│       ├── server.rs           the application's address from its Spring configuration
 │       └── vars.rs             variables, environments, response references
 └── examples/
     ├── requests.http
@@ -980,13 +999,19 @@ cargo build --release --target wasm32-wasip2
 After changing `src/lib.rs` or files in `languages/http/`, click **Rebuild** on the dev extension in `zed: extensions`.
 Extension load logs: `zed: open log`.
 
-To update the grammar, change `commit` in `extension.toml` and verify that the nodes
-used in the `.scm` files (`request`, `method`, `target_url`, `header`, `variable`, …) haven't been renamed.
+To update the grammar, change `commit` in `extension.toml` and run `cargo test` in `cli/`:
+`tests/queries.rs` compiles every query of `languages/http/` against the pinned grammar (Zed silently
+drops a query file that names an unknown node), checks that every highlight pattern still matches,
+and how the parts of a request are coloured. The grammar is compiled from `grammars/http` when Zed's
+checkout there is at the pinned commit, and otherwise fetched at that commit with `git` into the build
+directory (so the first test build needs the network).
 
 ### Tests
 
 `cli/src` is the whole runner and language server; the thin `src/lib.rs` of the extension is a WASM
-component for Zed and is only compile-checked. Everything else is covered:
+component for Zed. Its pure helpers (asset names, install paths, the error when no runner can be had)
+have unit tests that run on the host with `cargo test` in the extension's root; CI only builds it.
+Everything else is covered:
 
 | Test target | What it covers |
 |---|---|
@@ -995,6 +1020,8 @@ component for Zed and is only compile-checked. Everything else is covered:
 | `tests/lsp_protocol.rs` | the language server over a pipe: lenses, code actions, commands, definition, hover, malformed input |
 | `tests/lsp_env_selection.rs` | `HTTP_CLIENT_ENV`, in its own process so the variable cannot leak |
 | `tests/binary.rs` | the compiled `zed-http` binary, including a full LSP session over stdio |
+| `tests/queries.rs` | the tree-sitter queries of `languages/http/` against the pinned grammar: they compile, every highlight pattern matches, the colours of each part of a request |
+| `tests/manifests.rs` | files that must agree: the versions of the manifests, the server's languages in `extension.toml` and `frameworks.json`, tasks and runnables, tasks and the launcher's directory |
 | `tests/unit_*.rs` | one file per module: patterns, catalog, parser, variables, request rendering |
 
 The library is only built once (`[lib] test = false`), so coverage is measured on a single build.

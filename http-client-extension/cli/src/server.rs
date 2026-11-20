@@ -44,7 +44,7 @@ pub fn project_root(source: &Path) -> Option<PathBuf> {
 /// stays), TLS when `server.ssl.*` names a certificate or key store, `server.address` unless it
 /// listens on every interface, and `server.servlet.context-path`.
 pub fn spring_base_url(props: &HashMap<String, String>) -> String {
-    let get = |key: &str| props.get(key).map(|v| resolve(v, props).0).filter(|v| !v.trim().is_empty());
+    let get = |key: &str| props.get(key).map(|v| resolve(v, props).text).filter(|v| !v.trim().is_empty());
     let port = get("server.port").and_then(|p| p.trim().parse::<u16>().ok()).filter(|p| *p != 0).unwrap_or(8080);
     let ssl_off = get("server.ssl.enabled").is_some_and(|v| v.trim().eq_ignore_ascii_case("false"));
     let secure = !ssl_off
@@ -67,12 +67,19 @@ pub fn spring_base_url(props: &HashMap<String, String>) -> String {
     format!("{}://{host}:{port}{context}", if secure { "https" } else { "http" })
 }
 
-/// Resolves `${key}` and `${key:default}` in `text` against `props` (nested ones too). Returns
-/// the text and the keys that could not be resolved, which stay as `${key}`.
-pub fn resolve(text: &str, props: &HashMap<String, String>) -> (String, Vec<String>) {
+/// A text with its `${...}` placeholders resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resolution {
+    pub text: String,
+    /// The keys that could not be resolved, which stay as `${key}` in the text.
+    pub missing: Vec<String>,
+}
+
+/// Resolves `${key}` and `${key:default}` in `text` against `props` (nested ones too).
+pub fn resolve(text: &str, props: &HashMap<String, String>) -> Resolution {
     let mut missing = Vec::new();
-    let out = resolve_depth(text, props, 0, &mut missing);
-    (out, missing)
+    let text = resolve_depth(text, props, 0, &mut missing);
+    Resolution { text, missing }
 }
 
 fn resolve_depth(text: &str, props: &HashMap<String, String>, depth: usize, missing: &mut Vec<String>) -> String {

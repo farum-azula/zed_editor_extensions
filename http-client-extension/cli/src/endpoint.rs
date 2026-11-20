@@ -1,9 +1,14 @@
 //! Turning detected endpoints into `.http` requests and files.
 
 use crate::catalog::Catalog;
-use crate::infer::{self, Spec};
+use crate::infer::{self, FieldType, RequestSpec};
 use regex::Regex;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+/// A `{{name}}` variable.
+static URL_VARIABLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*(\w+)\s*\}\}").expect("the variable pattern is a valid regex"));
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Endpoint {
@@ -12,6 +17,14 @@ pub struct Endpoint {
     pub url: String,
     /// Matched only as a bare URL literal (no method/route context).
     pub weak: bool,
+}
+
+/// The request generated for a route: its endpoint, its name and its `.http` text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeneratedRequest {
+    pub endpoint: Endpoint,
+    pub name: String,
+    pub content: String,
 }
 
 /// Prefixes relative paths with `{{baseUrl}}`.
@@ -58,51 +71,55 @@ pub fn default_name(method: &str, url: &str) -> String {
 }
 
 pub fn template(method: &str, url: &str, name: &str) -> String {
-    render(method, url, name, &Spec::default())
+    render(method, url, name, &RequestSpec::default())
 }
 
 /// `{{id}}`-style variables in a URL, except `baseUrl`.
 pub fn url_vars(url: &str) -> Vec<String> {
-    let re = Regex::new(r"\{\{\s*(\w+)\s*\}\}").unwrap();
     let mut out: Vec<String> = Vec::new();
-    for c in re.captures_iter(url) {
-        if &c[1] != "baseUrl" && !out.contains(&c[1].to_string()) {
-            out.push(c[1].to_string());
+    for captures in URL_VARIABLE.captures_iter(url) {
+        let name = &captures[1];
+        if name != "baseUrl" && !out.contains(&name.to_string()) {
+            out.push(name.to_string());
         }
     }
     out
 }
 
+/// A `@name = value` declaration a generated request starts with.
+struct FileVariable {
+    name: String,
+    value: &'static str,
+}
+
 /// Full `.http` request: file variables for path/query/header values, query string, headers, JSON body.
-pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
+pub fn render(method: &str, url: &str, name: &str, spec: &RequestSpec) -> String {
     // A path parameter stands for one segment; a variable naming the whole URL needs a URL.
-    let sample = |v: &str| if names_a_url(v) { LOCAL_SERVER } else { "1" };
-    let mut vars: Vec<(String, &str)> = url_vars(url)
+    let path_sample = |variable: &str| if names_a_url(variable) { LOCAL_SERVER } else { "1" };
+    let mut variables: Vec<FileVariable> = url_vars(url)
         .into_iter()
-        .map(|v| {
-            let value = sample(&v);
-            (v, value)
-        })
+        .map(|variable| FileVariable { value: path_sample(&variable), name: variable })
         .collect();
     let mut url = url.to_string();
-    for (i, (q, ty)) in spec.query.iter().enumerate() {
-        let v = infer::var_name(q);
-        url.push_str(&format!("{}{q}={{{{{v}}}}}", if i == 0 && !url.contains('?') { '?' } else { '&' }));
-        vars.push((v, infer::sample_var(ty)));
+    for (index, parameter) in spec.query.iter().enumerate() {
+        let variable = infer::variable_name(&parameter.name);
+        let separator = if index == 0 && !url.contains('?') { '?' } else { '&' };
+        url.push_str(&format!("{separator}{}={{{{{variable}}}}}", parameter.name));
+        variables.push(FileVariable { name: variable, value: parameter.kind.sample_variable() });
     }
     let mut headers = vec!["Accept: application/json".to_string()];
     if spec.auth {
         headers.push("Authorization: Bearer {{token}}".into());
     }
-    for h in &spec.headers {
-        let v = infer::var_name(h);
-        headers.push(format!("{h}: {{{{{v}}}}}"));
-        vars.push((v, "value"));
+    for header in &spec.headers {
+        let variable = infer::variable_name(header);
+        headers.push(format!("{header}: {{{{{variable}}}}}"));
+        variables.push(FileVariable { name: variable, value: "value" });
     }
     let body = spec.body.as_ref().map(|fields| {
-        let obj = infer::sample(&infer::Ty::Obj(fields.clone()));
+        let sample = FieldType::Object(fields.clone()).sample_value();
         headers.push("Content-Type: application/json".into());
-        serde_json::to_string_pretty(&obj).expect("sample values always serialize")
+        serde_json::to_string_pretty(&sample).expect("sample values always serialize")
     });
 
     // Generated requests keep no response log; delete `# @no-log` to save responses to `.zed-http/`.
@@ -110,12 +127,12 @@ pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
     if spec.auth {
         out.push_str("# Requires `token` in .zed/http/http-client.env.json\n");
     }
-    for (v, sample) in &vars {
-        out.push_str(&format!("@{v} = {sample}\n"));
+    for variable in &variables {
+        out.push_str(&format!("@{} = {}\n", variable.name, variable.value));
     }
     out.push_str(&format!("{method} {url}\n{}\n", headers.join("\n")));
-    if let Some(b) = body {
-        out.push_str(&format!("\n{b}\n"));
+    if let Some(body) = body {
+        out.push_str(&format!("\n{body}\n"));
     }
     out
 }
@@ -123,11 +140,12 @@ pub fn render(method: &str, url: &str, name: &str, spec: &Spec) -> String {
 /// Detects the route on `line` of `source` and renders a full request for it. When the
 /// application's configuration gives another address than the environment's `baseUrl` (set by
 /// hand), the request says so in a comment.
-pub fn generate(catalog: &Catalog, text: &str, source: &Path, line: usize) -> Option<(Endpoint, String, String)> {
-    let (ep, spec, _) = catalog.request(text, source, line)?;
-    let name = default_name(&ep.method, &ep.url);
-    let mut content = render(&ep.method, &ep.url, &name, &spec);
-    if ep.url.starts_with("{{baseUrl}}") {
+pub fn generate(catalog: &Catalog, text: &str, source: &Path, line: usize) -> Option<GeneratedRequest> {
+    let inferred = catalog.request(text, source, line)?;
+    let endpoint = inferred.endpoint;
+    let name = default_name(&endpoint.method, &endpoint.url);
+    let mut content = render(&endpoint.method, &endpoint.url, &name, &inferred.spec);
+    if endpoint.url.starts_with("{{baseUrl}}") {
         if let (Some(server), Some(current)) = (local_server_for(source), env_base_url(source)) {
             if current != server && current != LOCAL_SERVER {
                 let note = format!(
@@ -138,7 +156,7 @@ pub fn generate(catalog: &Catalog, text: &str, source: &Path, line: usize) -> Op
             }
         }
     }
-    Some((ep, name, content))
+    Some(GeneratedRequest { endpoint, name, content })
 }
 
 /// Where the application `source` belongs to listens, from its Spring configuration

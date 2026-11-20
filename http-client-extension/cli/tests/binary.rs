@@ -119,3 +119,31 @@ fn the_environment_is_chosen_by_flag_then_file_then_variable() {
     assert_eq!(environment(&chosen, &[]), "environment: staging", "the file beats the variable");
     assert_eq!(environment(&chosen, &["--env", "dev"]), "environment: dev", "the flag beats both");
 }
+
+#[test]
+fn a_runner_that_cannot_copy_itself_says_so_and_serves() {
+    use std::io::Write;
+    let dir = Dir::new();
+    // A file where the home directory should be: `~/.zed-http/bin` cannot be created.
+    let home = dir.write("home", "not a directory");
+    let messages =
+        [r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#, r#"{"jsonrpc":"2.0","method":"exit"}"#];
+    let mut child = Command::new(BIN)
+        .arg("lsp")
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdin = child.stdin.as_mut().unwrap();
+    for body in messages {
+        write!(stdin, "Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("cannot copy the runner to ~/.zed-http/bin"), "{stderr}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("\"serverInfo\""), "the server runs anyway");
+}
