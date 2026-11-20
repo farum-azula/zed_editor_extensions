@@ -68,8 +68,8 @@ impl Language {
 
     /// The line where the function `handler` is defined.
     pub(super) fn find_definition(&self, lines: &[&str], handler: &str) -> Option<usize> {
-        let naming_the_handler: Vec<String> =
-            self.definition_patterns.iter().filter(|pattern| pattern.contains("{handler}")).cloned().collect();
+        let naming = self.definition_patterns.iter().filter(|pattern| pattern.contains("{handler}"));
+        let naming_the_handler = naming.cloned().collect::<Vec<String>>();
         let matcher = Matcher::new(&naming_the_handler, &[("handler", handler)]).ok()??;
         lines.iter().position(|line| matcher.is_match(line))
     }
