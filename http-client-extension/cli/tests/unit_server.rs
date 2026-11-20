@@ -70,6 +70,9 @@ fn yaml_and_properties() {
     assert_eq!(properties.get("server.port").map(String::as_str), Some("9191"));
     assert_eq!(properties.get("server.address").map(String::as_str), Some("127.0.0.1"));
     assert_eq!(properties.get("long").map(String::as_str), Some("ab"));
+    // A line without a key is no entry.
+    let keyless = parse_properties("=orphan\n : x\nkey=v\n");
+    assert_eq!(keyless.len(), 1, "{keyless:?}");
 }
 
 #[test]
@@ -117,6 +120,10 @@ fn the_environment_follows_the_application() {
     let catalog = zed_http::catalog::for_source(&source).unwrap();
     let content = generate(&catalog, code, &source, 3).unwrap().content;
     assert!(content.contains("gives http://localhost:9090; baseUrl in http-client.env.json is http://localhost:7000"));
+    // The same address as the application's: nothing to say.
+    fs::write(&env, "{\"dev\": {\"baseUrl\": \"http://localhost:9090\"}}").unwrap();
+    let content = generate(&catalog, code, &source, 3).unwrap().content;
+    assert!(!content.contains("gives"), "{content}");
 }
 
 #[test]
