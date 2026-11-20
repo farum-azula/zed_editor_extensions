@@ -61,7 +61,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      # A pinned Rust: which lines a region counts on changes between rustc releases
+      # (1.100 counts the head of a multi-line `let` or `if` on its own), and the
+      # 100% gate must not fail on a new stable. Move it on deliberately.
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
