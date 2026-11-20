@@ -38,6 +38,9 @@ languages = ["Dart"]
 # Offers each "Flutter: run on <platform>" task in the debugger as "Flutter: debug on <platform>".
 [debug_locators.flutter]
 
+# Offers each "dart run: <file>" task in the debugger as "Dart: debug <file>", under the Dart adapter.
+[debug_locators.dart]
+
 # The snippets (tool/snippets.json), as completions that add the imports they need; keeps
 # ~/.zed-flutter/flutter_run.dart, the runner of the run tasks, up to date.
 [language_servers.flutter-tools]

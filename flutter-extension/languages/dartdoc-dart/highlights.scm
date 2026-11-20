@@ -7,8 +7,6 @@
 
 ; Methods
 ; --------------------
-(super) @function.dartdoc
-
 ; `=> Book(...)`: a class after `=>`; a variable there (`=> heard.add(...)`) stays a variable.
 ((function_expression_body
   (identifier) @type.dartdoc)
@@ -55,6 +53,26 @@
   ">="
   "<="
   "||"
+  ; compound assignment
+  "+="
+  "-="
+  "*="
+  "/="
+  "~/="
+  "%="
+  "<<="
+  ">>="
+  ">>>="
+  "&="
+  "^="
+  "|="
+  ; bitwise, shifts and spread
+  "&"
+  "|"
+  "^"
+  "..."
+  (bitwise_operator)
+  (shift_operator)
   (multiplicative_operator)
   (increment_operator)
   (is_operator)
@@ -115,16 +133,28 @@
 
 (type_identifier) @type.dartdoc
 
+; An import prefix naming a type or a constructor (`ui.Color`); an annotation's stays the
+; annotation's (below).
+((scoped_identifier
+  scope: (identifier) @namespace.dartdoc)
+  (#match? @namespace.dartdoc "^_?[a-z]"))
+
+; A typedef's name, not the type it stands for (`Map` of `typedef Json = Map<String, Object?>`).
 (type_alias
+  .
   (type_identifier) @type.definition.dartdoc)
+
+(mixin_declaration
+  (identifier) @type.dartdoc)
 
 ; Variables
 ; --------------------
 ; var keyword
 (inferred_type) @keyword.dartdoc
 
+; A capitalised name is a type (`Status`, a single letter `E`), but not an all-caps constant (`PI`).
 ((identifier) @type.dartdoc
-  (#match? @type.dartdoc "^_?[A-Z].*[a-z]"))
+  (#match? @type.dartdoc "^_?[A-Z]([A-Za-z0-9_$]*[a-z][A-Za-z0-9_$]*)?$"))
 
 ; Annotations
 ; --------------------
@@ -268,6 +298,40 @@
 
 (this) @variable.builtin.dartdoc
 
+; A record's named fields, in the colour of their uses (`point.x`): `({int x, int y})`, `(x: 1)`,
+; and a field an object pattern matches: `Point(x: var px)`.
+(record_type_named_field
+  (typed_identifier
+    (identifier) @property.dartdoc))
+
+(record_field
+  (label
+    (identifier) @property.dartdoc))
+
+(object_pattern
+  (identifier) @property.dartdoc)
+
+; An import prefix: `as ui`, and `ui.Color` where a type is named. In an expression (`ui.window`) it
+; cannot be told from a variable here; with semantic tokens it is (importPrefix).
+(import_specification
+  "as"
+  .
+  (identifier) @namespace.dartdoc)
+
+(_
+  (type_identifier) @namespace.dartdoc
+  .
+  "."
+  .
+  (type_identifier))
+
+; A class through an import prefix: `ui.Color(0)`, `lazy.Foo.named()`; an all-caps constant
+; (`Colors.RED`) stays one.
+((selector
+  (unconditional_assignable_selector
+    (identifier) @type.dartdoc))
+  (#match? @type.dartdoc "^_?[A-Z]([A-Za-z0-9_$]*[a-z][A-Za-z0-9_$]*)?$"))
+
 ; Parameters
 ; --------------------
 (formal_parameter
@@ -340,16 +404,33 @@
   (part_of_builtin)
   "deferred"
   "factory"
-  "get"
   "implements"
   "interface"
-  "library"
-  "operator"
   "mixin"
   "part"
-  "set"
   "typedef"
+  (assert_builtin)
 ] @keyword.dartdoc
+
+; `get`, `set` and `operator` name variables too (`final set = <int>{};`, `get = 1;`): keywords only
+; where they declare.
+(getter_signature
+  "get" @keyword.dartdoc)
+
+(setter_signature
+  "set" @keyword.dartdoc)
+
+(operator_signature
+  "operator" @keyword.dartdoc)
+
+; `extension type Meters(int value)`
+(extension_type_declaration
+  "type" @keyword.definition.dartdoc)
+
+; `Meters.new`: a constructor's tear-off
+((unconditional_assignable_selector
+  (identifier) @keyword.dartdoc)
+  (#eq? @keyword.dartdoc "new"))
 
 [
   "async"
@@ -371,103 +452,6 @@
   "sealed"
 ] @keyword.modifier.dartdoc ; could be @type.qualifier
 
-; when used as an identifier:
-((identifier) @variable.builtin.dartdoc
-  (#any-of? @variable.builtin.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-
-; ...but one naming a method, a property or a parameter keeps that name's colour, like any other
-; name: `ImportBatch import(...)`, `books.import(...)`, `settings.get`, `{bool set}`, `set: true`.
-((function_signature
-  name: (identifier) @function.method.dartdoc)
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((getter_signature
-  (identifier) @property.dartdoc)
-  (#any-of? @property.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((setter_signature
-  name: (identifier) @property.dartdoc)
-  (#any-of? @property.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((unconditional_assignable_selector
-  (identifier) @property.dartdoc)
-  (#any-of? @property.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((conditional_assignable_selector
-  (identifier) @property.dartdoc)
-  (#any-of? @property.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((cascade_selector
-  (identifier) @property.dartdoc)
-  (#any-of? @property.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((unconditional_assignable_selector
-  (identifier) @function.method.dartdoc)
-  .
-  (selector
-    (argument_part
-      (arguments)))
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((conditional_assignable_selector
-  (identifier) @function.method.dartdoc)
-  .
-  (selector
-    (argument_part
-      (arguments)))
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((selector
-  (unconditional_assignable_selector
-    (identifier) @function.method.dartdoc))
-  .
-  (selector
-    (argument_part
-      (arguments)))
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((selector
-  (conditional_assignable_selector
-    (identifier) @function.method.dartdoc))
-  .
-  (selector
-    (argument_part
-      (arguments)))
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((cascade_section
-  (cascade_selector
-    (identifier) @function.method.dartdoc)
-  .
-  (argument_part
-    (arguments)))
-  (#any-of? @function.method.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((formal_parameter
-  (identifier) @variable.parameter.dartdoc)
-  (#any-of? @variable.parameter.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-((named_argument
-  (label
-    (identifier) @variable.parameter.dartdoc))
-  (#any-of? @variable.parameter.dartdoc
-    "abstract" "as" "covariant" "deferred" "dynamic" "export" "external" "factory" "Function" "get"
-    "implements" "import" "interface" "library" "operator" "mixin" "part" "set" "static" "typedef"))
-
 ; A closure's parameters (`(alert) => ...`, `(String line) {...}`, `({a}) => ...`) apart from those
 ; of functions and methods.
 (function_expression
@@ -487,6 +471,7 @@
   "switch"
   "default"
   "case"
+  "when"
 ] @keyword.conditional.dartdoc
 
 [
@@ -495,12 +480,22 @@
   "catch"
   "finally"
   (rethrow_builtin)
-  (break_statement)
 ] @keyword.exception.dartdoc
 
 [
   "do"
   "while"
   "continue"
+  (break_builtin)
   "for"
 ] @keyword.repeat.dartdoc
+
+; A statement's label, where it is declared and where `break` or `continue` names it.
+(labeled_statement
+  (identifier) @label.dartdoc)
+
+(break_statement
+  (identifier) @label.dartdoc)
+
+(continue_statement
+  (identifier) @label.dartdoc)

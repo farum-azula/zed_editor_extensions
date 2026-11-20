@@ -1,6 +1,8 @@
 // What highlights.scm makes of Dart: under a line, `^` marks a column of it and names the capture
 // expected there (or one it falls back from, `keyword` for `keyword.definition`).
 
+import 'dart:ui' as ui;
+//                  ^ namespace
 import 'package:flutter/material.dart';
 // <- keyword
 
@@ -181,3 +183,92 @@ void greet(String name) {
 //     ^ operator
 //             ^ operator
 }
+
+// Built-in words naming variables are variables; they are keywords only where they declare.
+void builtInNames(Set<int> factories) {
+  final part = 1, library = 2, interface = 3, static = 4;
+//      ^ variable
+//                ^ variable
+//                             ^ variable
+//                                            ^ variable
+  for (final factory in factories) {
+//           ^ variable
+    var set = <int>{}, get = factory, operator = part;
+//      ^ variable
+//                     ^ variable
+//                                    ^ variable
+//                                               ^ variable
+    set.add(get + operator + library + interface + static);
+//  ^ variable
+//          ^ variable
+//                                                 ^ variable
+  }
+}
+
+class Declares {
+  int get size => 1;
+//    ^ keyword
+//        ^ property
+  set size(int value) {}
+//^ keyword
+  bool operator ==(Object other) => true;
+//     ^ keyword
+}
+
+// Dart 3: `extension type`, `when`, `assert`, records, patterns, labels.
+extension type const Meters(int value) {}
+//        ^ keyword
+//                   ^ type
+mixin Walks on Object {}
+// <- keyword
+//    ^ type
+typedef Json = Map<String, Object?>;
+//      ^ type.definition
+//             ^ type
+class Point {
+  Point(this.x) : assert(x >= 0);
+//                ^ keyword
+  final int x;
+}
+String describe(Object o, List<int> a, List<int>? b, int n) {
+  outer:
+//^ label
+  for (final i in a) {
+    if (i > 1) break outer;
+//             ^ keyword
+//                   ^ label
+    continue outer;
+//           ^ label
+  }
+  n += 1; n <<= 2; n ~/= 2; n ??= 0;
+//  ^ operator
+//          ^ operator
+//                   ^ operator
+  final bits = (n & 1) | (n ^ 2) | (n << 1) | (n >>> 3);
+//                ^ operator
+//                     ^ operator
+//                          ^ operator
+//                                    ^ operator
+//                                               ^ operator
+  final all = [...a, ...?b];
+//             ^ operator
+  ({int x, String name}) record = (x: bits, name: 'p');
+//      ^ property
+//                ^ property
+//                                 ^ property
+  if (o case Point(x: var px) when px > 0) return '$px ${record.x}';
+//                 ^ property
+//                            ^ keyword
+  final tear = Point.new;
+//             ^ type
+//                   ^ keyword
+  return switch (o) { int i when i > 0 => 'positive', _ => '${all.length}' };
+//                          ^ keyword
+}
+
+// An import prefix: where it is declared and where it names a type.
+ui.Color tint(ui.Color c) => ui.Color(0);
+// <- namespace
+// ^ type
+//            ^ namespace
+//                              ^ type

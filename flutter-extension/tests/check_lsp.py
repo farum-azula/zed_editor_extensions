@@ -9,13 +9,15 @@
   first with a blank line; others last; after a `library` directive), or none when the file has
   the import, or one that brings the same (`debugPrint` comes with any Flutter library, widgets
   with material); edits to the file count;
-- it runs `dart run build_runner watch --delete-conflicting-outputs` in the workspace's projects
-  that have build_runner in their dev_dependencies (the root and the directories right under it),
-  once each (again when a pubspec.yaml changes, once the start has settled, and when a watch
-  ends because another build_runner command took its lock), forwards its output as log messages and its Succeeded / Failed lines as messages to
-  show, stops it (and what it started) on shutdown, and does nothing when turned off by the
-  `build_runner` initialization option or FLUTTER_TOOLS_BUILD_RUNNER=off; against a stand-in
-  build_runner, a package that only prints;
+- it runs `dart run build_runner watch --delete-conflicting-outputs` (with `--workspace` for a pub
+  workspace) for the package of the file saved last, before any save of the first file opened: one
+  watch at a time, moving when a file of another package is saved; with the `build_runner` option
+  "open", one for each package with an open file, "all", for every package; again when a
+  pubspec.yaml changes, once the start has settled, and when a watch ends because another
+  build_runner command took its lock; forwards its output as log messages and its Succeeded /
+  Failed lines as one message to show, stops it (and what it started) on shutdown, and does
+  nothing when turned off by the `build_runner` initialization option or
+  FLUTTER_TOOLS_BUILD_RUNNER=off; against a stand-in build_runner, a package that only prints;
 - it copies the programs of the run and DevTools tasks (flutter_run.dart, flutter_devtools.dart
   and what they import) to ~/.zed-flutter/, and copies them again when they differ;
 - it writes nothing into the project.
@@ -117,7 +119,7 @@ def check_completions(home, app):
     lsp.seq = 100
     lsp.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
     capabilities = lsp.wait(lambda m: m.get("id") == 1, 60, "the initialize response")["result"]["capabilities"]
-    check("completionProvider" in capabilities and capabilities.get("textDocumentSync") == 1, "it offers completions, reading whole files")
+    check("completionProvider" in capabilities and capabilities.get("textDocumentSync") == {"openClose": True, "change": 2, "save": {"includeText": False}}, "it offers completions, reading the changes of files (and told of saves)")
 
     def open_file(name, text):
         uri = (app / "lib" / name).as_uri()
@@ -167,6 +169,14 @@ def check_completions(home, app):
     text = "import 'dart:developer';\n" + text
     change(lsp, uri, text)
     check(import_edit(offered(lsp, uri, text, "log")["log"]) is None, "an import added since is seen")
+    # Incremental changes: the import's line removed, then `log` typed on the last line.
+    change(lsp, uri, text)
+    edit = lambda start, end, new: lsp.send({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": uri, "version": 3}, "contentChanges": [{"range": {"start": {"line": start[0], "character": start[1]}, "end": {"line": end[0], "character": end[1]}}, "text": new}]}})
+    edit((0, 0), (1, 0), "")
+    last = text.count("\n") - 1
+    edit((last, 0), (last, 0), "log")
+    items = completions(lsp, uri, last, 3)
+    check(import_edit(items["log"]) == (2, "import 'dart:developer';\n"), "changes of a range are applied: the removed import is missing again")
 
     print("== the word at the cursor")
     snippets = json.loads(SNIPPETS.read_text()).values()
@@ -239,9 +249,15 @@ def check_build_runner_projects(tmp):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "pubspec.yaml").write_bytes(pubspec.encode())
 
-    def projects(root):
+    def targets(root):
         run = subprocess.run([shutil.which("dart"), str(HERE / "build_runner_projects.dart"), str(root)], capture_output=True, text=True, timeout=120)
-        return [Path(line).resolve() for line in run.stdout.splitlines()] if run.returncode == 0 else run.stderr
+        if run.returncode != 0:
+            return run.stderr
+        return [(Path(line.rsplit(" ", 1)[0]).resolve(), line.rsplit(" ", 1)[1]) for line in run.stdout.splitlines()]
+
+    def projects(root):
+        found = targets(root)
+        return found if isinstance(found, str) else [path for path, _ in found]
 
     ws = tmp / "ws"
     package(ws, PUBSPEC)
@@ -275,15 +291,7 @@ def check_build_runner_projects(tmp):
             f'packages:\n  build_runner:\n    dependency: "direct dev"\n    source: hosted\n    version: "{version}"\n'
         )
 
-    def watch_args(root):
-        probe = tmp / "probe_args.dart"
-        probe.write_text(
-            f"import 'dart:io';\nimport '{(HERE.parent / 'tool' / 'flutter_lsp.dart').as_uri()}';\n"
-            "void main(List<String> a) { for (final p in buildRunnerProjects(Directory(a[0]))) "
-            "print('${p.path} ${buildRunnerArgumentsFor(p).last}'); }\n"
-        )
-        run = subprocess.run([shutil.which("dart"), str(probe), str(root)], capture_output=True, text=True, timeout=120)
-        return [(Path(line.rsplit(" ", 1)[0]).resolve(), line.rsplit(" ", 1)[1]) for line in run.stdout.splitlines()]
+    watch_args = targets
 
     workspace = tmp / "workspace"
     package(workspace, "name: root\nworkspace:\n  - app\n  - core\n" + PUBSPEC.split("\n", 1)[1])
@@ -319,6 +327,15 @@ def check_build_runner_projects(tmp):
         == [((monorepo / "core").resolve(), "--workspace"), ((monorepo / "example" / "flutter_app").resolve(), "--delete-conflicting-outputs")],
         "a member two levels down is built by the workspace's watch; an app outside the workspace gets its own",
     )
+    globbed = tmp / "globbed"
+    package(globbed, "name: root\nworkspace:\n  - packages/*\n  - 'apps/**'\n")
+    for member in ("packages/core", "packages/ui", "apps/shop/mobile"):
+        package(globbed / member, f"name: {member.rsplit('/', 1)[1]}\nresolution: workspace\n" + PUBSPEC.split("\n", 1)[1])
+    lock(globbed, "2.17.1")
+    check(
+        watch_args(globbed) == [((globbed / "apps" / "shop" / "mobile").resolve(), "--workspace")],
+        "members listed by globs (`packages/*`, `apps/**`) are the workspace's: one watch builds them all",
+    )
 
 
 def serve(home, folder, env, options=None):
@@ -331,6 +348,20 @@ def serve(home, folder, env, options=None):
     lsp.wait(lambda m: m.get("id") == 1, 60, "the initialize response")
     lsp.send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
     return lsp
+
+
+def open_document(lsp, path, text="void main() {}\n"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    lsp.send({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": path.as_uri(), "languageId": "dart", "version": 1, "text": text}}})
+
+
+def save_document(lsp, path):
+    lsp.send({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": {"textDocument": {"uri": path.as_uri()}}})
+
+
+def close_document(lsp, path):
+    lsp.send({"jsonrpc": "2.0", "method": "textDocument/didClose", "params": {"textDocument": {"uri": path.as_uri()}}})
 
 
 def stop(lsp):
@@ -378,6 +409,8 @@ def check_build_runner(home, tmp):
             ),
         )
         servers = [on, *off.values()]
+        # The default scope: the watch of the package of an open file.
+        open_document(on, on_project / "lib" / "main.dart")
         on.wait(lambda m: m.get("method") == "window/showMessage" and m["params"]["type"] == 1, 180, "the message that the build failed")
 
         def sent(method):
@@ -388,10 +421,7 @@ def check_build_runner(home, tmp):
         check(sum("args:" in message for _, message in logs) == 1, "once")
         check((2, "build_runner p_on: a warning") in logs, "stderr is logged as a warning")
         check((3, "build_runner p_on: [INFO] Succeeded after 0.1s with 0 outputs (0 actions)") in logs, "stdout lines are logged")
-        check(shown == [
-            (3, "build_runner p_on: [INFO] Succeeded after 0.1s with 0 outputs (0 actions)"),
-            (1, "build_runner p_on: [SEVERE] Failed after 0.2s"),
-        ], "Succeeded is shown as information, Failed as an error")
+        check(shown == [(1, "build_runner p_on: [SEVERE] Failed after 0.2s")], "of the lines of builds that end together, the last is shown (Failed as an error)")
         deadline = time.monotonic() + 30
         while not (beats["on"].exists() and beats["on"].stat().st_size) and time.monotonic() < deadline:
             time.sleep(0.1)
@@ -482,8 +512,11 @@ def check_build_runner_workspace(home, tmp):
         def starts():
             return [m["params"]["message"] for m in lsp.seen if m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]]
 
+        # A file of the workspace's root, which does not use build_runner itself: the root's
+        # package is built by the workspace's watch.
+        open_document(lsp, root / "bin" / "tool.dart")
         lsp.wait(lambda m: m.get("method") == "window/logMessage" and "args:" in m["params"]["message"], 180, "the workspace watch")
-        check(starts() == ["build_runner m: args: watch --delete-conflicting-outputs --workspace"], "one `--workspace` watch, in the member")
+        check(starts() == ["build_runner m: args: watch --delete-conflicting-outputs --workspace"], "a file of any package of a workspace: one `--workspace` watch, in the member that uses build_runner")
         time.sleep(3.5)
         # A member added and `pub get` in the root: only the root's files change.
         with (root / "pubspec.yaml").open("a") as pubspec:
@@ -491,6 +524,101 @@ def check_build_runner_workspace(home, tmp):
         (root / ".dart_tool" / "package_config.json").touch()
         lsp.wait(lambda m: len(starts()) >= 2, 60, "the watch restarted for the workspace's root")
         check(len(starts()) == 2, "a change of the workspace's root restarts the `--workspace` watch")
+        stop(lsp)
+    finally:
+        lsp.close()
+
+
+def check_build_runner_scopes(home, tmp):
+    print("== which packages get a watch")
+    fake = tmp / "scopes_build_runner"
+    (fake / "bin").mkdir(parents=True)
+    (fake / "pubspec.yaml").write_text("name: build_runner\nenvironment:\n  sdk: ^3.0.0\n")
+    (fake / "bin" / "build_runner.dart").write_text(FAKE_BUILD_RUNNER)
+    folder = tmp / "scopes"
+    for name in ("p_a", "p_b"):
+        (folder / name).mkdir(parents=True)
+        (folder / name / "pubspec.yaml").write_text(
+            f"name: {name}\nenvironment:\n  sdk: ^3.0.0\ndev_dependencies:\n  build_runner:\n    path: '{fake.as_posix()}'\n"
+        )
+        subprocess.run([shutil.which("dart"), "pub", "get"], cwd=folder / name, capture_output=True, check=True, timeout=120)
+
+    def starts(lsp):
+        return [m["params"]["message"].split(":")[0] for m in lsp.seen if m.get("method") == "window/logMessage" and "args:" in m["params"]["message"]]
+
+    def logs(lsp):
+        return [m["params"]["message"] for m in lsp.seen if m.get("method") == "window/logMessage"]
+
+    def watching(lsp):
+        """The packages with a watch running, from the starts and stops logged."""
+        running = []
+        for message in logs(lsp):
+            name = message.split(":")[0].removeprefix("build_runner ")
+            if "args:" in message:
+                running.append(name)
+            elif message.endswith(": stopped: no longer needed") and name in running:
+                running.remove(name)
+        return running
+
+    beats = tmp / "scopes.beats"
+    timings = dict(FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200", FLUTTER_TOOLS_BUILD_RUNNER_LINGER_MS="1500", FLUTTER_TOOLS_BUILD_RUNNER_STAGGER_MS="200")
+    a = folder / "p_a" / "lib" / "a.dart"
+    b = folder / "p_b" / "lib" / "b.dart"
+    lsp = serve(home, folder, dict(FAKE_BUILD_RUNNER_BEATS=str(beats), **timings))
+    try:
+        lsp.drain(2)
+        check(starts(lsp) == [], "by default, nothing runs before a file is open")
+        open_document(lsp, a)
+        lsp.wait(lambda m: starts(lsp), 120, "the watch of the open file's package")
+        open_document(lsp, b)
+        lsp.drain(2)
+        check(starts(lsp) == ["build_runner p_a"], "by default one watch, of the first open file's package; a file of another package opened starts none")
+        save_document(lsp, b)
+        lsp.wait(lambda m: watching(lsp) == ["p_b"], 60, "the watch of the saved file's package")
+        check(
+            logs(lsp).index("build_runner p_a: stopped: no longer needed") < max(i for i, m in enumerate(logs(lsp)) if m.startswith("build_runner p_b: args:")),
+            "a file of another package saved: the one watch moves there (p_a's stops before p_b's starts)",
+        )
+        close_document(lsp, b)
+        lsp.wait(lambda m: watching(lsp) == ["p_a"], 30, "the watch back on the package of the file still open")
+        check(True, "a while after the last file of the watched package closed, the watch moves to the package of a file still open")
+        close_document(lsp, a)
+        lsp.wait(lambda m: watching(lsp) == [] and logs(lsp).count("build_runner p_a: stopped: no longer needed") == 2, 30, "no watch once no file is open")
+        check(True, "a while after the last file closed, no watch runs")
+        stop(lsp)
+    finally:
+        lsp.close()
+
+    lsp = serve(home, folder, dict(FAKE_BUILD_RUNNER_BEATS=str(beats), **timings), {"build_runner": "open"})
+    try:
+        open_document(lsp, a)
+        open_document(lsp, b)
+        lsp.wait(lambda m: len(starts(lsp)) == 2, 120, "a watch for each package with an open file")
+        check(sorted(starts(lsp)) == ["build_runner p_a", "build_runner p_b"], '"open": a watch for each package with an open file')
+        close_document(lsp, a)
+        lsp.wait(lambda m: watching(lsp) == ["p_b"], 30, "the watch of p_a stopped")
+        check(True, '"open": a watch stops a while after the last file of its package closed')
+        stop(lsp)
+    finally:
+        lsp.close()
+
+    lsp = serve(
+        home,
+        folder,
+        dict(
+            FAKE_BUILD_RUNNER_BEATS=str(beats),
+            FLUTTER_TOOLS_BUILD_RUNNER_POLL_MS="200",
+            FLUTTER_TOOLS_BUILD_RUNNER_STAGGER_MS="1500",
+            FLUTTER_TOOLS_BUILD_RUNNER_SUMMARY_MS="6000",
+        ),
+        {"build_runner": "all"},
+    )
+    try:
+        lsp.wait(lambda m: m.get("method") == "window/showMessage", 180, "the message of both builds")
+        lsp.drain(1)
+        check(starts(lsp) == ["build_runner p_a", "build_runner p_b"], '"all": every package that uses build_runner gets a watch')
+        shown = [(m["params"]["type"], m["params"]["message"]) for m in lsp.seen if m.get("method") == "window/showMessage"]
+        check(shown == [(1, "build_runner: failed in p_a, p_b")], f"builds that end together make one message: {shown}")
         stop(lsp)
     finally:
         lsp.close()
@@ -515,7 +643,7 @@ def main():
         check(code == 0, "it exits on exit")
 
         runner = home / ".zed-flutter"
-        same = lambda: all((runner / n).read_text() == (TOOL / n).read_text() for n in ("flutter_run.dart", "dart_run.dart", "devices.dart", "flutter_devtools.dart", "devtools.dart"))
+        same = lambda: all((runner / n).read_text() == (TOOL / n).read_text() for n in ("flutter_run.dart", "dart_run.dart", "devices.dart", "flutter_devtools.dart", "devtools.dart", "pubspec.dart", "build_runner.dart", "build_runner_run.dart"))
         check(same(), "the runner is copied to ~/.zed-flutter/")
         check(sorted(p.relative_to(app) for p in app.rglob("*")) == before, "nothing is written into the project")
 
@@ -527,6 +655,7 @@ def main():
         check_build_runner_projects(tmp)
         check_build_runner(home, tmp)
         check_build_runner_workspace(home, tmp)
+        check_build_runner_scopes(home, tmp)
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)

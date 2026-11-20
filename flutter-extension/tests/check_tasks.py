@@ -73,15 +73,25 @@ def main():
         )
     check("dart-main" in plain["dart run: $ZED_RELATIVE_FILE"].get("tags", []), "the first is on the run button next to main()")
 
-    lsp = (ROOT / "tool" / "flutter_lsp.dart").read_text()
-    installed = re.findall(r"'([\w.]+\.dart)'", re.search(r"const runnerFiles = \[([^\]]*)\]", lsp).group(1))
-    check({"flutter_run.dart", "flutter_devtools.dart", "dart_run.dart"} <= set(installed), "the language server installs the programs of the tasks")
+    # The language server installs every program of tool/ into ~/.zed-flutter/
+    # (runner_installation.dart), and the extension writes each into its work directory.
+    installed = sorted(p.name for p in (ROOT / "tool").glob("*.dart"))
+    tasks_text = (ROOT / "languages" / "dart" / "tasks.json").read_text()
+    used = set(re.findall(r"\.zed-flutter/([\w.]+\.dart)", tasks_text))
+    check({"flutter_run.dart", "flutter_devtools.dart", "dart_run.dart", "build_runner_run.dart"} <= used, f"the tasks run the programs of tool/: {sorted(used)}")
+    check(used <= set(installed), "every program a task runs is in tool/, so the language server installs it")
     for name in installed:
         imports = re.findall(r"^import '([\w.]+\.dart)';", (ROOT / "tool" / name).read_text(), re.M)
         check(set(imports) <= set(installed), f"and what {name} imports")
+    for label, command in (("build", "build"), ("watch", "watch")):
+        task = plain.get(f"dart run build_runner {label}")
+        check(
+            task is not None and task["command"] == f'dart "$HOME/.zed-flutter/build_runner_run.dart" {command} "$ZED_FILE"',
+            f"dart run build_runner {label} runs build_runner for the open file's package, as the watch does",
+        )
 
     lib = (ROOT / "src" / "lib.rs").read_text()
-    for name in installed:
+    for name in [*installed, "snippets.json"]:
         check(f'include_str!("../tool/{name}")' in lib, f"the extension writes {name} into its work directory")
     lib_targets = re.findall(r'"([\w-]+)"', re.search(r"const TARGETS: &\[&str\] = &\[([^\]]*)\]", lib).group(1))
     check(lib_targets == [t for t, _ in targets], "the debug locator knows the same targets")

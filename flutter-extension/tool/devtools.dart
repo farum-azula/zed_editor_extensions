@@ -10,6 +10,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'paths.dart';
+
 /// The DevTools pages the tasks open, with their names.
 const pages = {
   'inspector': 'Widget Inspector',
@@ -23,7 +25,7 @@ const pages = {
 /// ~/.zed-flutter: where the tasks find the runner and the sessions, the same path on every
 /// machine.
 Directory? toolsHome() {
-  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  final home = homeDirectory();
   return home == null ? null : Directory('$home${Platform.pathSeparator}.zed-flutter');
 }
 
@@ -165,23 +167,15 @@ void _delete(File file) {
 /// The session of the project at [root], or of the project [root] is in; otherwise the latest.
 Session? sessionFor(List<Session> sessions, String? root) {
   if (root != null) {
-    final dir = _normalize(root);
+    final dir = comparablePath(root);
     for (final session in sessions) {
-      final cwd = _normalize(session.cwd);
+      final cwd = comparablePath(session.cwd);
       if (cwd == dir || dir.startsWith('$cwd/') || cwd.startsWith('$dir/')) {
         return session;
       }
     }
   }
   return sessions.isEmpty ? null : sessions.first;
-}
-
-String _normalize(String path) {
-  var p = path.replaceAll('\\', '/');
-  while (p.length > 1 && p.endsWith('/')) {
-    p = p.substring(0, p.length - 1);
-  }
-  return Platform.isWindows || Platform.isMacOS ? p.toLowerCase() : p;
 }
 
 /// Opens [url] in a window of its own: Chrome, Edge or Chromium in app mode (no tabs, no address
@@ -201,7 +195,7 @@ Future<void> openWindow(String url) async {
 List<String>? _appWindow(String url) {
   final app = '--app=$url';
   if (Platform.isMacOS) {
-    final home = Platform.environment['HOME'] ?? '';
+    final home = homeDirectory() ?? '';
     for (final name in ['Google Chrome', 'Microsoft Edge', 'Chromium', 'Brave Browser']) {
       for (final dir in ['/Applications', '$home/Applications']) {
         if (Directory('$dir/$name.app').existsSync()) {
@@ -266,7 +260,7 @@ List<String>? zedCommand() {
     }
   }
   final env = Platform.environment;
-  final home = env['HOME'] ?? env['USERPROFILE'] ?? '';
+  final home = homeDirectory(env) ?? '';
   final candidates = [
     if (Platform.isMacOS)
       for (final dir in ['/Applications', '$home/Applications'])

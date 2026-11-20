@@ -29,23 +29,13 @@
   },
   {
     "label": "dart run build_runner build",
-    "command": "dart",
-    "args": [
-      "run",
-      "build_runner",
-      "build",
-      "--delete-conflicting-outputs"
-    ]
+    "command": "dart \"$HOME/.zed-flutter/build_runner_run.dart\" build \"$ZED_FILE\"",
+    "cwd": "$ZED_WORKTREE_ROOT"
   },
   {
     "label": "dart run build_runner watch",
-    "command": "dart",
-    "args": [
-      "run",
-      "build_runner",
-      "watch",
-      "--delete-conflicting-outputs"
-    ]
+    "command": "dart \"$HOME/.zed-flutter/build_runner_run.dart\" watch \"$ZED_FILE\"",
+    "cwd": "$ZED_WORKTREE_ROOT"
   },
   {
     "label": "dart analyze",

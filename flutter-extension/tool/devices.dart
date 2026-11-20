@@ -5,6 +5,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'pubspec.dart';
+
 /// The run targets, in the order they are offered, with their names.
 const targets = {
   'ios-simulator': 'iOS Simulator',
@@ -274,7 +276,7 @@ bool isFlutterApp(Directory dir) {
   final sep = Platform.pathSeparator;
   final pubspec = File('${dir.path}${sep}pubspec.yaml');
   return pubspec.existsSync() &&
-      pubspecDependsOnFlutter(pubspec.readAsStringSync()) &&
+      dependsOnFlutter(pubspec.readAsStringSync()) &&
       entryPoint(dir) != null;
 }
 
@@ -337,65 +339,6 @@ final _topLevelMain = RegExp(r'^(?:[\w<>?]+\s+)?main\s*\(', multiLine: true);
 
 /// Names of generated Dart files.
 final _generated = RegExp(r'\.(?:g|beans|freezed|gr|config|mocks)\.dart$');
-
-/// The directories of the `workspace:` list in [root]'s pubspec.yaml (pub workspaces).
-List<Directory> workspaceMembers(Directory root) {
-  final pubspec = File('${root.path}${Platform.pathSeparator}pubspec.yaml');
-  if (!pubspec.existsSync()) {
-    return const [];
-  }
-  final members = <Directory>[];
-  var inWorkspace = false;
-  for (final line in LineSplitter.split(pubspec.readAsStringSync())) {
-    final entry = line.trim();
-    if (entry.isEmpty || entry.startsWith('#')) {
-      continue;
-    }
-    if (line.length == line.trimLeft().length) {
-      inWorkspace = RegExp(r'^workspace\s*:').hasMatch(line);
-    } else if (inWorkspace && entry.startsWith('-')) {
-      final path = entry
-          .substring(1)
-          .split('#')
-          .first
-          .trim()
-          .replaceAll(RegExp('''^['"]|['"]\$'''), '');
-      if (path.isNotEmpty) {
-        members.add(Directory('${root.path}${Platform.pathSeparator}$path'));
-      }
-    }
-  }
-  return members;
-}
-
-/// Whether [pubspec] has `flutter: sdk: flutter` among its `dependencies` (read by lines: the
-/// tools bring no YAML parser).
-bool pubspecDependsOnFlutter(String pubspec) {
-  var inDependencies = false;
-  var inFlutter = false;
-  int? indent;
-  for (final line in LineSplitter.split(pubspec)) {
-    final entry = line.trimLeft();
-    if (entry.isEmpty || entry.startsWith('#')) {
-      continue;
-    }
-    final depth = line.length - entry.length;
-    if (depth == 0) {
-      inDependencies = RegExp(r'^dependencies\s*:').hasMatch(line);
-      inFlutter = false;
-      indent = null;
-    } else if (inDependencies) {
-      indent ??= depth;
-      if (depth == indent) {
-        inFlutter = RegExp(r'''^['"]?flutter['"]?\s*:''').hasMatch(entry);
-      } else if (inFlutter &&
-          RegExp(r'''^sdk\s*:\s*['"]?flutter['"]?\s*(#.*)?$''').hasMatch(entry)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 /// Directories skipped while looking for apps: tool output, dependencies and platform projects.
 const _skipped = {

@@ -198,7 +198,18 @@ def update():
             for key in [k for k in syntax if k.endswith(DOC_SUFFIX)]:
                 del syntax[key]
             syntax.update(themed_doc_styles(theme))
-    THEMES.write_text(json.dumps(themes, indent=2, ensure_ascii=False) + "\n")
+    THEMES.write_text(themes_text(themes))
+
+
+def themes_text(themes):
+    """The themes file as it is laid out by hand: indented by two, a list of plain values (the
+    accents) on one line."""
+    text = json.dumps(themes, indent=2, ensure_ascii=False) + "\n"
+    return re.sub(
+        r"\[\n\s*((?:(?:\"[^\"\n]*\"|[-\d.]+|true|false|null),\n\s*)*(?:\"[^\"\n]*\"|[-\d.]+|true|false|null))\n\s*\]",
+        lambda m: "[" + re.sub(r",\n\s*", ", ", m.group(1)) + "]",
+        text,
+    )
 
 
 def main():
@@ -243,6 +254,8 @@ def main():
     check_dartdoc_grammar()
     check_doc_comments(exe)
     check_runnables(exe)
+    check_outline(exe)
+    check_colors()
 
     print(f"{len(failures)} check(s) failed" if failures else "all checks passed")
     sys.exit(1 if failures else 0)
@@ -376,6 +389,84 @@ def check_doc_comments(exe):
         want = themed_doc_styles(theme)
         got = {k: v for k, v in syntax.items() if k.endswith(DOC_SUFFIX)}
         check(got == want, f"{theme['name']}: each of the {len(want)} captures of an example has its color, darkened (regenerate: --update)")
+
+
+# What outline.scm lists of tests/queries/outline.dart, in order: (line, text), the text as Zed
+# makes it of the item's @context and @name captures (a space between those that do not touch).
+OUTLINE = [
+    (2, "class Old"),
+    (3, "Old"),
+    (4, "Old.named"),
+    (5, "const Old.c"),
+    (6, "factory Old.f"),
+    (7, "factory Old.redirect"),
+    (8, "x"),
+    (8, "y"),
+    (9, "a"),
+    (9, "b"),
+    (10, "m"),
+    (12, "top"),
+    (13, "first"),
+    (13, "second"),
+    (14, "mixin M"),
+    (15, "extension type Meters"),
+    (16, "typedef Json"),
+    (17, "enum E"),
+    (17, "a"),
+    (17, "b"),
+]
+
+
+def check_outline(exe):
+    print("== outline")
+    fixture = CHECKER / "outline.dart"
+    out = subprocess.run([exe, "captures", str(LANGUAGE / "outline.scm"), str(fixture)], capture_output=True, text=True, check=True).stdout
+    lines = fixture.read_text().split("\n")
+    items = []
+    for line in out.splitlines():
+        position, name, text = line.split("\t", 2)
+        row, column = map(int, position.split(":"))
+        if name == "item":
+            items.append([row, []])
+        elif name in ("name", "context") and items:
+            items[-1][1].append((column, len(text.split("\n")[0]), text))
+    listed = []
+    for row, parts in items:
+        text, end = "", None
+        for column, length, part in sorted(parts):
+            text += ("" if end is None or column == end else " ") + part
+            end = column + length
+        listed.append((row, text))
+    check(listed == OUTLINE, f"each declaration once, constructors as they are called, no local variable {listed if listed != OUTLINE else ''}")
+
+
+SEMANTIC_TOKEN_RULES = LANGUAGE / "semantic_token_rules.json"
+
+
+def semantic_token_rules():
+    """The rules of semantic_token_rules.json, a JSON list with `//` comments."""
+    text = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*', lambda m: "" if m.group(0).startswith("//") else m.group(0), SEMANTIC_TOKEN_RULES.read_text())
+    return json.loads(text)
+
+
+def check_colors():
+    """Each capture of highlights.scm and each style of semantic_token_rules.json has a color in the
+    Farum Azula themes (its own key or one it falls back to); a rule without a style is the first of
+    its token type, the only place Zed honours it."""
+    print("== colors")
+    rules = semantic_token_rules()
+    first = {}
+    for index, rule in enumerate(rules):
+        first.setdefault(rule["token_type"], index)
+    misplaced = [r for i, r in enumerate(rules) if "style" not in r and first[r["token_type"]] != i]
+    check(not misplaced, f"a rule without a style is the first of its token type {misplaced or ''}")
+    styles = {style for rule in rules for style in rule.get("style", [])}
+    captures = captures_of((LANGUAGE / "highlights.scm").read_text()) - {"none"}
+    for theme in json.loads(THEMES.read_text())["themes"]:
+        syntax = theme["style"]["syntax"]
+        for kind, names in (("capture", captures), ("semantic token style", styles)):
+            colorless = sorted(name for name in names if not theme_style(syntax, name))
+            check(not colorless, f"{theme['name']}: each {kind} has a color {colorless or ''}")
 
 
 if __name__ == "__main__":

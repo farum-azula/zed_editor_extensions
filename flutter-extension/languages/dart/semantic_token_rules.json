@@ -9,6 +9,16 @@
   // variable and a local alike: the highlights tell them apart (fields and top-level variables in
   // the colour of their uses, `property`).
   { "token_type": "variable", "token_modifiers": ["declaration"] },
+  // An import prefix (`ui` of `import 'dart:ui' as ui;`, `ui.window`), which it marks a variable.
+  { "token_type": "variable", "token_modifiers": ["importPrefix"], "style": ["namespace"] },
+  // The code of a doc comment's example (```dart … ```), which it marks a comment with `source`:
+  // the Dartdoc grammar colours it as code.
+  { "token_type": "comment", "token_modifiers": ["source"] },
+  // An escape in a string (`\n`, `\$`).
+  { "token_type": "string", "token_modifiers": ["escape"], "style": ["string.escape"] },
+  // An enum's value, where it is declared and used (`Status.active`), in the colour the
+  // highlights give it.
+  { "token_type": "enumMember", "style": ["property"] },
   // An annotation's name, which it marks as a class (`@Autowired`), a property (`@override`) or a
   // constructor (`@RequestParam.of`), and `@ . ( )`: annotations keep the highlights' colours.
   { "token_type": "class", "token_modifiers": ["annotation"] },
@@ -19,6 +29,10 @@
   // parameters, where declared and where its body uses them, `closureParameter`.
   { "token_type": "parameter" },
   { "token_type": "closureParameter", "style": ["variable.parameter.closure"] },
+  // dart_spring: the key of a `${key}` that nothing defines (no config file of the package, no
+  // test, no Spring metadata), and a placeholder's default (`8080` of `${server.port:8080}`).
+  { "token_type": "property", "token_modifiers": ["unresolved"], "style": ["property.unresolved"] },
+  { "token_type": "string", "token_modifiers": ["defaultValue"], "style": ["string.default"] },
   // A field named in a constructor (`this._scope`), in a field's colour.
   { "token_type": "variable", "token_modifiers": ["instance"], "style": ["property"] }
 ]

@@ -1,33 +1,45 @@
-//! The Zed side of the extension.
+//! The Zed side of the extension. Each part Zed asks for by name is one type, registered in
+//! [`FlutterExtension::new`]:
 //!
-//! - The Dart language, as Zed's Dart extension provides it ([`dart`]): its language server and its
-//!   `Dart` debug adapter. The language's tasks (`languages/dart/tasks.json`) add Flutter's
-//!   `Flutter: run on <platform>`.
-//! - The `flutter` debug locator, which offers each of those tasks in the debugger as
-//!   `Flutter: debug on <platform>`.
-//! - The `Flutter` debug adapter: Flutter's own (`flutter debug_adapter`) behind
-//!   `tool/flutter_proxy.dart`, which hot reloads the app when a `.dart` file under `lib/` changes
-//!   and picks (or starts) the device of a scenario's `target`.
-//! - The `flutter-tools` language server, `tool/flutter_lsp.dart`: it offers the snippets
-//!   (`tool/snippets.json`) as completions that add the imports they need, and keeps
-//!   `~/.zed-flutter/flutter_run.dart`, the runner of the run tasks, up to date.
+//! - debug adapters ([`debug_adapter`]): `Flutter`, Flutter's own adapter behind
+//!   `tool/flutter_proxy.dart` (hot reload on save, DevTools, the device of a `target`), and
+//!   `Dart`, the Dart extension's;
+//! - language servers ([`language_server`]): `dart`, the Dart extension's, and `flutter-tools`,
+//!   `tool/flutter_lsp.dart` (the snippets, the runners of the tasks, `build_runner watch`);
+//! - debug locators ([`debug_locator`]): `flutter` offers each `Flutter: run on <platform>` task in
+//!   the debugger as `Flutter: debug on <platform>`, `dart` each `dart run: <file>` task as
+//!   `Dart: debug <file>`.
 //!
 //! The programs of `tool/` are plain Dart that the Dart SDK coming with Flutter runs, so there is
-//! nothing to download or build. They are written into the extension's work directory whenever one
-//! of them starts, so they always match this version of the extension.
+//! nothing to download or build. They are installed into the extension's work directory
+//! ([`tool_files`]) before one of them starts, so they always match this version of the extension.
 
-mod dart;
+mod debug_adapter;
+mod debug_locator;
+mod language_server;
+mod launch_config;
+mod registry;
+mod sdk;
+mod task_command;
+mod tool_files;
 
-use std::fs;
-use zed_extension_api::serde_json::{self, json, Value};
+use zed_extension_api::serde_json::Value;
 use zed_extension_api::{
     self as zed, CodeLabel, DebugAdapterBinary, DebugConfig, DebugRequest, DebugScenario,
-    DebugTaskDefinition, LanguageServerId, Result, StartDebuggingRequestArguments,
-    StartDebuggingRequestArgumentsRequest, TaskTemplate, Worktree,
+    DebugTaskDefinition, LanguageServerId, Result, StartDebuggingRequestArgumentsRequest,
+    TaskTemplate, Worktree,
 };
 
-const ADAPTER: &str = "Flutter";
-const DART_ADAPTER: &str = "Dart";
+use debug_adapter::{DartAdapter, DebugAdapter, FlutterAdapter};
+use debug_locator::{DartRunLocator, DebugLocator, FlutterRunLocator};
+use language_server::{DartLanguageServer, FlutterToolsServer, LanguageServer};
+use launch_config::{request_kind, LaunchConfig};
+use registry::Registry;
+use tool_files::ToolFiles;
+
+// RUNNER, TARGETS and TOOLS stay in this file: tests/check_tasks.py checks them against
+// languages/dart/tasks.json, tool/devices.dart and the files of tool/.
+
 /// The runner the `Flutter: run on <platform>` tasks start, followed by the platform.
 const RUNNER: &str = "flutter_run.dart";
 /// The platforms of those tasks; `tool/devices.dart` knows how to find a device for each.
@@ -39,8 +51,10 @@ const TARGETS: &[&str] = &[
     "windows",
     "linux",
 ];
+/// The runner the `dart run: <file>` tasks start, followed by the file and its arguments.
+const DART_RUNNER: &str = "dart_run.dart";
 
-/// The files of `tool/`, written into the work directory.
+/// The files of `tool/` that [`ToolFiles`] installs into the work directory: the one list of them.
 const TOOLS: &[(&str, &str)] = &[
     (
         "flutter_proxy.dart",
@@ -56,14 +70,52 @@ const TOOLS: &[(&str, &str)] = &[
         include_str!("../tool/flutter_devtools.dart"),
     ),
     ("protocol.dart", include_str!("../tool/protocol.dart")),
+    ("lsp_server.dart", include_str!("../tool/lsp_server.dart")),
+    (
+        "snippet_completions.dart",
+        include_str!("../tool/snippet_completions.dart"),
+    ),
+    (
+        "runner_installation.dart",
+        include_str!("../tool/runner_installation.dart"),
+    ),
+    ("paths.dart", include_str!("../tool/paths.dart")),
+    ("pubspec.dart", include_str!("../tool/pubspec.dart")),
+    (
+        "build_runner.dart",
+        include_str!("../tool/build_runner.dart"),
+    ),
+    (
+        "build_runner_watches.dart",
+        include_str!("../tool/build_runner_watches.dart"),
+    ),
+    (
+        "build_runner_run.dart",
+        include_str!("../tool/build_runner_run.dart"),
+    ),
     ("snippets.json", include_str!("../tool/snippets.json")),
 ];
 
-struct FlutterExtension;
+struct FlutterExtension {
+    debug_adapters: Registry<dyn DebugAdapter>,
+    language_servers: Registry<dyn LanguageServer>,
+    debug_locators: Registry<dyn DebugLocator>,
+}
 
 impl zed::Extension for FlutterExtension {
     fn new() -> Self {
-        Self
+        let tools = ToolFiles::new(TOOLS);
+        Self {
+            debug_adapters: Registry::<dyn DebugAdapter>::new("debug adapter")
+                .with(Box::new(FlutterAdapter::new(tools)))
+                .with(Box::new(DartAdapter)),
+            language_servers: Registry::<dyn LanguageServer>::new("language server")
+                .with(Box::new(DartLanguageServer))
+                .with(Box::new(FlutterToolsServer::new(tools))),
+            debug_locators: Registry::<dyn DebugLocator>::new("debug locator")
+                .with(Box::new(FlutterRunLocator::new(RUNNER, TARGETS)))
+                .with(Box::new(DartRunLocator::new(DART_RUNNER))),
+        }
     }
 
     fn get_dap_binary(
@@ -73,80 +125,8 @@ impl zed::Extension for FlutterExtension {
         _user_provided_debug_adapter_path: Option<String>,
         worktree: &Worktree,
     ) -> Result<DebugAdapterBinary, String> {
-        if adapter_name == DART_ADAPTER {
-            return dart::get_dap_binary(task, worktree);
-        }
-        let config: Value = serde_json::from_str(&task.config)
-            .map_err(|e| format!("invalid debug configuration: {e}"))?;
-        // A project that pins its Flutter with fvm runs it through fvm unless told otherwise.
-        let fvm = worktree.read_text_file(".fvmrc").is_ok();
-        let launch = Launch::from_config(&config, &worktree.root_path(), fvm);
-
-        let proxy = tool("flutter_proxy.dart")?;
-
-        let (command, mut arguments) = if launch.use_fvm {
-            let fvm = worktree
-                .which("fvm")
-                .ok_or("fvm is not in PATH; install it or set useFvm to false")?;
-            (
-                fvm.clone(),
-                vec!["dart".into(), proxy, fvm, "flutter".into()],
-            )
-        } else {
-            let dart = dart(worktree)?;
-            let flutter = which(worktree, &["flutter", "flutter.bat"])
-                .ok_or("flutter is not in PATH; install it from flutter.dev")?;
-            (dart, vec![proxy, flutter])
-        };
-        arguments.push("debug_adapter".into());
-
-        Ok(DebugAdapterBinary {
-            command: Some(command),
-            arguments,
-            envs: launch.env.clone(),
-            cwd: Some(launch.cwd.clone()),
-            connection: None,
-            request_args: StartDebuggingRequestArguments {
-                configuration: launch.configuration().to_string(),
-                request: launch.request,
-            },
-        })
-    }
-
-    fn language_server_command(
-        &mut self,
-        id: &LanguageServerId,
-        worktree: &Worktree,
-    ) -> Result<zed::Command> {
-        if id.as_ref() == dart::SERVER {
-            return dart::language_server_command(worktree);
-        }
-        Ok(zed::Command {
-            command: dart(worktree)?,
-            args: vec![tool("flutter_lsp.dart")?],
-            env: worktree.shell_env(),
-        })
-    }
-
-    fn language_server_workspace_configuration(
-        &mut self,
-        id: &LanguageServerId,
-        worktree: &Worktree,
-    ) -> Result<Option<Value>> {
-        if id.as_ref() == dart::SERVER {
-            return dart::workspace_configuration(worktree);
-        }
-        Ok(None)
-    }
-
-    fn label_for_completion(
-        &self,
-        id: &LanguageServerId,
-        completion: zed::lsp::Completion,
-    ) -> Option<CodeLabel> {
-        (id.as_ref() == dart::SERVER)
-            .then(|| dart::label_for_completion(completion))
-            .flatten()
+        let adapter = self.debug_adapters.get(&adapter_name)?;
+        adapter.binary(&LaunchConfig::parse(&task.config)?, worktree)
     }
 
     fn dap_request_kind(
@@ -154,60 +134,17 @@ impl zed::Extension for FlutterExtension {
         adapter_name: String,
         config: Value,
     ) -> Result<StartDebuggingRequestArgumentsRequest, String> {
-        if adapter_name == DART_ADAPTER {
-            return dart::dap_request_kind(config);
-        }
+        self.debug_adapters.get(&adapter_name)?;
         request_kind(&config)
-    }
-
-    /// Offers a `Flutter: run on <platform>` task in the debugger as `Flutter: debug on <platform>`:
-    /// the same app on the same kind of device, under the `Flutter` adapter.
-    fn dap_locator_create_scenario(
-        &mut self,
-        _locator_name: String,
-        task: TaskTemplate,
-        resolved_label: String,
-        _debug_adapter_name: String,
-    ) -> Option<DebugScenario> {
-        let target = run_target(&task)?;
-        Some(DebugScenario {
-            label: resolved_label.replacen("Flutter: run on", "Flutter: debug on", 1),
-            adapter: ADAPTER.into(),
-            build: None,
-            config: json!({
-                "request": "launch",
-                "program": "lib/main.dart",
-                "target": target,
-            })
-            .to_string(),
-            tcp_connection: None,
-        })
     }
 
     /// A session started from the debugger's "new session" window: run the given entry point.
     fn dap_config_to_scenario(&mut self, config: DebugConfig) -> Result<DebugScenario, String> {
-        let DebugRequest::Launch(launch) = config.request else {
+        let adapter = self.debug_adapters.get(&config.adapter)?;
+        let DebugRequest::Launch(launch) = &config.request else {
             return Err("attaching from this window is not supported; use a debug.json scenario with \"request\": \"attach\"".into());
         };
-        let mut scenario = json!({
-            "request": "launch",
-            "program": launch.program,
-            "args": launch.args,
-        });
-        if let Some(cwd) = launch.cwd {
-            scenario["cwd"] = json!(cwd);
-        }
-        if !launch.envs.is_empty() {
-            let env: serde_json::Map<_, _> = launch
-                .envs
-                .into_iter()
-                .map(|(k, v)| (k, json!(v)))
-                .collect();
-            scenario["env"] = json!(env);
-        }
-        if config.adapter == DART_ADAPTER {
-            scenario["type"] = json!("dart");
-        }
+        let scenario = adapter.launch_scenario(launch, config.stop_on_entry);
         Ok(DebugScenario {
             label: config.label,
             adapter: config.adapter,
@@ -216,147 +153,136 @@ impl zed::Extension for FlutterExtension {
             tcp_connection: None,
         })
     }
-}
 
-/// A `Flutter` debug configuration, with its defaults filled in.
-struct Launch {
-    request: StartDebuggingRequestArgumentsRequest,
-    program: String,
-    cwd: String,
-    args: Vec<String>,
-    tool_args: Vec<String>,
-    env: Vec<(String, String)>,
-    flutter_mode: String,
-    vm_service_uri: Option<String>,
-    target: Option<String>,
-    use_fvm: bool,
-    hot_reload_on_save: bool,
-}
-
-impl Launch {
-    fn from_config(config: &Value, root: &str, fvm: bool) -> Self {
-        let text = |key: &str| config.get(key).and_then(Value::as_str).map(str::to_string);
-        let list = |key: &str| -> Vec<String> {
-            config
-                .get(key)
-                .and_then(Value::as_array)
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        let mut tool_args = list("toolArgs");
-        // Flutter's adapter reads the device from the `flutter run` arguments only.
-        if let Some(device) = text("deviceId") {
-            if !tool_args
-                .iter()
-                .any(|a| a == "-d" || a.starts_with("--device-id"))
-            {
-                tool_args.extend(["-d".to_string(), device]);
-            }
-        }
-        Self {
-            request: request_kind(config).unwrap_or(StartDebuggingRequestArgumentsRequest::Launch),
-            program: text("program").unwrap_or_else(|| "lib/main.dart".into()),
-            cwd: text("cwd").unwrap_or_else(|| root.into()),
-            args: list("args"),
-            tool_args,
-            env: config
-                .get("env")
-                .and_then(Value::as_object)
-                .map(|vars| {
-                    vars.iter()
-                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            flutter_mode: text("flutterMode").unwrap_or_else(|| "debug".into()),
-            vm_service_uri: text("vmServiceUri"),
-            target: text("target"),
-            use_fvm: config.get("useFvm").and_then(Value::as_bool).unwrap_or(fvm),
-            hot_reload_on_save: config
-                .get("hotReloadOnSave")
-                .and_then(Value::as_bool)
-                .unwrap_or(true),
-        }
+    fn dap_locator_create_scenario(
+        &mut self,
+        locator_name: String,
+        task: TaskTemplate,
+        resolved_label: String,
+        _debug_adapter_name: String,
+    ) -> Option<DebugScenario> {
+        self.debug_locators
+            .find(&locator_name)?
+            .scenario(&task, &resolved_label)
     }
 
-    /// The `launch` / `attach` arguments Flutter's adapter reads (and `hotReloadOnSave` and
-    /// `target`, which the proxy reads).
-    fn configuration(&self) -> Value {
-        let mut config = json!({
-            "program": self.program,
-            "cwd": self.cwd,
-            "args": self.args,
-            "toolArgs": self.tool_args,
-            "flutterMode": self.flutter_mode,
-            "hotReloadOnSave": self.hot_reload_on_save,
-        });
-        if let Some(uri) = &self.vm_service_uri {
-            config["vmServiceUri"] = json!(uri);
-        }
-        if let Some(target) = &self.target {
-            config["target"] = json!(target);
-        }
-        config
+    fn language_server_command(
+        &mut self,
+        id: &LanguageServerId,
+        worktree: &Worktree,
+    ) -> Result<zed::Command> {
+        self.language_servers.get(id.as_ref())?.command(worktree)
     }
-}
 
-/// The platform of a `Flutter: run on <platform>` task: the word after the runner in its command.
-fn run_target(task: &TaskTemplate) -> Option<String> {
-    let command = [task.command.as_str()]
-        .into_iter()
-        .chain(task.args.iter().map(String::as_str))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let (_, after) = command.split_once(RUNNER)?;
-    let target = after
-        .trim_start_matches(['"', '\''])
-        .split_whitespace()
-        .next()?;
-    TARGETS.contains(&target).then(|| target.to_string())
-}
-
-fn request_kind(config: &Value) -> Result<StartDebuggingRequestArgumentsRequest, String> {
-    match config.get("request").and_then(Value::as_str) {
-        None | Some("launch") => Ok(StartDebuggingRequestArgumentsRequest::Launch),
-        Some("attach") => Ok(StartDebuggingRequestArgumentsRequest::Attach),
-        Some(other) => Err(format!("unknown request {other:?} for the {ADAPTER} debug adapter: use \"launch\" or \"attach\"")),
+    fn language_server_workspace_configuration(
+        &mut self,
+        id: &LanguageServerId,
+        worktree: &Worktree,
+    ) -> Result<Option<Value>> {
+        self.language_servers
+            .get(id.as_ref())?
+            .workspace_configuration(worktree)
     }
-}
 
-/// Writes the files of `tool/` into the work directory; returns the host path of [name] there.
-fn tool(name: &str) -> Result<String, String> {
-    for (file, text) in TOOLS {
-        if fs::read_to_string(file).ok().as_deref() != Some(*text) {
-            fs::write(file, text).map_err(|e| format!("could not write {file}: {e}"))?;
-        }
-    }
-    Ok(work_dir()?.join(name).to_string_lossy().into_owned())
-}
-
-fn dart(worktree: &Worktree) -> Result<String, String> {
-    which(worktree, &["dart", "dart.exe", "dart.bat"])
-        .ok_or_else(|| "dart is not in PATH; install Flutter from flutter.dev".into())
-}
-
-fn which(worktree: &Worktree, names: &[&str]) -> Option<String> {
-    names.iter().find_map(|name| worktree.which(name))
-}
-
-/// The extension's work directory, as a path for the host: the WASI sandbox reports Windows paths
-/// as `/C:/...`.
-fn work_dir() -> Result<std::path::PathBuf, String> {
-    let dir = std::env::current_dir().map_err(|e| format!("no work directory: {e}"))?;
-    let text = dir.to_string_lossy();
-    match text.strip_prefix('/') {
-        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => Ok(rest.into()),
-        _ => Ok(dir),
+    fn label_for_completion(
+        &self,
+        id: &LanguageServerId,
+        completion: zed::lsp::Completion,
+    ) -> Option<CodeLabel> {
+        self.language_servers
+            .find(id.as_ref())?
+            .label_for_completion(completion)
     }
 }
 
 zed::register_extension!(FlutterExtension);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zed::Extension;
+
+    /// The names of the `[<section>.<name>]` tables of extension.toml.
+    fn declared(section: &str) -> Vec<String> {
+        let prefix = format!("[{section}.");
+        let mut names: Vec<String> = include_str!("../extension.toml")
+            .lines()
+            .filter_map(|line| line.strip_prefix(&prefix)?.strip_suffix(']'))
+            .map(str::to_string)
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn sorted(names: Vec<&str>) -> Vec<String> {
+        let mut names: Vec<String> = names.into_iter().map(str::to_string).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn every_part_extension_toml_declares_is_registered() {
+        let extension = FlutterExtension::new();
+        assert_eq!(
+            sorted(extension.debug_adapters.names()),
+            declared("debug_adapters")
+        );
+        assert_eq!(
+            sorted(extension.language_servers.names()),
+            declared("language_servers")
+        );
+        assert_eq!(
+            sorted(extension.debug_locators.names()),
+            declared("debug_locators")
+        );
+    }
+
+    #[test]
+    fn the_request_of_an_unknown_adapter_is_an_error() {
+        let mut extension = FlutterExtension::new();
+        assert!(extension
+            .dap_request_kind("Python".into(), Value::Null)
+            .err()
+            .unwrap()
+            .starts_with("Flutter Tools has no debug adapter named \"Python\""));
+    }
+
+    #[test]
+    fn a_locator_answers_only_to_its_name() {
+        let mut extension = FlutterExtension::new();
+        let task = TaskTemplate {
+            label: "Flutter: run on Web".into(),
+            command: format!("dart \"$HOME/.zed-flutter/{RUNNER}\" web"),
+            args: Vec::new(),
+            env: Vec::new(),
+            cwd: None,
+        };
+        let scenario = |extension: &mut FlutterExtension, locator: &str| {
+            extension.dap_locator_create_scenario(
+                locator.into(),
+                task.clone(),
+                task.label.clone(),
+                "Flutter".into(),
+            )
+        };
+        assert!(scenario(&mut extension, "flutter").is_some());
+        assert!(scenario(&mut extension, "dart").is_none());
+        assert!(scenario(&mut extension, "cargo").is_none());
+    }
+
+    #[test]
+    fn every_tool_file_is_installed_once() {
+        let mut names: Vec<&str> = TOOLS.iter().map(|(name, _)| *name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), TOOLS.len());
+        for name in [
+            RUNNER,
+            DART_RUNNER,
+            "flutter_proxy.dart",
+            "flutter_lsp.dart",
+        ] {
+            assert!(names.contains(&name), "{name}");
+        }
+    }
+}

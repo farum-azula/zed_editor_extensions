@@ -13,6 +13,8 @@
 //!             error<TAB>depth<TAB>language<TAB>row:column<TAB>node
 //!             capture<TAB>depth<TAB>row:column<TAB>capture<TAB>text
 //!             pending<TAB>depth<TAB>language                   (no such language)
+//!     dart-queries-check tree <file.dart>
+//!         the file's syntax tree, one named node per line, indented: `row:column<TAB>field: kind`
 //!     dart-queries-check runnables <runnables.scm> <file.dart>
 //!         every `@run` capture with its tag: `row:column<TAB>text<TAB>tag`
 
@@ -92,6 +94,11 @@ fn main() {
             for (position, name, text) in captures(&query, &tree, &text) {
                 println!("{position}\t{name}\t{text}");
             }
+        }
+        Some("tree") => {
+            let text = read(&args[2]);
+            let tree = parse(&dart(), &text, None);
+            print_tree(tree.root_node(), None, 0);
         }
         Some("layers") => layers(Path::new(&args[2]), &read(&args[3])),
         Some("runnables") => {
@@ -324,6 +331,26 @@ fn insert_newlines_between_ranges(ranges: &mut Vec<Range>, text: &str) {
                     end_point: tree_sitter::Point { row: at.row + 1, column: 0 },
                 },
             );
+        }
+    }
+}
+
+/// [node] and the named nodes under it, one per line, indented by [depth]: where it starts, the
+/// field of its parent it is in, and its kind.
+fn print_tree(node: Node, field: Option<&str>, depth: usize) {
+    let start = node.start_position();
+    let field = field.map(|name| format!("{name}: ")).unwrap_or_default();
+    println!("{}:{}\t{}{field}{}", start.row + 1, start.column + 1, "  ".repeat(depth), node.kind());
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.is_named() {
+                print_tree(child, cursor.field_name(), depth + 1);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
         }
     }
 }

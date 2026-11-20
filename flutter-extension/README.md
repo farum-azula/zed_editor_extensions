@@ -70,10 +70,10 @@ For a project that is not a Flutter app, `task: spawn` offers, next to `dart pub
 | `dart run: bin/main.dart`  | `dart run bin/main.dart` in the project root; builds first when the project uses `build_runner` |
 | `dart test`                | `dart test` for the whole project (`flutter test` / `fvm flutter test` for a Flutter app) |
 
-The Debug tab offers no `Dart: debug ...` scenario for these tasks yet (that would be a second
-debug locator, Rust code in `src/`; see `roadmap/bugs.md` in the repository root). The `Dart`
-debug adapter is there, though: a scenario of your own in the project's `.zed/debug.json`
-debugs a Dart program:
+The Debug tab offers each `dart run: <file>` task as `Dart: debug <file>`: the same file, with the
+same arguments, under the `Dart` debug adapter (without the build first: keep `build_runner watch`
+running, see below). Through fvm when the project has a `.fvmrc`, as the Flutter scenarios. For
+anything else, a scenario of your own in the project's `.zed/debug.json` debugs a Dart program:
 
 ```json
 {
@@ -87,32 +87,49 @@ debugs a Dart program:
 
 ### build_runner
 
-When a project has `build_runner` in the `dev_dependencies` of its `pubspec.yaml` (the workspace
-folder itself and the packages below it, down to 4 levels, e.g. `example/flutter_app` of a
-monorepo; hidden folders and `build/` are skipped), the Flutter Tools language server starts
-`dart run build_runner watch --delete-conflicting-outputs` there once, when the project opens, and
-stops it, with what it started, when Zed closes the server. Its output is in Zed's language server
-log (`dev: open language server logs`, `flutter-tools`); each `Succeeded` / `Failed` line of a
-build is also shown as a message.
+The Flutter Tools language server keeps one `dart run build_runner watch --delete-conflicting-outputs`
+running, for the package you work on, when it generates code (`build_runner` in the
+`dev_dependencies` of its `pubspec.yaml`), and stops it, with what it started, when Zed closes the
+server. Its output is in
+Zed's language server log (`dev: open language server logs`, `flutter-tools`); the `Succeeded` /
+`Failed` lines of builds that end within 1.5 seconds of each other are shown as one message
+(`build_runner: failed in app; succeeded in core`).
 
-In a pub workspace (build_runner 2.14 and later) one watch builds every member
-(`--workspace`). It starts again when a `pubspec.yaml`, `pubspec.lock` or
-`.dart_tool/package_config.json` changes, the workspace root's included: adding a member or a
-`pub get` gives the watch the new packages. Another build_runner command (a `build` by hand, the
-build before `dart run`) asks the watch for its lock; build_runner finishes the current build and
-gives it. A watch that still holds the lock 30 seconds after the request
-(`FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS`) is stopped and started again, so the command never waits
-for ever ("Waiting for already-running build_runner").
+Which packages get a watch is the `build_runner` initialization option:
 
-To turn it off, set in Zed's settings
+| Value | Watches |
+|---|---|
+| `"active"` (the default) | one: the package of the file saved last; before any save, of the first file opened. Saving a file of another package moves the watch there (the old one stops, the new one builds what changed since its last run). 10 minutes after the last file of the package closed (`FLUTTER_TOOLS_BUILD_RUNNER_LINGER_MS`) it moves to the package of a file still open, or stops |
+| `"open"` | the packages of the files open in Zed, a watch each. A watch starts when the first file of its package opens, and stops 10 minutes after the last one closed |
+| `"all"` | every package of the workspace folder: the folder itself and the packages below it, down to 4 levels (`example/flutter_app` of a monorepo; hidden folders and `build/` are skipped) |
+| `"off"` (or `false`) | none |
 
 ```json
-{ "lsp": { "flutter-tools": { "initialization_options": { "build_runner": false } } } }
+{ "lsp": { "flutter-tools": { "initialization_options": { "build_runner": "all" } } } }
 ```
 
-or start Zed with `FLUTTER_TOOLS_BUILD_RUNNER=off` in the environment. The tasks `dart run
-build_runner build` (a single build) and `dart run build_runner watch` (the watch in a terminal
-tab, for when the automatic one is off) are there as well.
+`FLUTTER_TOOLS_BUILD_RUNNER` in Zed's environment says the same (`off` wins over the setting).
+With `"open"` and `"all"`, watches start one after another, 3 seconds apart
+(`FLUTTER_TOOLS_BUILD_RUNNER_STAGGER_MS`), not all at once. A monorepo with a watch per package
+rebuilds every one of them on each change of a package they share, and the Dart analysis server
+re-reads all they write (and can miss some of it: types it shows as `InvalidType` until it is
+restarted); with `"active"`, one process builds what you work on.
+
+In a pub workspace (build_runner 2.14 and later) one watch builds every member (`--workspace`): a
+file of any member, the root's included, starts it. It runs in the workspace root when the root
+uses build_runner itself, else in the first member that does. It starts again when a
+`pubspec.yaml`, `pubspec.lock` or `.dart_tool/package_config.json` changes, the workspace root's
+included: adding a member or a `pub get` gives the watch the new packages. Another build_runner
+command (a `build` by hand, the build before `dart run`) asks the watch for its lock; build_runner
+finishes the current build and gives it. A watch that still holds the lock 30 seconds after the
+request (`FLUTTER_TOOLS_BUILD_RUNNER_YIELD_MS`) is stopped and started again, so the command
+never waits for ever ("Waiting for already-running build_runner").
+
+The tasks `dart run build_runner build` (a single build) and `dart run build_runner watch` (the
+watch in a terminal tab, for when the automatic one is off) run build_runner for the package of
+the file open in the editor, and so does the build before `dart run: <file>`: all with the
+arguments of the automatic watch (`--workspace` in a workspace that builds as one), so they share
+its build graph. Two graphs over the same outputs would delete each other's files.
 
 Once you have run `Flutter: run on <platform>`, Zed no longer offers `Flutter: debug on <platform>`
 in the Debug tab until it restarts: Zed leaves the scenarios of tasks already spawned out of the
@@ -246,13 +263,21 @@ a window next to it. A browser that draws in the terminal (such as Carbonyl) cou
 terminal, but at a resolution too coarse for DevTools to be usable.
 
 ## How It Works
-## How It Works
 
-- **The Dart language** ([`languages/dart`](languages/dart), [`src/dart.rs`](src/dart.rs)) is the
+- **The Dart language** ([`languages/dart`](languages/dart), [`src/language_server/dart.rs`](src/language_server/dart.rs),
+  [`src/debug_adapter/dart.rs`](src/debug_adapter/dart.rs)) is the
   Dart extension's, with these changes: the `Flutter: run on <platform>` tasks in `tasks.json`,
   `debuggers` in `config.toml`, a newer [tree-sitter-dart](https://github.com/UserNobody14/tree-sitter-dart)
-  that parses Dart 3.12/3.13 (primary constructors such as `class A({required this.x})`), and in
-  `highlights.scm` a factory constructor's name highlighted as a method's (`factory fromJson()`).
+  that parses Dart 3.12/3.13 (primary constructors such as `class A({required this.x})`), and its
+  own `highlights.scm`, `outline.scm` and `semantic_token_rules.json`. The highlights colour Dart 3
+  (`extension type`, `when`, patterns, records' fields as fields, labels, every assignment and bit
+  operator, import prefixes as namespaces), a factory constructor's name as a method's
+  (`factory fromJson()`), and a built-in word naming a variable as a variable (`final part`,
+  `var set`, `get = 1`): it is a keyword only where it declares (`int get size`). The outline lists
+  mixins, extension types, typedefs, constructors (`Old.named`) and enum values besides classes,
+  members and fields. The semantic token rules decide how the analysis server's tokens (and
+  dart_spring's) combine with the highlights when `"semantic_tokens": "combined"` is on: code in a
+  doc comment keeps the example's colours, escapes, import prefixes and enum values get theirs.
   Only the extension that defines a language can add tasks to it, which is why this one defines
   Dart.
 - **Code in documentation comments** ([`languages/dartdoc`](languages/dartdoc),
@@ -270,9 +295,12 @@ terminal, but at a resolution too coarse for DevTools to be usable.
   a comment, the language is still Dart (comment toggling, `///` on a new line). Java's grammar is
   the Java extension's, so Java examples need it installed; the others come with Zed. Blocks of
   other languages (`kotlin`, `yaml`) stay comments.
-- **The `flutter` debug locator** ([`src/lib.rs`](src/lib.rs)): Zed asks it about each task, and
-  it turns each `Flutter: run on <platform>` into `Flutter: debug on <platform>`, a scenario of the
-  `Flutter` adapter with that `target`.
+- **The debug locators** ([`src/debug_locator`](src/debug_locator)): Zed asks them about each
+  task. `flutter` turns each `Flutter: run on <platform>` into `Flutter: debug on <platform>`, a
+  scenario of the `Flutter` adapter with that `target`; `dart` turns each `dart run: <file>` into
+  `Dart: debug <file>`, a scenario of the `Dart` adapter with that `program`. The Rust side is a
+  registry per kind of part (debug adapters, language servers, locators; [`src/lib.rs`](src/lib.rs)):
+  a new one is a type in its folder and one registration.
 
 The rest are small Dart programs in [`tool/`](tool), run by the Dart of your Flutter SDK; the
 extension writes them into its work directory as they start. Nothing is downloaded or built.
@@ -292,13 +320,20 @@ extension writes them into its work directory as they start. Nothing is download
   the device, then runs `flutter run -d <device>` in the terminal.
 - **[`flutter_devtools.dart`](tool/flutter_devtools.dart), the program of the DevTools tasks.** It
   finds the app of the project in `~/.zed-flutter/sessions/` and opens the page for it.
-- **[`flutter_lsp.dart`](tool/flutter_lsp.dart), a language server next to the Dart one.** It
-  offers the snippets as completions carrying edits that add their imports: Zed's own snippets
-  can only insert at the cursor. And since a task cannot name the extension's directory,
-  which differs between OSes, the run and DevTools tasks start `~/.zed-flutter/flutter_run.dart`
-  and `~/.zed-flutter/flutter_devtools.dart`, which this server keeps there and up to date.
-  It offers a snippet only for the word being typed (`sc` offers `sc`, `scf`, ...), never after
-  `{`, `(` or `.`, and runs `build_runner watch` for the projects that use it (above).
+- **[`flutter_lsp.dart`](tool/flutter_lsp.dart), a language server next to the Dart one**, made of
+  features on the small server of [`lsp_server.dart`](tool/lsp_server.dart) (a new one is a
+  class and one entry in `flutter_lsp.dart`):
+  [`snippet_completions.dart`](tool/snippet_completions.dart) offers the snippets as completions
+  carrying edits that add their imports (Zed's own snippets can only insert at the cursor), only
+  for the word being typed (`sc` offers `sc`, `scf`, ...), never after `{`, `(` or `.`;
+  [`runner_installation.dart`](tool/runner_installation.dart) keeps the programs of the tasks in
+  `~/.zed-flutter/`, since a task cannot name the extension's directory, which differs between
+  OSes; [`build_runner_watches.dart`](tool/build_runner_watches.dart) runs the watches (above).
+- [`build_runner.dart`](tool/build_runner.dart) says where build_runner runs for a package and
+  with which arguments, for the watches, `dart_run.dart` and
+  [`build_runner_run.dart`](tool/build_runner_run.dart) (the build_runner tasks);
+  [`pubspec.dart`](tool/pubspec.dart) reads `pubspec.yaml` and `pubspec.lock` for all the tools,
+  [`paths.dart`](tool/paths.dart) compares their paths and finds the home directory.
 - [`devices.dart`](tool/devices.dart) finds and starts devices; [`devtools.dart`](tool/devtools.dart)
   starts DevTools, keeps the sessions, opens windows and Zed;
   [`protocol.dart`](tool/protocol.dart) frames the messages of the proxy and the server.
@@ -548,6 +583,7 @@ The Dart language server has snippets of its own, so these do not repeat them: `
 ## Development
 
 ```sh
+cargo test                          # the Rust side: debug configurations, the locators, the registries
 python3 tests/check_snippets.py     # the snippets; needs flutter in PATH
 python3 tests/check_proxy.py        # the debug adapter proxy, against a stand-in for Flutter
 python3 tests/check_devtools.py     # DevTools: served, its pages opened, widgets opened in Zed
@@ -562,6 +598,11 @@ python3 tests/check_hot_reload.py [--device <target>]   # a real app: reload, re
 `languages/dart` against it (Zed drops a query that does not compile, and with `highlights.scm` all
 highlighting), and checks the captures marked in `tests/queries/highlights.dart`: a `^` under a
 token names the capture expected there. Add a line there with each change to `highlights.scm`.
+What `outline.scm` lists of `tests/queries/outline.dart` is compared with `OUTLINE` in
+`check_queries.py`. Every capture of `highlights.scm` and style of `semantic_token_rules.json` must have a colour in
+both Farum Azula themes (theirs or one they fall back to), and a rule without a style must be the
+first of its token type (the only place Zed honours one). `dart-queries-check tree <file.dart>`
+prints a file's syntax tree, to write a query against.
 It also checks the code blocks of documentation comments: that `tree-sitter-dartdoc/src` is what its
 `grammar.js` generates and its corpus (`test/corpus`) passes, and that in
 `tests/queries/doc_comments.dart`, with its layers built the way Zed builds them, the marks of code
