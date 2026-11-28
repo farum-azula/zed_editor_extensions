@@ -178,6 +178,64 @@ fn http_service_clients_go_where_their_group_does() {
     assert_eq!(generate(&catalog, code, &source, 10).unwrap().endpoint.url, "{{baseUrl}}/stock");
 }
 
+/// A group named by a constant: one the project declares (`Groups.catalog`), and one of the
+/// Supabase starter's (`EdgeFunctions.group`), which only the framework's table knows.
+#[test]
+fn http_service_groups_named_by_constants() {
+    let dir = project(
+        "http-services-constants",
+        &[
+            ("pubspec.yaml", "name: shop\n"),
+            (
+                "lib/resources/application.properties",
+                "spring.http.serviceclient.catalog-v2.base-url=https://catalog.example\nspring.http.serviceclient.supabase-functions.base-url=https://abc.supabase.co/functions/v1\n",
+            ),
+            (
+                "lib/src/groups.dart",
+                "const String reviewsGroup = 'catalog-v2';\nabstract final class Groups {\n  static const String other = 'other';\n  static const String catalog = 'catalog-v2';\n}\n",
+            ),
+            (
+                "lib/src/clients_config.dart",
+                "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@Configuration()\n@ImportHttpServices(group: Groups.catalog, types: [BookService])\n@ImportHttpServices(group: reviewsGroup, types: [Reviews])\n@ImportHttpServices(\n  group: EdgeFunctions.group,\n  types: [Functions],\n)\nclass ClientsConfig {}\n",
+            ),
+        ],
+    );
+    let source = dir.join("lib/src/clients.dart");
+    let code = "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@HttpExchange('/books')\nabstract interface class BookService {\n  @GetExchange('/{isbn}')\n  Future<Book> find(@PathVariable() String isbn);\n}\nabstract interface class Functions {\n  @PostExchange('/hello')\n  Future<String> hello();\n}\nabstract interface class Reviews {\n  @GetExchange('/reviews')\n  Future<String> reviews();\n}\n";
+    let catalog = zed_http::catalog::for_source(&source).unwrap();
+    assert_eq!(generate(&catalog, code, &source, 3).unwrap().endpoint.url, "https://catalog.example/books/{{isbn}}");
+    assert_eq!(
+        generate(&catalog, code, &source, 7).unwrap().endpoint.url,
+        "https://abc.supabase.co/functions/v1/hello"
+    );
+    // A top-level constant, named without a class.
+    assert_eq!(generate(&catalog, code, &source, 11).unwrap().endpoint.url, "https://catalog.example/reviews");
+}
+
+/// Java: a group named by an interface's constant.
+#[test]
+fn java_http_service_groups_named_by_constants() {
+    let dir = project(
+        "java-http-services-constants",
+        &[
+            ("pom.xml", ""),
+            (
+                "src/main/resources/application.properties",
+                "spring.http.serviceclient.catalog.base-url=http://catalog.internal\n",
+            ),
+            ("src/main/java/com/shop/Groups.java", "public interface Groups {\n  String CATALOG = \"catalog\";\n}\n"),
+            (
+                "src/main/java/com/shop/ClientConfig.java",
+                "@ImportHttpServices(group = Groups.CATALOG, types = BookClient.class)\nclass ClientConfig {}\n",
+            ),
+        ],
+    );
+    let source = dir.join("src/main/java/com/shop/BookClient.java");
+    let code = "import org.springframework.web.service.annotation.*;\n@HttpExchange(\"/books\")\npublic interface BookClient {\n  @GetExchange(\"/{isbn}\")\n  Book find(@PathVariable String isbn);\n}\n";
+    let catalog = zed_http::catalog::for_source(&source).unwrap();
+    assert_eq!(generate(&catalog, code, &source, 3).unwrap().endpoint.url, "http://catalog.internal/books/{{isbn}}");
+}
+
 /// Spring's HTTP service clients (Java): the group of an `@ImportHttpServices` elsewhere,
 /// matched by the whole class name, and its base URL from `application.yml`.
 #[test]

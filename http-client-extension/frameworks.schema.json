@@ -42,7 +42,7 @@
         "base_property": { "type": "string", "description": "The property holding the URL of the client named {name}, by a base pattern or a registration, e.g. spring.http.serviceclient.{name}.base-url. Resolved from the project's configuration, else a {{variable}} named after its last two segments ({{catalogBaseUrl}})." },
         "registrations": {
           "type": "array",
-          "description": "Where client classes are registered under a name away from the class, looked up in the class's file, then in the project's other files of the language: {name} the name, {keys} the list of classes ([BookService, AuthorService], {BookService.class}) or {type} a single one. E.g. @ImportHttpServices(...group: \"{name}\"...types: {keys}. Its base_property gives the base URL.",
+          "description": "Where client classes are registered under a name away from the class, looked up in the class's file, then in the project's other files of the language: {name} the name, or {ref} the constant holding it (EdgeFunctions.group: its string, declared in the project's files or listed in constants), {keys} the list of classes ([BookService, AuthorService], {BookService.class}) or {type} a single one. E.g. @ImportHttpServices(...group: \"{name}\"...types: {keys}. Its base_property gives the base URL.",
           "items": {
             "oneOf": [
               { "$ref": "#/definitions/pattern" },
@@ -58,6 +58,9 @@
             ]
           }
         },
+        "constants": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Constants of the framework's own packages a registration may name its group by, which the project's files do not declare: {\"EdgeFunctions.group\": \"supabase-functions\"}." },
+        "defaults": { "$ref": "#/definitions/patterns", "description": "What a client class's annotation sets for the routes of the class, at class level like the prefix: {method} for the routes that name none, {keys} a list of Name=value headers for all of them. E.g. @HttpExchange.of(...method: HttpMethod.{method}." },
+        "header_values": { "$ref": "#/definitions/patterns", "description": "Headers a route's annotation gives a value: {keys}, a list of Name=value strings, or {path}, a single one. They replace the class's headers of the same name. E.g. headers: {keys}." },
         "prefix_scope": { "enum": ["class", "file"], "description": "class: an annotation right above a class declaration (default). file: the first match in the file." },
         "controller_token": { "type": "string", "description": "Token in the prefix replaced by the controller class name without the Controller suffix, e.g. [controller]." },
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" }, "minItems": 1, "description": "At one position the first matching pattern wins." },

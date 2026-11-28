@@ -111,7 +111,13 @@ pub fn render(method: &str, url: &str, name: &str, spec: &RequestSpec) -> String
         url.push_str(&format!("{separator}{}={{{{{variable}}}}}", parameter.name));
         variables.push(FileVariable { name: variable, value: parameter.kind.sample_variable() });
     }
-    let mut headers = vec!["Accept: application/json".to_string()];
+    let mut headers = Vec::new();
+    if !spec.header_values.iter().any(|(name, _)| name.eq_ignore_ascii_case("accept")) {
+        headers.push("Accept: application/json".to_string());
+    }
+    for (name, value) in &spec.header_values {
+        headers.push(format!("{name}: {value}"));
+    }
     if spec.auth {
         headers.push("Authorization: Bearer {{token}}".into());
     }

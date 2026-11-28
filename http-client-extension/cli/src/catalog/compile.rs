@@ -50,6 +50,10 @@ pub struct Framework {
     pub(super) base: Option<Matcher>,
     pub(super) base_property: Option<String>,
     pub(super) registrations: Option<Registrations>,
+    /// One matcher per pattern: several may start at the same annotation (its method, its
+    /// headers), and a matcher keeps one hit per position.
+    pub(super) defaults: Vec<Matcher>,
+    pub(super) header_values: Option<Matcher>,
     pub(super) controller_token: Option<String>,
     pub(super) routes: Matcher,
     pub(super) route_definitions: Vec<RouteDefinition>,
@@ -181,7 +185,20 @@ fn compile_framework(context: &str, key: &str, framework: FrameworkDefinition) -
         prefix_scope: framework.prefix_scope,
         base: compile(&framework.base, "base")?,
         base_property: framework.base_property,
-        registrations: Registrations::compile(framework.registrations, &format!("{context}.registrations"))?,
+        registrations: Registrations::compile(
+            framework.registrations,
+            framework.constants,
+            &format!("{context}.registrations"),
+        )?,
+        defaults: framework
+            .defaults
+            .iter()
+            .map(|pattern| compile(std::slice::from_ref(pattern), "defaults"))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect(),
+        header_values: compile(&framework.header_values, "header_values")?,
         controller_token: framework.controller_token,
         routes: compile(&route_patterns, "routes")?.ok_or_else(|| format!("{context}.routes: empty"))?,
         route_definitions,

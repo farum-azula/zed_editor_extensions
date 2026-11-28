@@ -81,11 +81,17 @@
             "@ImportHttpServices(...group = \"{name}\"...types = {type}.class",
             "@ImportHttpServices(...types = {keys}...group = \"{name}\"",
             "@ImportHttpServices(...types = {type}.class...group = \"{name}\"",
+            "@ImportHttpServices(...group = {ref}...types = {keys}",
+            "@ImportHttpServices(...group = {ref}...types = {type}.class",
+            "@ImportHttpServices(...types = {keys}...group = {ref}",
+            "@ImportHttpServices(...types = {type}.class...group = {ref}",
             { "pattern": "@ImportHttpServices(types = {keys})", "name": "default" },
             { "pattern": "@ImportHttpServices(types = {type}.class)", "name": "default" },
             { "pattern": "@ImportHttpServices({keys})", "name": "default" },
             { "pattern": "@ImportHttpServices({type}.class)", "name": "default" }
           ],
+          "defaults": ["@HttpExchange(...method = \"{method}\"", "@HttpExchange(...headers = {keys}", "@HttpExchange(...headers = \"{path}\""],
+          "header_values": ["headers = {keys}", "headers = \"{path}\""],
           "routes": [
             "@{method}Exchange(\"{path}\"",
             "@{method}Exchange(...url = \"{path}\"",
@@ -98,7 +104,8 @@
             "@HttpExchange(...method = \"{method}\"",
             { "pattern": "@HttpExchange(\"{path}\"", "method": "GET" },
             { "pattern": "@HttpExchange(...url = \"{path}\"", "method": "GET" },
-            { "pattern": "@HttpExchange(...value = \"{path}\"", "method": "GET" }
+            { "pattern": "@HttpExchange(...value = \"{path}\"", "method": "GET" },
+            { "pattern": "@HttpExchange", "method": "GET" }
           ],
           "path_params": ["braces"],
           "query": [
@@ -436,9 +443,14 @@
           "registrations": [
             "@ImportHttpServices(...group: \"{name}\"...types: {keys}",
             "@ImportHttpServices(...types: {keys}...group: \"{name}\"",
+            "@ImportHttpServices(...group: {ref}...types: {keys}",
+            "@ImportHttpServices(...types: {keys}...group: {ref}",
             { "pattern": "@ImportHttpServices(types: {keys})", "name": "default" },
             { "pattern": "@ImportHttpServices(types: {keys},)", "name": "default" }
           ],
+          "constants": { "EdgeFunctions.group": "supabase-functions" },
+          "defaults": ["@HttpExchange.of(...method: HttpMethod.{method}", "@HttpExchange.of(...headers: {keys}"],
+          "header_values": ["headers: {keys}"],
           "routes": [
             "@{method}Exchange(\"{path}\")",
             "@{method}Exchange.of(...url: \"{path}\"",
@@ -466,6 +478,10 @@
             {
               "code": "import 'package:spring_boot_starter_flutter_security/spring_boot_starter_flutter_security.dart';\n@HttpExchange('/api/books')\n@Retryable(\n  includes: [ResourceAccessException],\n  maxRetries: 2,\n)\nabstract interface class CatalogClient {\n  @GetExchange()\n  Future<PageOfBooks> page({@RequestParam('q') String? query});\n}\n@HttpExchange.of(url: '/deliveries', accept: ['application/json'])\nabstract interface class Deliveries {\n  @PostExchange.of(headers: [r'X-Shop=${neon.shop.name}'])\n  Future<Delivery> order(@RequestBody() DeliveryRequest request);\n}\n@Configuration()\n@ImportHttpServices(types: [Deliveries])\nclass ClientConfig {}",
               "expect": ["GET {{baseUrl}}/api/books", "POST {{defaultBaseUrl}}/deliveries"]
+            },
+            {
+              "code": "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@HttpExchange.of(url: '/orders', method: HttpMethod.post, headers: ['X-Api=1'])\nabstract interface class Orders {\n  @HttpExchange()\n  Future<Order> place(@RequestBody() Order order);\n  @GetExchange('/{id}')\n  Future<Order> find(@PathVariable() String id);\n}",
+              "expect": ["POST {{baseUrl}}/orders", "GET {{baseUrl}}/orders/{{id}}"]
             }
           ]
         }

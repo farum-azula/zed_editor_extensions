@@ -770,8 +770,13 @@ your server, so its request goes to that service's address, read from the same c
   `spring.http.serviceclient.<group>.base-url`. The group is the one of the
   `@ImportHttpServices(group: 'catalog', types: [BookService, ...])` that lists the interface — in
   its own file or in any other source file of the project (build output and hidden directories
-  aside); without `group:` it is `default`. An interface no `@ImportHttpServices` lists (or one
-  whose group is a constant, not a string) goes to `{{baseUrl}}`.
+  aside); without `group:` it is `default`. A group named by a constant is the string it holds,
+  read from the project's files (`group: Groups.catalog`, a top-level `const`, Java's
+  `Groups.CATALOG`), or, for the constants of Spring for Dart's own starters, from the catalog
+  (`group: EdgeFunctions.group` → `supabase-functions`). An interface no `@ImportHttpServices`
+  lists goes to `{{baseUrl}}`. The interface's `@HttpExchange` also gives a `method` to its
+  methods that name none, and `headers: ['Name=value']` sent with every request of the interface
+  (a method's own header of the same name replaces it; one a parameter sends stays its variable).
 
   ```properties
   # lib/resources/application.properties (Spring for Dart), src/main/resources/ (Java)
@@ -786,8 +791,8 @@ your server, so its request goes to that service's address, read from the same c
 
 Whatever cannot be resolved becomes a variable named after the last two segments of the property
 (`{{catalogBaseUrl}}`, `{{catalogUrl}}`, `{{mailUrl}}`), to fill in the environment file. In the
-catalog these are a framework's `base`, `base_property` and `registrations` (see
-`frameworks.schema.json`).
+catalog these are a framework's `base`, `base_property`, `registrations` and `constants`, and
+the interface's defaults its `defaults` and `header_values` (see `frameworks.schema.json`).
 
 #### URLs kept in a variable
 
@@ -1095,9 +1100,9 @@ The workflow refuses a tag that disagrees with `extension.toml`.
 - No support for WebSocket, gRPC, GraphQL subscriptions, or `HTTP/2`-specific features; send GraphQL queries as `POST` with JSON.
 - No cookie jar between requests; pass `Cookie` manually or via `{{name.response.headers.Set-Cookie}}`.
 - `$processEnv` values come from the Zed terminal's environment.
-- Generated requests of HTTP service clients take the interface's `@HttpExchange` URL as a prefix,
-  but not its other defaults (a `method`, `headers: ['Name=value']`, `accept`); a method without
-  its own method is a `GET`.
+- Generated requests of HTTP service clients take the interface's `@HttpExchange` URL, `method`
+  and `headers`, but not its `accept` or `contentType`; an annotation's arguments are read on one
+  line.
 
 ## Troubleshooting
 

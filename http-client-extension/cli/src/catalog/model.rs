@@ -3,6 +3,7 @@
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -136,6 +137,21 @@ pub(super) struct FrameworkDefinition {
     /// project: `@ImportHttpServices(group: 'catalog', types: [BookService])`.
     #[serde(default)]
     pub registrations: Vec<RegistrationEntry>,
+    /// Constants of the framework's own packages that a registration may name its group by
+    /// (`@ImportHttpServices(group: EdgeFunctions.group, ...)`), which the project's files do not
+    /// declare: `EdgeFunctions.group` → `supabase-functions`. Constants of the project itself are
+    /// read from its files.
+    #[serde(default)]
+    pub constants: BTreeMap<String, String>,
+    /// What a client class's annotation sets for the routes of the class that set none, at class
+    /// level like the prefix: a `{method}`, and `{keys}`, a list of `Name=value` headers
+    /// (`@HttpExchange.of(method: HttpMethod.post, headers: ['X-Api=1'])` on the interface).
+    #[serde(default)]
+    pub defaults: Vec<String>,
+    /// Headers a route's annotation gives a value: `{keys}`, a list of `Name=value` strings, or a
+    /// single one as `{path}` (`@PostExchange.of(headers: ['X-Shop=${shop.name}'])`).
+    #[serde(default)]
+    pub header_values: Vec<String>,
     #[serde(default)]
     pub controller_token: Option<String>,
     pub routes: Vec<RouteEntry>,

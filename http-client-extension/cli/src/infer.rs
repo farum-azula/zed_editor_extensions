@@ -35,6 +35,8 @@ impl Field {
 pub struct RequestSpec {
     pub query: Vec<Field>,
     pub headers: Vec<String>,
+    /// Headers the source gives a value (`Name`, value): sent as they are.
+    pub header_values: Vec<(String, String)>,
     /// Cookie names, sent together in one `Cookie` header.
     pub cookies: Vec<String>,
     pub auth: bool,

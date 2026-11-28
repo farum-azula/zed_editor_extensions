@@ -4,7 +4,7 @@
 
 use super::compile::{Framework, Language};
 use super::model::HeaderCase;
-use super::routes::Route;
+use super::routes::{header_values, resolve_placeholders, Route};
 use super::types::TypeResolver;
 use super::Catalog;
 use crate::endpoint::{self, Endpoint};
@@ -44,6 +44,10 @@ struct Source<'a> {
     path_variables: &'a [String],
     /// Patterns of the whole catalog that mean a request is authorized.
     catalog_auth: Option<&'a Matcher>,
+    /// The headers the route's class gives every route of the class.
+    class_headers: &'a [(String, String)],
+    /// The file, whose project's configuration fills in placeholders.
+    path: &'a Path,
 }
 
 impl Source<'_> {
@@ -57,6 +61,7 @@ impl Source<'_> {
 #[derive(Default)]
 struct Draft {
     headers: Vec<String>,
+    header_values: Vec<(String, String)>,
     cookies: Vec<String>,
     /// Parameter names that are known to be something else than a query parameter.
     claimed: Vec<String>,
@@ -72,8 +77,9 @@ trait Contributor {
 }
 
 /// Headers and cookies come first: their parameter names must not be reported as query parameters.
-const CONTRIBUTORS: [&dyn Contributor; 8] = [
+const CONTRIBUTORS: [&dyn Contributor; 9] = [
     &Headers,
+    &HeaderValues,
     &Cookies,
     &IgnoredNames,
     &QueryParameters,
@@ -85,6 +91,8 @@ const CONTRIBUTORS: [&dyn Contributor; 8] = [
 
 /// `@RequestHeader("X-Id")`, `req.header('X-Tenant')`, `headers: {...}`.
 struct Headers;
+/// `headers: ['X-Api=1']` on the route's annotation, over those of its class.
+struct HeaderValues;
 /// `@CookieValue("session")`.
 struct Cookies;
 /// `@RequestPart("file") MultipartFile file`: a part of a multipart body.
@@ -116,6 +124,28 @@ impl Contributor for Headers {
                 if !draft.headers.iter().any(|known| known.eq_ignore_ascii_case(&header)) {
                     draft.headers.push(header);
                 }
+            }
+        }
+    }
+}
+
+impl Contributor for HeaderValues {
+    fn contribute(&self, source: &Source, draft: &mut Draft) {
+        let own: Vec<(String, String)> = source
+            .hits(&source.framework.header_values)
+            .flat_map(|hit| header_values(hit.get("keys").or(hit.get("path")).unwrap_or_default()))
+            .map(|(name, value)| (name, resolve_placeholders(&value, source.path)))
+            .collect();
+        // As Spring: the route's own headers replace those of its class of the same name.
+        let inherited: Vec<(String, String)> = source
+            .class_headers
+            .iter()
+            .filter(|(name, _)| !own.iter().any(|(mine, _)| mine.eq_ignore_ascii_case(name)))
+            .cloned()
+            .collect();
+        for (name, value) in inherited.into_iter().chain(own) {
+            if !draft.header_values.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
+                draft.header_values.push((name, value));
             }
         }
     }
@@ -273,10 +303,14 @@ impl Draft {
     /// The spec of a `method` request: rendered headers left out, path parameters out of the
     /// query, and the body where the method has one: multipart if it has parts, else JSON.
     fn finish(self, method: &str, path_variables: &[String]) -> RequestSpec {
-        let Draft { mut headers, cookies, mut query, body, parts, auth, .. } = self;
-        headers.retain(|header| !RENDERED_HEADERS.iter().any(|rendered| header.eq_ignore_ascii_case(rendered)));
+        let Draft { mut headers, mut header_values, cookies, mut query, body, parts, auth, .. } = self;
+        let rendered = |header: &str| RENDERED_HEADERS.iter().any(|rendered| header.eq_ignore_ascii_case(rendered));
+        headers.retain(|header| !rendered(header));
+        // A header a parameter sends is the parameter's variable, not the annotation's value.
+        header_values
+            .retain(|(name, _)| !rendered(name) && !headers.iter().any(|header| header.eq_ignore_ascii_case(name)));
         query.retain(|field| !path_variables.contains(&field.name));
-        let mut spec = RequestSpec { query, headers, cookies, auth, ..RequestSpec::default() };
+        let mut spec = RequestSpec { query, headers, header_values, cookies, auth, ..RequestSpec::default() };
         if WITHOUT_BODY.contains(&method) {
             body.into_iter().for_each(|field| add_field(&mut spec.query, field));
         } else if !parts.is_empty() {
@@ -295,11 +329,11 @@ impl Catalog {
         let route = routes.iter().find(|route| route.line == line)?;
         let route_lines: BTreeSet<usize> =
             routes.iter().filter(|route| !route.endpoint.weak).map(|route| route.line).collect();
-        let spec = self.infer(text, route, &route_lines);
+        let spec = self.infer(text, path, route, &route_lines);
         Some(InferredRequest { endpoint: route.endpoint.clone(), spec, framework: route.framework.clone() })
     }
 
-    fn infer(&self, text: &str, route: &Route, route_lines: &BTreeSet<usize>) -> RequestSpec {
+    fn infer(&self, text: &str, path: &Path, route: &Route, route_lines: &BTreeSet<usize>) -> RequestSpec {
         let language = &self.languages[route.language_index];
         let framework = &language.frameworks[route.framework_index];
         let lines: Vec<&str> = text.lines().collect();
@@ -322,6 +356,8 @@ impl Catalog {
             window: &window,
             path_variables: &path_variables,
             catalog_auth: self.auth.as_ref(),
+            class_headers: &route.class_headers,
+            path,
         };
         let mut draft = Draft::default();
         for contributor in CONTRIBUTORS {

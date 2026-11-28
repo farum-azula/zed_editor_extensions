@@ -183,6 +183,68 @@ class Book {
     assert_eq!(s.body, None, "the parts are the body");
 }
 
+/// What the interface's `@HttpExchange` sets: the method of the routes that name none, and
+/// headers with values for all of them, a route's own header of the same name replacing it.
+#[test]
+fn dart_http_service_interface_defaults() {
+    let dart = r#"import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';
+@HttpExchange.of(url: '/orders', method: HttpMethod.post, headers: ['X-Api=1', 'Accept=application/vnd.shop+json'])
+abstract interface class Orders {
+  @HttpExchange()
+  Future<Order> place(@RequestBody() Order order);
+  @GetExchange('/{id}')
+  Future<Order> find(@PathVariable() String id);
+  @HttpExchange.of(url: '/{id}', headers: ['X-Api=2'])
+  Future<void> touch(@PathVariable() String id, @RequestHeader('X-Api') String api);
+}
+abstract interface class Plain {
+  @HttpExchange.of(url: '/plain')
+  Future<void> plain();
+}
+class Order {
+  final String id;
+}
+"#;
+    let request = |line| Catalog::builtin().request(dart, Path::new("a.dart"), line).expect("a route on the line");
+    let place = request(3);
+    assert_eq!(place.endpoint.method, "POST", "the interface's method");
+    assert_eq!(place.endpoint.url, "{{baseUrl}}/orders");
+    let values =
+        vec![("X-Api".to_string(), "1".to_string()), ("Accept".to_string(), "application/vnd.shop+json".to_string())];
+    assert_eq!(place.spec.header_values, values);
+    let find = request(5);
+    assert_eq!(find.endpoint.method, "GET", "a method of its own wins");
+    assert_eq!(find.spec.header_values, values);
+    let touch = request(7);
+    assert_eq!(touch.endpoint.method, "POST");
+    assert_eq!(touch.spec.headers, vec!["X-Api"], "a parameter's header is its variable");
+    assert_eq!(touch.spec.header_values, vec![("Accept".to_string(), "application/vnd.shop+json".to_string())]);
+    let plain = request(11);
+    assert_eq!(plain.endpoint.method, "GET", "another interface's defaults do not apply");
+    assert!(plain.spec.header_values.is_empty());
+}
+
+#[test]
+fn java_http_service_interface_defaults() {
+    let java = r#"import org.springframework.web.service.annotation.*;
+@HttpExchange(url = "/orders", method = "POST", headers = {"X-Api=1"})
+public interface Orders {
+    @HttpExchange
+    Order place(@RequestBody Order order);
+    @HttpExchange(url = "/{id}", headers = "X-Api=2")
+    void touch(@PathVariable String id);
+}
+record Order(String id) {}
+"#;
+    let request = |line| Catalog::builtin().request(java, Path::new("Orders.java"), line).expect("a route on the line");
+    let place = request(3);
+    assert_eq!(place.endpoint.method, "POST");
+    assert_eq!(place.spec.header_values, vec![("X-Api".to_string(), "1".to_string())]);
+    let touch = request(5);
+    assert_eq!(touch.endpoint.method, "POST");
+    assert_eq!(touch.spec.header_values, vec![("X-Api".to_string(), "2".to_string())]);
+}
+
 #[test]
 fn infer_java_http_service_clients() {
     let java = r#"import org.springframework.web.service.annotation.*;
@@ -433,6 +495,15 @@ fn catalog_loading_errors() {
         "frameworks": {"f": {"name": "F", "routes": ["get(\"{route}\")"]}}}}}"#;
     let err = Catalog::from_sources(&[no_fields]).err().unwrap();
     assert!(err.contains("models.fields: empty"), "{err}");
+
+    for field in ["registrations", "defaults"] {
+        let bad_pattern = format!(
+            r#"{{"languages": {{"demo": {{"name": "D", "extensions": ["d"],
+            "frameworks": {{"f": {{"name": "F", "routes": ["get(\"{{route}}\")"], "{field}": ["@X({{bogus}})"]}}}}}}}}}}"#
+        );
+        let err = Catalog::from_sources(&[&bad_pattern]).err().unwrap();
+        assert!(err.contains(field) && err.contains("bogus"), "{err}");
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 

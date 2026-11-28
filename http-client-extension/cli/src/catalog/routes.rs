@@ -33,6 +33,9 @@ pub struct Route {
     pub(super) language_index: usize,
     pub(super) framework_index: usize,
     pub(super) hit: Hit,
+    /// The headers its class's annotation gives every route of the class (`Name`, value), the
+    /// project's placeholders resolved.
+    pub(super) class_headers: Vec<(String, String)>,
 }
 
 /// A framework that may appear in a file, by its position in the catalog.
@@ -70,6 +73,7 @@ impl Catalog {
                 let Some(endpoint) = context.endpoint(&hit, line) else { continue };
                 let replaces = by_line.get(&line).is_none_or(|found| found.endpoint.weak && !endpoint.weak);
                 if replaces {
+                    let class_headers = context.class_defaults(line).headers;
                     let route = Route {
                         line,
                         end_line: lines.line_of(hit.end.saturating_sub(1)),
@@ -78,6 +82,7 @@ impl Catalog {
                         language_index: candidate.language,
                         framework_index: candidate.framework,
                         hit,
+                        class_headers,
                     };
                     by_line.insert(line, route);
                 }
@@ -139,6 +144,7 @@ impl RouteContext<'_> {
         let method = hit
             .get("method")
             .map(str::to_uppercase)
+            .or_else(|| self.class_defaults(line).method)
             .or_else(|| definition.method.clone())
             .unwrap_or_else(|| "GET".into());
         let mut path = match (&definition.url, hit.get("ref")) {
@@ -160,6 +166,36 @@ impl RouteContext<'_> {
             }
         }
         Some(Endpoint { method, url: endpoint::to_http_url(&path), weak: definition.weak })
+    }
+
+    /// What the class of the route on `line` sets for its routes (`@HttpExchange.of(method:
+    /// HttpMethod.post, headers: ['X-Api=1'])` on the interface): a method for those that name
+    /// none, and headers for all of them.
+    fn class_defaults(&self, line: usize) -> ClassDefaults {
+        let mut defaults = ClassDefaults::default();
+        let Some(owner) =
+            self.language.enclosing_class(self.text, line).filter(|_| !self.framework.defaults.is_empty())
+        else {
+            return defaults;
+        };
+        let hits = self.framework.defaults.iter().flat_map(|matcher| matcher.hits(self.text));
+        for hit in hits.filter(|hit| self.annotates(hit, line) == Some(owner)) {
+            if let Some(method) = hit.get("method") {
+                defaults.method = Some(method.to_uppercase());
+            }
+            if let Some(list) = hit.get("keys").or(hit.get("path")) {
+                for (name, value) in header_values(list) {
+                    defaults.headers.push((name, self.resolved(&value)));
+                }
+            }
+        }
+        defaults
+    }
+
+    /// `text` with the project's `${...}` placeholders filled in, `{{variable}}` for those it
+    /// does not set.
+    fn resolved(&self, text: &str) -> String {
+        resolve_placeholders(text, self.source)
     }
 
     /// The prefix that applies to the route on `line`: the file's, or that of its class.
@@ -200,12 +236,7 @@ impl RouteContext<'_> {
         if !raw.contains("${") {
             return Some(raw);
         }
-        let properties = server::project_properties(self.source).unwrap_or_default();
-        let resolution = server::resolve(&raw, &properties);
-        let mut resolved = resolution.text;
-        for key in resolution.missing {
-            resolved = resolved.replace(&format!("${{{key}}}"), &format!("{{{{{}}}}}", server::variable_for(&key)));
-        }
+        let mut resolved = self.resolved(&raw);
         if !resolved.contains("://") && !resolved.starts_with("{{") {
             resolved = format!("http://{resolved}");
         }
@@ -238,6 +269,57 @@ impl RouteContext<'_> {
         let property = self.framework.base_property.as_deref()?;
         Some(format!("${{{}}}", property.replace("{name}", name)))
     }
+}
+
+/// What a client class's annotation sets for the routes of the class.
+#[derive(Default)]
+struct ClassDefaults {
+    method: Option<String>,
+    headers: Vec<(String, String)>,
+}
+
+/// `text` with the `${...}` placeholders the configuration of the project of `source` sets filled
+/// in, and `{{variable}}` for the others (`${catalog.url}` → `{{catalogUrl}}`).
+pub(super) fn resolve_placeholders(text: &str, source: &Path) -> String {
+    if !text.contains("${") {
+        return text.to_string();
+    }
+    let properties = server::project_properties(source).unwrap_or_default();
+    let resolution = server::resolve(text, &properties);
+    let mut resolved = resolution.text;
+    for key in resolution.missing {
+        resolved = resolved.replace(&format!("${{{key}}}"), &format!("{{{{{}}}}}", server::variable_for(&key)));
+    }
+    resolved
+}
+
+/// The `Name=value` headers of a list literal (`['X-Api=1', r'X-Shop=${shop.name}']`,
+/// `{"X-Api=1"}`) or of a single string's contents: each name with its value, in order. An item
+/// without `=` names no value and is left out.
+pub(super) fn header_values(list: &str) -> Vec<(String, String)> {
+    let items: Vec<String> = match list.trim().strip_prefix(['[', '{']) {
+        Some(inner) => {
+            let inner = inner.trim_end().trim_end_matches([']', '}']);
+            string_contents(inner)
+        }
+        None => vec![list.to_string()],
+    };
+    items
+        .iter()
+        .filter_map(|item| item.split_once('='))
+        .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
+        .filter(|(name, _)| !name.is_empty())
+        .collect()
+}
+
+/// The contents of the string literals in `text`, in order (`'a', r"b"` → `a`, `b`).
+fn string_contents(text: &str) -> Vec<String> {
+    static STRING: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""([^"]*)"|'([^']*)'"#).expect("the string literal pattern is a valid regex"));
+    STRING
+        .captures_iter(text)
+        .filter_map(|found| found.get(1).or(found.get(2)).map(|content| content.as_str().to_string()))
+        .collect()
 }
 
 /// Is `path` a whole URL, not a path?

@@ -124,3 +124,16 @@ fn request_names_come_from_the_method_and_path() {
     assert_eq!(slug("Create User!"), "create-user");
     assert_eq!(slug("???"), "");
 }
+
+/// Headers with a value are sent as they are; one named `Accept` replaces the default.
+#[test]
+fn renders_header_values() {
+    let spec = RequestSpec {
+        header_values: vec![("X-Api".into(), "1".into()), ("Accept".into(), "application/vnd.shop+json".into())],
+        ..Default::default()
+    };
+    let out = render("GET", "{{baseUrl}}/orders", "get-orders", &spec);
+    assert!(out.contains("X-Api: 1\n"), "{out}");
+    assert!(out.contains("Accept: application/vnd.shop+json\n"), "{out}");
+    assert!(!out.contains("Accept: application/json"), "{out}");
+}
