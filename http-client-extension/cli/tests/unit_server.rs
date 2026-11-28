@@ -56,6 +56,9 @@ fn placeholders() {
     assert_eq!(resolve("${a:${host}}", &p), resolved("h", vec![]));
     assert_eq!(variable_for("catalog.url"), "catalogUrl");
     assert_eq!(variable_for("spring.cloud.openfeign.client.config.mail.url"), "mailUrl");
+    // Not `baseUrl`, the application's own address: the group names the variable.
+    assert_eq!(variable_for("spring.http.serviceclient.catalog.base-url"), "catalogBaseUrl");
+    assert_eq!(variable_for("api_url"), "apiUrl");
 }
 
 #[test]
@@ -126,20 +129,83 @@ fn the_environment_follows_the_application() {
     assert!(!content.contains("gives"), "{content}");
 }
 
+/// Spring Cloud OpenFeign (Java): `@FeignClient(url = ...)` with the configuration's values.
 #[test]
 fn feign_urls_come_from_the_configuration() {
     let dir = project(
         "feign",
+        &[("pom.xml", ""), ("src/main/resources/application.properties", "catalog.url=https://catalog.example\n")],
+    );
+    let source = dir.join("src/main/java/Catalog.java");
+    let code = "import org.springframework.cloud.openfeign.FeignClient;\nimport org.springframework.web.bind.annotation.*;\n@FeignClient(name = \"catalog\", url = \"${catalog.url}\", path = \"/api\")\npublic interface Catalog {\n  @GetMapping(\"/books/{isbn}\")\n  Object find(@PathVariable String isbn);\n}\n";
+    let catalog = zed_http::catalog::for_source(&source).unwrap();
+    let endpoint = generate(&catalog, code, &source, 4).unwrap().endpoint;
+    assert_eq!(endpoint.url, "https://catalog.example/api/books/{{isbn}}");
+}
+
+/// Spring for Dart's HTTP service clients: the interface is registered in a group by an
+/// `@ImportHttpServices` in another file of the project, and the group's base URL is configured.
+#[test]
+fn http_service_clients_go_where_their_group_does() {
+    let stale = "@ImportHttpServices(group: 'stale', types: [Stock])\n";
+    let dir = project(
+        "http-services",
         &[
             ("pubspec.yaml", "name: shop\n"),
-            ("lib/resources/application.properties", "catalog.url=https://catalog.example\n"),
+            (
+                "lib/resources/application.properties",
+                "spring.http.serviceclient.supplier.base-url=${neon.supplier.url}\nneon.supplier.url=https://supplier.example/v1\n",
+            ),
+            (
+                "lib/src/supplier/supplier_config.dart",
+                "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@Configuration()\n@ImportHttpServices(\n  group: 'supplier',\n  types: [\n    SupplierOffers,\n    SupplierDeliveries,\n  ],\n)\nclass SupplierClientConfig {}\n",
+            ),
+            // Not the project's sources: hidden directories, build output, other languages,
+            // and the file's own copy on disk (the open document is what counts).
+            (".dart_tool/build/generated.dart", stale),
+            ("build/generated.dart", stale),
+            ("lib/src/notes.txt", stale),
+            ("lib/src/supplier/supplier_clients.dart", stale),
         ],
     );
-    let source = dir.join("lib/src/client.dart");
-    let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient('catalog', url: r'${catalog.url}', path: '/api')\nabstract interface class Catalog {\n  @GetMapping('/books/{isbn}')\n  Future<Object> find(@PathVariable() String isbn);\n}\n";
+    let source = dir.join("lib/src/supplier/supplier_clients.dart");
+    let code = "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@HttpExchange('/offers')\n@Retryable(\n  maxRetries: 2,\n)\nabstract interface class SupplierOffers {\n  @GetExchange('/{isbn}')\n  Future<Offer> offer(@PathVariable() String isbn, @RequestParam('copies') int copies);\n}\nabstract interface class Stock {\n  @GetExchange('/stock')\n  Future<int> stock();\n}\n";
+    let catalog = zed_http::catalog::for_source(&source).unwrap();
+    let offer = generate(&catalog, code, &source, 6).unwrap();
+    assert_eq!(offer.endpoint.url, "https://supplier.example/v1/offers/{{isbn}}");
+    assert!(offer.content.contains("/offers/{{isbn}}?copies={{copies}}"), "{}", offer.content);
+    // Registered nowhere that counts: the application's own address.
+    assert_eq!(generate(&catalog, code, &source, 10).unwrap().endpoint.url, "{{baseUrl}}/stock");
+}
+
+/// Spring's HTTP service clients (Java): the group of an `@ImportHttpServices` elsewhere,
+/// matched by the whole class name, and its base URL from `application.yml`.
+#[test]
+fn java_http_service_clients_go_where_their_group_does() {
+    let dir = project(
+        "java-http-services",
+        &[
+            ("pom.xml", ""),
+            (
+                "src/main/resources/application.yml",
+                "spring:\n  http:\n    serviceclient:\n      catalog:\n        base-url: http://catalog.internal:8081\n",
+            ),
+            (
+                "src/main/java/com/shop/AClientConfig.java",
+                "@ImportHttpServices(group = \"v2\", types = {BookClientV2.class, AuthorClient.class})\nclass AClientConfig {}\n",
+            ),
+            (
+                "src/main/java/com/shop/ClientConfig.java",
+                "@ImportHttpServices(group = \"catalog\", types = BookClient.class)\nclass ClientConfig {}\n",
+            ),
+            ("target/classes/Stale.java", "@ImportHttpServices(group = \"stale\", types = BookClient.class)\n"),
+        ],
+    );
+    let source = dir.join("src/main/java/com/shop/BookClient.java");
+    let code = "import org.springframework.web.service.annotation.*;\n@HttpExchange(\"/books\")\npublic interface BookClient {\n  @GetExchange(\"/{isbn}\")\n  Book find(@PathVariable String isbn);\n}\n";
     let catalog = zed_http::catalog::for_source(&source).unwrap();
     let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
-    assert_eq!(endpoint.url, "https://catalog.example/api/books/{{isbn}}");
+    assert_eq!(endpoint.url, "http://catalog.internal:8081/books/{{isbn}}");
 }
 
 #[test]
@@ -192,16 +258,17 @@ fn environment_files_ensure_env_leaves_alone_or_completes() {
 fn feign_urls_without_a_scheme_or_a_value() {
     let dir = project(
         "feign-odd",
-        &[("pubspec.yaml", "name: shop\n"), ("lib/resources/application.properties", "mail.host=localhost:9000\n")],
+        &[("pom.xml", ""), ("src/main/resources/application.properties", "mail.host=localhost:9000\n")],
     );
-    let source = dir.join("lib/src/client.dart");
+    let source = dir.join("src/main/java/Mail.java");
     let catalog = zed_http::catalog::for_source(&source).unwrap();
+    let client = |annotation: &str| {
+        format!("import org.springframework.web.bind.annotation.*;\n{annotation}\ninterface Mail {{\n  @GetMapping(\"/inbox\")\n  Object inbox();\n}}\n")
+    };
     // A configured address without a scheme: http.
-    let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: r'${mail.host}')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
-    let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
+    let endpoint = generate(&catalog, &client("@FeignClient(url = \"${mail.host}\")"), &source, 3).unwrap().endpoint;
     assert_eq!(endpoint.url, "http://localhost:9000/inbox");
     // An empty url and no name: the environment's baseUrl.
-    let code = "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient(url: '')\nabstract interface class Mail {\n  @GetMapping('/inbox')\n  Future<Object> inbox();\n}\n";
-    let endpoint = generate(&catalog, code, &source, 3).unwrap().endpoint;
+    let endpoint = generate(&catalog, &client("@FeignClient(url = \"\")"), &source, 3).unwrap().endpoint;
     assert_eq!(endpoint.url, "{{baseUrl}}/inbox");
 }

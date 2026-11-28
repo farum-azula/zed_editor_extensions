@@ -13,6 +13,8 @@ pub enum FieldType {
     List,
     /// A model and its fields; an open object (a map) has none.
     Object(Vec<Field>),
+    /// An uploaded file (`MultipartFile`, `Uint8List`).
+    File,
 }
 
 /// A query parameter or a field of a JSON body.
@@ -33,15 +35,20 @@ impl Field {
 pub struct RequestSpec {
     pub query: Vec<Field>,
     pub headers: Vec<String>,
+    /// Cookie names, sent together in one `Cookie` header.
+    pub cookies: Vec<String>,
     pub auth: bool,
+    /// A JSON body.
     pub body: Option<Vec<Field>>,
+    /// The parts of a `multipart/form-data` body, which then replaces the JSON one.
+    pub parts: Vec<Field>,
 }
 
 impl FieldType {
     /// The value a field of this type gets in a generated JSON body.
     pub fn sample_value(&self) -> Value {
         match self {
-            FieldType::String => Value::String(String::new()),
+            FieldType::String | FieldType::File => Value::String(String::new()),
             FieldType::Integer => Value::from(0),
             FieldType::Float => Value::from(0.0),
             FieldType::Boolean => Value::Bool(false),
@@ -58,6 +65,20 @@ impl FieldType {
             FieldType::Integer | FieldType::Float => "1",
             FieldType::Boolean => "true",
             _ => "value",
+        }
+    }
+
+    /// A part named `name` of a `multipart/form-data` body, from its headers to its content: a
+    /// file read from `./<name>`, a model as JSON, anything else a text field.
+    pub fn form_part(&self, name: &str) -> String {
+        let disposition = format!("Content-Disposition: form-data; name=\"{name}\"");
+        match self {
+            FieldType::File => format!("{disposition}; filename=\"{name}\"\n\n< ./{name}"),
+            FieldType::Object(_) => {
+                let json = serde_json::to_string_pretty(&self.sample_value()).expect("sample values always serialize");
+                format!("{disposition}\nContent-Type: application/json\n\n{json}")
+            }
+            _ => format!("{disposition}\n\n{}", self.sample_variable()),
         }
     }
 }

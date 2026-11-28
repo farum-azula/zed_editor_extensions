@@ -3,6 +3,7 @@
 
 use super::compile::{Framework, Language, ALL_STYLES};
 use super::model::{Scope, Style};
+use super::registrations::RegistrationLookup;
 use super::source::LineIndex;
 use super::urls::Urls;
 use super::Catalog;
@@ -48,7 +49,19 @@ impl Catalog {
         for candidate in self.candidates(text, path) {
             let language = &self.languages[candidate.language];
             let framework = &language.frameworks[candidate.framework];
-            let context = RouteContext { urls: &self.urls, language, framework, text, lines: &lines, source: path };
+            let registrations = framework
+                .registrations
+                .as_ref()
+                .map(|registrations| RegistrationLookup::new(registrations, text, path, &language.extensions));
+            let context = RouteContext {
+                urls: &self.urls,
+                language,
+                framework,
+                text,
+                lines: &lines,
+                source: path,
+                registrations,
+            };
             for hit in framework.routes.hits(text) {
                 let line = lines.line_of(hit.start);
                 if context.is_class_prefix(&hit, line) {
@@ -104,6 +117,8 @@ struct RouteContext<'a> {
     text: &'a str,
     lines: &'a LineIndex,
     source: &'a Path,
+    /// Where the file's client classes are registered, if the framework registers them.
+    registrations: Option<RegistrationLookup<'a>>,
 }
 
 impl RouteContext<'_> {
@@ -131,14 +146,14 @@ impl RouteContext<'_> {
             (None, Some(reference)) => self.urls.held_by(self.text, reference)?,
             (None, None) => hit.get("path").or(hit.get("route")).unwrap_or_default().to_string(),
         };
-        let absolute = path.starts_with("http://") || path.starts_with("https://");
-        if !absolute && definition.prefixed.unwrap_or(true) {
+        if !is_absolute(&path) && definition.prefixed.unwrap_or(true) {
             if let Some(prefix) = self.prefix(line) {
                 path = join(&prefix, &path);
             }
         }
         let mut path = self.framework.path_params.convert(&path);
-        if !absolute {
+        // A prefix may be a whole URL too (`@HttpExchange("https://api.github.com")`).
+        if !is_absolute(&path) {
             if let Some(base) = self.base_url(line) {
                 path = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
                 path = path.trim_end_matches('/').to_string();
@@ -175,18 +190,13 @@ impl RouteContext<'_> {
         self.language.class_after(self.text, self.lines, hit_line)
     }
 
-    /// The base URL of a client class (`@FeignClient(url = ...)`) above `line`: an absolute URL
-    /// once the project's configuration resolves its placeholders, else `{{variable}}` for what is
-    /// missing (`${catalog.url}` → `{{catalogUrl}}`).
+    /// The base URL of the client class the route on `line` belongs to: the one its annotation
+    /// gives (`@FeignClient(url = ...)`), else that of the name it is registered under
+    /// (`@ImportHttpServices(group: 'catalog', ...)` → `spring.http.serviceclient.catalog.base-url`).
+    /// An absolute URL once the project's configuration resolves its placeholders, else
+    /// `{{variable}}` for what is missing (`${catalog.url}` → `{{catalogUrl}}`).
     fn base_url(&self, line: usize) -> Option<String> {
-        let matcher = self.framework.base.as_ref()?;
-        let owner = self.language.enclosing_class(self.text, line)?;
-        let hit = matcher.hits(self.text).filter(|hit| self.annotates(hit, line) == Some(owner)).last()?;
-        let raw = match (hit.get("path"), hit.get("name")) {
-            (Some(url), _) if !url.trim().is_empty() => url.trim().to_string(),
-            (_, Some(name)) => format!("${{spring.cloud.openfeign.client.config.{name}.url}}"),
-            _ => return None,
-        };
+        let raw = self.declared_base(line).or_else(|| self.registered_base(line))?;
         if !raw.contains("${") {
             return Some(raw);
         }
@@ -201,6 +211,38 @@ impl RouteContext<'_> {
         }
         Some(resolved)
     }
+
+    /// The base a `base` pattern on the class of the route on `line` gives: its URL, or the
+    /// property of its name. `None` for an empty URL.
+    fn declared_base(&self, line: usize) -> Option<String> {
+        let matcher = self.framework.base.as_ref()?;
+        let owner = self.language.enclosing_class(self.text, line)?;
+        let hit = matcher.hits(self.text).filter(|hit| self.annotates(hit, line) == Some(owner)).last()?;
+        match (hit.get("path"), hit.get("name")) {
+            (Some(url), _) if !url.trim().is_empty() => Some(url.trim().to_string()),
+            (_, Some(name)) => self.named_base(name),
+            _ => None,
+        }
+    }
+
+    /// The base of the name the class of the route on `line` is registered under.
+    fn registered_base(&self, line: usize) -> Option<String> {
+        let registrations = self.registrations.as_ref()?;
+        let owner = self.language.enclosing_class(self.text, line)?;
+        let name = registrations.name_of(&self.language.class_name(self.text, owner)?)?;
+        self.named_base(&name)
+    }
+
+    /// `${<base property>}` of the client named `name`.
+    fn named_base(&self, name: &str) -> Option<String> {
+        let property = self.framework.base_property.as_deref()?;
+        Some(format!("${{{}}}", property.replace("{name}", name)))
+    }
+}
+
+/// Is `path` a whole URL, not a path?
+fn is_absolute(path: &str) -> bool {
+    path.starts_with("http://") || path.starts_with("https://")
 }
 
 /// `https://{host}{path}` with captures filled in.
@@ -212,14 +254,16 @@ fn fill(template: &str, hit: &Hit) -> String {
     out
 }
 
-/// A prefix and a path joined by exactly one `/`, always starting with one.
+/// A prefix and a path joined by exactly one `/`, starting with one unless the prefix is a
+/// whole URL.
 fn join(prefix: &str, path: &str) -> String {
     let (prefix, path) = (prefix.trim_matches('/'), path.trim_start_matches('/'));
+    let root = if is_absolute(prefix) { "" } else { "/" };
     match (prefix.is_empty(), path.is_empty()) {
         (true, true) => "/".into(),
         (true, false) => format!("/{path}"),
-        (false, true) => format!("/{prefix}"),
-        (false, false) => format!("/{prefix}/{path}"),
+        (false, true) => format!("{root}{prefix}"),
+        (false, false) => format!("{root}{prefix}/{path}"),
     }
 }
 

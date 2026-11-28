@@ -57,10 +57,12 @@ impl Source<'_> {
 #[derive(Default)]
 struct Draft {
     headers: Vec<String>,
+    cookies: Vec<String>,
     /// Parameter names that are known to be something else than a query parameter.
     claimed: Vec<String>,
     query: Vec<Field>,
     body: Vec<Field>,
+    parts: Vec<Field>,
     auth: bool,
 }
 
@@ -69,12 +71,24 @@ trait Contributor {
     fn contribute(&self, source: &Source, draft: &mut Draft);
 }
 
-/// Headers come first: their parameter names must not be reported as query parameters.
-const CONTRIBUTORS: [&dyn Contributor; 6] =
-    [&Headers, &IgnoredNames, &QueryParameters, &BodyFields, &SignatureParameters, &Authorization];
+/// Headers and cookies come first: their parameter names must not be reported as query parameters.
+const CONTRIBUTORS: [&dyn Contributor; 8] = [
+    &Headers,
+    &Cookies,
+    &IgnoredNames,
+    &QueryParameters,
+    &BodyFields,
+    &BodyParts,
+    &SignatureParameters,
+    &Authorization,
+];
 
 /// `@RequestHeader("X-Id")`, `req.header('X-Tenant')`, `headers: {...}`.
 struct Headers;
+/// `@CookieValue("session")`.
+struct Cookies;
+/// `@RequestPart("file") MultipartFile file`: a part of a multipart body.
+struct BodyParts;
 /// Parameters the framework injects, which are no request parameters.
 struct IgnoredNames;
 /// `@RequestParam int page`, `req.query.page`, `queryParameters: {...}`.
@@ -103,6 +117,26 @@ impl Contributor for Headers {
                     draft.headers.push(header);
                 }
             }
+        }
+    }
+}
+
+impl Contributor for Cookies {
+    fn contribute(&self, source: &Source, draft: &mut Draft) {
+        for hit in source.hits(&source.framework.cookies) {
+            let Some(name) = hit.get("name") else { continue };
+            draft.claimed.push(name.to_string());
+            if !draft.cookies.iter().any(|known| known == name) {
+                draft.cookies.push(name.to_string());
+            }
+        }
+    }
+}
+
+impl Contributor for BodyParts {
+    fn contribute(&self, source: &Source, draft: &mut Draft) {
+        for hit in source.hits(&source.framework.parts) {
+            fields_from(&hit, source).into_iter().for_each(|field| add_field(&mut draft.parts, field));
         }
     }
 }
@@ -237,14 +271,16 @@ impl CaptureReader for TypeCapture {
 
 impl Draft {
     /// The spec of a `method` request: rendered headers left out, path parameters out of the
-    /// query, and the body where the method has one.
+    /// query, and the body where the method has one: multipart if it has parts, else JSON.
     fn finish(self, method: &str, path_variables: &[String]) -> RequestSpec {
-        let Draft { mut headers, mut query, body, auth, .. } = self;
+        let Draft { mut headers, cookies, mut query, body, parts, auth, .. } = self;
         headers.retain(|header| !RENDERED_HEADERS.iter().any(|rendered| header.eq_ignore_ascii_case(rendered)));
         query.retain(|field| !path_variables.contains(&field.name));
-        let mut spec = RequestSpec { query, headers, auth, body: None };
+        let mut spec = RequestSpec { query, headers, cookies, auth, ..RequestSpec::default() };
         if WITHOUT_BODY.contains(&method) {
             body.into_iter().for_each(|field| add_field(&mut spec.query, field));
+        } else if !parts.is_empty() {
+            spec.parts = parts;
         } else if !body.is_empty() || WITH_BODY.contains(&method) {
             spec.body = Some(body);
         }

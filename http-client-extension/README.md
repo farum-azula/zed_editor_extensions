@@ -4,7 +4,7 @@ An HTTP client for the [Zed](https://zed.dev) editor, modeled on the built-in HT
 
 - **Run requests.** Write them in `.http` / `.rest` files and click the **▶ run button in the gutter**
   (the left margin, next to the request line); the response appears in Zed's terminal.
-- **Generate requests from your code.** In a route or HTTP client call in 50 supported frameworks,
+- **Generate requests from your code.** In a route or HTTP client call in 51 supported frameworks,
   click the **🌐 Generate .http request** lens above the line and get a ready request, with query
   parameters, headers and a JSON body filled in from the handler and its models.
 
@@ -15,7 +15,7 @@ so existing `.http` files and `http-client.env.json` can be used unchanged.
 
 ## Supported Languages and Frameworks
 
-50 frameworks and HTTP clients across 10 languages. In any of these files, every route or HTTP call
+51 frameworks and HTTP clients across 10 languages. In any of these files, every route or HTTP call
 gets a **🌐 Generate .http request** lens that turns it into a ready `.http` request
 (see [Generating a Request from Code](#generating-a-request-from-code)).
 Each one has a runnable example in [`examples/code/`](examples/code), and the catalog itself lives in
@@ -23,9 +23,9 @@ Each one has a runnable example in [`examples/code/`](examples/code), and the ca
 
 | Language | Files | Frameworks and clients |
 |---|---|---|
-| **Java** | `.java` | [Spring Web (MVC / WebFlux / OpenFeign)](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html) · [example](examples/code/java/SpringUserController.java)<br>[JAX-RS (Quarkus, Jakarta EE, Helidon, Dropwizard)](https://quarkus.io/guides/rest) · [example](examples/code/java/JaxRsGreetingResource.java)<br>[Micronaut HTTP](https://docs.micronaut.io/latest/guide/#routing) · [example](examples/code/java/MicronautBookController.java)<br>[Retrofit](https://square.github.io/retrofit/) · [example](examples/code/java/RetrofitGitHubApi.java)<br>[OpenFeign (native annotations)](https://github.com/OpenFeign/feign) · [example](examples/code/java/FeignRepoClient.java) |
+| **Java** | `.java` | [Spring Web (MVC / WebFlux / OpenFeign)](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html) · [example](examples/code/java/SpringUserController.java)<br>[Spring HTTP service clients (@HttpExchange)](https://docs.spring.io/spring-framework/reference/integration/rest-clients.html#rest-http-service-client) · [example](examples/code/java/SpringHttpServiceClient.java)<br>[JAX-RS (Quarkus, Jakarta EE, Helidon, Dropwizard)](https://quarkus.io/guides/rest) · [example](examples/code/java/JaxRsGreetingResource.java)<br>[Micronaut HTTP](https://docs.micronaut.io/latest/guide/#routing) · [example](examples/code/java/MicronautBookController.java)<br>[Retrofit](https://square.github.io/retrofit/) · [example](examples/code/java/RetrofitGitHubApi.java)<br>[OpenFeign (native annotations)](https://github.com/OpenFeign/feign) · [example](examples/code/java/FeignRepoClient.java) |
 | **Kotlin** | `.kt`, `.kts` | [Spring Web (Kotlin)](https://docs.spring.io/spring-framework/reference/languages/kotlin.html) · [example](examples/code/kotlin/SpringOrderController.kt)<br>[Ktor server](https://ktor.io/docs/server-routing.html) · [example](examples/code/kotlin/KtorServerRoutes.kt)<br>[Ktor client](https://ktor.io/docs/client-requests.html) · [example](examples/code/kotlin/KtorClientApi.kt)<br>[Retrofit (Kotlin)](https://square.github.io/retrofit/) · [example](examples/code/kotlin/RetrofitUserApi.kt)<br>[JAX-RS (Quarkus Kotlin)](https://quarkus.io/guides/kotlin) · [example](examples/code/kotlin/JaxRsHelloResource.kt) |
-| **Dart / Flutter** | `.dart` | [Spring Web for Dart (spring_boot_starter_web)](https://pub.dev/packages/spring_boot_starter_web) · [example](examples/code/dart/spring_web_controller.dart)<br>[Feign for Dart (spring_boot_starter_feign)](https://pub.dev/packages/spring_boot_starter_feign) · [example](examples/code/dart/spring_feign_client.dart)<br>[Dio](https://pub.dev/packages/dio) · [example](examples/code/dart/dio_client.dart)<br>[package:http](https://pub.dev/packages/http) · [example](examples/code/dart/http_client.dart)<br>[retrofit.dart](https://pub.dev/packages/retrofit) · [example](examples/code/dart/retrofit_api.dart)<br>[Chopper](https://pub.dev/packages/chopper) · [example](examples/code/dart/chopper_service.dart)<br>[shelf_router](https://pub.dev/packages/shelf_router) · [example](examples/code/dart/shelf_router_routes.dart) |
+| **Dart / Flutter** | `.dart` | [Spring Web for Dart (spring_boot_starter_web)](https://pub.dev/packages/spring_boot_starter_web) · [example](examples/code/dart/spring_web_controller.dart)<br>[HTTP service clients for Dart (@HttpExchange, spring_boot_starter_restclient)](https://pub.dev/packages/spring_boot_starter_restclient#http-service-clients) · [example](examples/code/dart/spring_http_service_client.dart)<br>[Dio](https://pub.dev/packages/dio) · [example](examples/code/dart/dio_client.dart)<br>[package:http](https://pub.dev/packages/http) · [example](examples/code/dart/http_client.dart)<br>[retrofit.dart](https://pub.dev/packages/retrofit) · [example](examples/code/dart/retrofit_api.dart)<br>[Chopper](https://pub.dev/packages/chopper) · [example](examples/code/dart/chopper_service.dart)<br>[shelf_router](https://pub.dev/packages/shelf_router) · [example](examples/code/dart/shelf_router_routes.dart) |
 | **TypeScript / JavaScript** | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.mts`, `.cts` | [Express](https://expressjs.com/en/guide/routing.html) · [example](examples/code/typescript/express_server.ts)<br>[Fastify](https://fastify.dev/docs/latest/Reference/Routes/) · [example](examples/code/typescript/fastify_server.ts)<br>[Hono](https://hono.dev/docs/api/routing) · [example](examples/code/typescript/hono_server.ts)<br>[Koa router](https://github.com/koajs/router) · [example](examples/code/typescript/koa_server.ts)<br>[NestJS](https://docs.nestjs.com/controllers) · [example](examples/code/typescript/nestjs_controller.ts)<br>[Axios](https://axios-http.com/docs/api_intro) · [example](examples/code/typescript/axios_client.ts)<br>[Angular HttpClient](https://angular.dev/guide/http/making-requests) · [example](examples/code/typescript/angular_service.ts)<br>[fetch](https://developer.mozilla.org/docs/Web/API/Fetch_API) · [example](examples/code/typescript/fetch_client.ts) |
 | **Python** | `.py` | [FastAPI](https://fastapi.tiangolo.com/tutorial/first-steps/) · [example](examples/code/python/fastapi_main.py)<br>[Flask](https://flask.palletsprojects.com/en/stable/quickstart/#routing) · [example](examples/code/python/flask_app.py)<br>[Django URLconf](https://docs.djangoproject.com/en/stable/topics/http/urls/) · [example](examples/code/python/django_urls.py)<br>[requests / httpx / aiohttp](https://requests.readthedocs.io/) · [example](examples/code/python/http_clients.py) |
 | **Go** | `.go` | [gorilla/mux](https://github.com/gorilla/mux) · [example](examples/code/go/gorilla_mux_server.go)<br>[net/http (server and client)](https://pkg.go.dev/net/http) · [example](examples/code/go/net_http_server.go)<br>[Gin](https://gin-gonic.com/docs/examples/) · [example](examples/code/go/gin_server.go)<br>[Echo](https://echo.labstack.com/docs/routing) · [example](examples/code/go/echo_server.go)<br>[chi](https://go-chi.io/#/pages/routing) · [example](examples/code/go/chi_server.go)<br>[Fiber](https://docs.gofiber.io/guide/routing) · [example](examples/code/go/fiber_server.go) |
@@ -690,8 +690,10 @@ From the handler signature and the model classes/structs **in the same file**:
 | Path variables | `{id}`, `:id`, `<id>`, `$id`… → `{{id}}`, declared as `@id = 1` at the top of the file |
 | Query parameters | `@RequestParam`, `@Query`, FastAPI scalar params, `req.query.x`, `r.URL.Query().Get`, gin/echo `c.Query`, `request.args`, `$request->query`, dio `queryParameters`, axum `Query<T>` |
 | Headers | `@RequestHeader`, `@Header`/`@Headers`, FastAPI `Header()`, `req.header`, `r.Header.Get`, `request.headers.get`, `$request->header`, dio `headers` |
-| Auth | `Authorization`, `Bearer`, `@PreAuthorize`, `@Secured`, `@UseGuards`, JWT, auth `Depends` → `Authorization: Bearer {{token}}` |
+| Cookies | `@CookieValue` (HTTP service clients) → one `Cookie: session={{session}}` header |
+| Auth | `Authorization`, `Bearer`, `@PreAuthorize`, `@Secured`, `@UseGuards`, `@ClientRegistrationId`, JWT, auth `Depends` → `Authorization: Bearer {{token}}` |
 | JSON body | `@RequestBody T`, `@Body() T`, FastAPI models, `Json<T>`, Go `Decode(&v)`/`ShouldBindJSON`, Dart `x.toJson()`, `req.body` fields/destructuring, dio `data`/`jsonEncode` maps, Laravel `validate([...])` |
+| Multipart body | `@RequestPart` (HTTP service clients) → a `multipart/form-data` body instead: a file part (`MultipartFile`, `Uint8List`…) read from `< ./name`, a model as a JSON part, anything else as a text field |
 
 Model fields are resolved for Java/Kotlin classes and records, Dart classes, Python (pydantic) classes,
 TypeScript interfaces, Go structs (`json` tags respected) and Rust structs, including one level of nesting.
@@ -759,13 +761,33 @@ notes where the application listens:
 # The application's configuration gives http://localhost:9090/shop; baseUrl in http-client.env.json is http://localhost:7000
 ```
 
-**Clients go where the client goes.** A Feign client (`@FeignClient`, Java and Dart) is a request
-to another service, not to your server: its `url` is used, with `${...}` placeholders resolved from
-the same configuration (`url = "${catalog.url}"` with `catalog.url=https://catalog.example` →
-`GET https://catalog.example/api/books/{{isbn}}`), its `path` added. Without a `url`, the client's
-`spring.cloud.openfeign.client.config.<name>.url` is used. Whatever cannot be resolved becomes a
-variable named after the property (`{{catalogUrl}}`, `{{mailUrl}}`), to fill in the environment
-file. In the catalog this is a framework's `base` patterns (see `frameworks.schema.json`).
+**Clients go where the client goes.** A client interface is a request to another service, not to
+your server, so its request goes to that service's address, read from the same configuration:
+
+- **HTTP service clients** (`@HttpExchange` interfaces; Spring Framework 6+ in Java, and Spring for
+  Dart, which replaced its Feign starter with them): the interface's `@HttpExchange('/books')` is
+  the prefix of its methods' `@GetExchange`, `@PostExchange`…, and the base URL is that of its group,
+  `spring.http.serviceclient.<group>.base-url`. The group is the one of the
+  `@ImportHttpServices(group: 'catalog', types: [BookService, ...])` that lists the interface — in
+  its own file or in any other source file of the project (build output and hidden directories
+  aside); without `group:` it is `default`. An interface no `@ImportHttpServices` lists (or one
+  whose group is a constant, not a string) goes to `{{baseUrl}}`.
+
+  ```properties
+  # lib/resources/application.properties (Spring for Dart), src/main/resources/ (Java)
+  spring.http.serviceclient.catalog.base-url=${catalog.url}
+  catalog.url=https://catalog.example
+  ```
+
+  `@GetExchange('/{isbn}')` in `BookService` → `GET https://catalog.example/books/{{isbn}}`.
+- **Spring Cloud OpenFeign** (`@FeignClient`, Java): its `url` is used, with `${...}` placeholders
+  resolved (`url = "${catalog.url}"` → `GET https://catalog.example/api/books/{{isbn}}`), its `path`
+  added. Without a `url`, the client's `spring.cloud.openfeign.client.config.<name>.url` is used.
+
+Whatever cannot be resolved becomes a variable named after the last two segments of the property
+(`{{catalogBaseUrl}}`, `{{catalogUrl}}`, `{{mailUrl}}`), to fill in the environment file. In the
+catalog these are a framework's `base`, `base_property` and `registrations` (see
+`frameworks.schema.json`).
 
 #### URLs kept in a variable
 
@@ -863,7 +885,7 @@ uses it for completion and validation while you edit.
 
 ### Try it
 
-[`examples/code/`](examples/code) has one file per framework — 50 files, one folder per language.
+[`examples/code/`](examples/code) has one file per framework — 51 files, one folder per language.
 Open any of them in Zed, put the cursor on a route and press `cmd+.` (or click the lens). Or from the terminal:
 
 ```sh
@@ -942,6 +964,7 @@ Run `zed: open keymap` and add:
 │       │   ├── source.rs       lines, classes, decorators, the lines that belong to a route
 │       │   ├── routes.rs       routes found in a file and their endpoints
 │       │   ├── urls.rs         the URL a variable holds
+│       │   ├── registrations.rs the name a client class is registered under, here or elsewhere
 │       │   ├── types.rs        source types → JSON shapes, fields of models
 │       │   └── spec.rs         what a request carries, by a chain of contributors
 │       ├── pattern.rs          the pattern language of frameworks.json
@@ -959,15 +982,15 @@ Run `zed: open keymap` and add:
 │       │   └── catalogs.rs     the built-in or project catalog
 │       ├── launcher.rs         the copy of the runner that gutter tasks fall back to
 │       ├── parser.rs           .http file parsing
-│       ├── server.rs           the application's address from its Spring configuration
+│       ├── server.rs           the application's address from its Spring configuration, its source files
 │       └── vars.rs             variables, environments, response references
 └── examples/
     ├── requests.http
     ├── http-client.env.json
     └── code/                   one file per framework, one folder per language
-        ├── java/        Spring, JAX-RS (Quarkus), Micronaut, Retrofit, Feign
+        ├── java/        Spring, Spring HTTP service clients, JAX-RS (Quarkus), Micronaut, Retrofit, Feign
         ├── kotlin/      Spring, Ktor server/client, Retrofit, JAX-RS
-        ├── dart/        dio, package:http, retrofit, chopper, shelf_router
+        ├── dart/        Spring Web, HTTP service clients, dio, package:http, retrofit, chopper, shelf_router
         ├── typescript/  Express, Fastify, Hono, Koa, NestJS, Axios, Angular, fetch
         ├── python/      FastAPI, Flask, Django, requests/httpx
         ├── go/          net/http, gorilla/mux, Gin, Echo, chi, Fiber
@@ -1072,6 +1095,9 @@ The workflow refuses a tag that disagrees with `extension.toml`.
 - No support for WebSocket, gRPC, GraphQL subscriptions, or `HTTP/2`-specific features; send GraphQL queries as `POST` with JSON.
 - No cookie jar between requests; pass `Cookie` manually or via `{{name.response.headers.Set-Cookie}}`.
 - `$processEnv` values come from the Zed terminal's environment.
+- Generated requests of HTTP service clients take the interface's `@HttpExchange` URL as a prefix,
+  but not its other defaults (a `method`, `headers: ['Name=value']`, `accept`); a method without
+  its own method is a `GET`.
 
 ## Troubleshooting
 

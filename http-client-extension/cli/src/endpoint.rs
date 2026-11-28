@@ -86,13 +86,17 @@ pub fn url_vars(url: &str) -> Vec<String> {
     out
 }
 
+/// The boundary between the parts of a generated `multipart/form-data` body.
+const BOUNDARY: &str = "boundary";
+
 /// A `@name = value` declaration a generated request starts with.
 struct FileVariable {
     name: String,
     value: &'static str,
 }
 
-/// Full `.http` request: file variables for path/query/header values, query string, headers, JSON body.
+/// Full `.http` request: file variables for path/query/header/cookie values, query string, headers,
+/// a JSON or multipart body.
 pub fn render(method: &str, url: &str, name: &str, spec: &RequestSpec) -> String {
     // A path parameter stands for one segment; a variable naming the whole URL needs a URL.
     let path_sample = |variable: &str| if names_a_url(variable) { LOCAL_SERVER } else { "1" };
@@ -116,11 +120,27 @@ pub fn render(method: &str, url: &str, name: &str, spec: &RequestSpec) -> String
         headers.push(format!("{header}: {{{{{variable}}}}}"));
         variables.push(FileVariable { name: variable, value: "value" });
     }
-    let body = spec.body.as_ref().map(|fields| {
-        let sample = FieldType::Object(fields.clone()).sample_value();
-        headers.push("Content-Type: application/json".into());
-        serde_json::to_string_pretty(&sample).expect("sample values always serialize")
-    });
+    if !spec.cookies.is_empty() {
+        let mut cookies = Vec::new();
+        for cookie in &spec.cookies {
+            let variable = infer::variable_name(cookie);
+            cookies.push(format!("{cookie}={{{{{variable}}}}}"));
+            variables.push(FileVariable { name: variable, value: "value" });
+        }
+        headers.push(format!("Cookie: {}", cookies.join("; ")));
+    }
+    let body = if spec.parts.is_empty() {
+        spec.body.as_ref().map(|fields| {
+            let sample = FieldType::Object(fields.clone()).sample_value();
+            headers.push("Content-Type: application/json".into());
+            serde_json::to_string_pretty(&sample).expect("sample values always serialize")
+        })
+    } else {
+        headers.push(format!("Content-Type: multipart/form-data; boundary={BOUNDARY}"));
+        let parts: Vec<String> =
+            spec.parts.iter().map(|part| format!("--{BOUNDARY}\n{}", part.kind.form_part(&part.name))).collect();
+        Some(format!("{}\n--{BOUNDARY}--", parts.join("\n")))
+    };
 
     // Generated requests keep no response log; delete `# @no-log` to save responses to `.zed-http/`.
     let mut out = format!("### {name}\n# @name {name}\n# @no-log\n");

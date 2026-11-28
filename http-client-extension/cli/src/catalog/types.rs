@@ -42,6 +42,7 @@ impl TypeTable {
                 class(definition.float, FieldType::Float),
                 class(definition.bool, FieldType::Boolean),
                 class(definition.object, FieldType::Object(vec![])),
+                class(definition.file, FieldType::File),
                 class(definition.string, FieldType::String),
             ],
             wrappers: definition.wrappers,

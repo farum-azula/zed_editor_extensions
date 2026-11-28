@@ -11,11 +11,13 @@
 //! | `source`    | lines, classes, decorators, definitions, the lines of a route       |
 //! | `routes`    | routes found in a file and the endpoint each stands for             |
 //! | `urls`      | the URL a variable holds                                            |
+//! | `registrations` | the name a client class is registered under, here or elsewhere  |
 //! | `types`     | source types → JSON shapes, fields of models                        |
 //! | `spec`      | what a route's request carries, by a chain of contributors          |
 
 mod compile;
 mod model;
+mod registrations;
 mod routes;
 mod source;
 mod spec;

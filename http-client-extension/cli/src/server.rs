@@ -1,7 +1,8 @@
 //! Where the application a source file belongs to listens, read from its Spring configuration
 //! (`application.yml` / `application.properties`): `server.port`, `server.servlet.context-path`,
-//! TLS. Also resolves `${...}` placeholders of client URLs (`@FeignClient(url = "${catalog.url}")`)
-//! against the same configuration.
+//! TLS. Also resolves `${...}` placeholders of client URLs (`@FeignClient(url = "${catalog.url}")`,
+//! `spring.http.serviceclient.<group>.base-url`) against the same configuration, and lists the
+//! project's source files (where a client class may be registered).
 
 use std::collections::HashMap;
 use std::fs;
@@ -37,6 +38,42 @@ pub fn project_root(source: &Path) -> Option<PathBuf> {
         dir = d.parent();
     }
     None
+}
+
+/// Directories that hold no sources of a project: build output and dependencies.
+const NOT_SOURCES: [&str; 4] = ["build", "target", "node_modules", "out"];
+
+/// The files of the project `source` belongs to with one of `extensions`, in path order, outside
+/// hidden directories (`.git`, `.dart_tool`), build output and symbolic links.
+pub fn project_files(source: &Path, extensions: &[String]) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    if let Some(root) = project_root(source) {
+        collect_files(&root, extensions, &mut files);
+    }
+    files
+}
+
+fn collect_files(dir: &Path, extensions: &[String], files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let kind = entry.file_type();
+        if name.starts_with('.') || NOT_SOURCES.contains(&name.as_str()) {
+            continue;
+        }
+        if kind.as_ref().is_ok_and(fs::FileType::is_dir) {
+            collect_files(&entry.path(), extensions, files);
+        } else if kind.is_ok_and(|kind| kind.is_file()) && has_extension(&entry.path(), extensions) {
+            files.push(entry.path());
+        }
+    }
+}
+
+fn has_extension(path: &Path, extensions: &[String]) -> bool {
+    let extension = path.extension().map(|extension| extension.to_string_lossy().to_lowercase());
+    extension.is_some_and(|extension| extensions.contains(&extension))
 }
 
 /// The local address of a Spring application with `props`: `http(s)://localhost:<port><context path>`.
@@ -152,26 +189,16 @@ fn split_default(inner: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// A variable name for an unresolved property: `catalog.url` → `catalogUrl`,
-/// `spring.cloud.openfeign.client.config.catalog.url` → `catalogUrl` (the last two segments).
+/// A variable name for an unresolved property, from its last two segments: `catalog.url` →
+/// `catalogUrl`, `spring.cloud.openfeign.client.config.catalog.url` → `catalogUrl`,
+/// `spring.http.serviceclient.catalog.base-url` → `catalogBaseUrl`.
 pub fn variable_for(key: &str) -> String {
-    let parts: Vec<&str> = key.split(['.', '-', '_']).filter(|p| !p.is_empty()).collect();
-    let tail = if parts.len() > 2 { &parts[parts.len() - 2..] } else { &parts[..] };
-    let mut out = String::new();
-    for (i, part) in tail.iter().enumerate() {
-        let lower = part.to_lowercase();
-        if i == 0 {
-            out.push_str(&lower);
-        } else {
-            let mut chars = lower.chars();
-            out.extend(chars.next().map(|c| c.to_ascii_uppercase()));
-            out.push_str(chars.as_str());
-        }
-    }
-    if out.is_empty() {
+    let segments: Vec<&str> = key.split('.').filter(|segment| !segment.is_empty()).collect();
+    let name = crate::infer::variable_name(&segments[segments.len().saturating_sub(2)..].join("-"));
+    if name.is_empty() {
         "baseUrl".into()
     } else {
-        out
+        name
     }
 }
 

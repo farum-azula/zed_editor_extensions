@@ -5,6 +5,7 @@ use super::model::{
     Block, CatalogFile, Example, FrameworkDefinition, HeaderCase, LanguageDefinition, ModelsDefinition,
     RouteDefinition, Scope, Style,
 };
+use super::registrations::Registrations;
 use super::routes::PathParams;
 use super::types::TypeTable;
 use super::urls::Urls;
@@ -47,6 +48,8 @@ pub struct Framework {
     pub(super) prefix: Option<Matcher>,
     pub(super) prefix_scope: Scope,
     pub(super) base: Option<Matcher>,
+    pub(super) base_property: Option<String>,
+    pub(super) registrations: Option<Registrations>,
     pub(super) controller_token: Option<String>,
     pub(super) routes: Matcher,
     pub(super) route_definitions: Vec<RouteDefinition>,
@@ -54,7 +57,9 @@ pub struct Framework {
     pub(super) query: Option<Matcher>,
     pub(super) headers: Option<Matcher>,
     pub(super) header_case: Option<HeaderCase>,
+    pub(super) cookies: Option<Matcher>,
     pub(super) body: Option<Matcher>,
+    pub(super) parts: Option<Matcher>,
     pub(super) params: Option<Matcher>,
     pub(super) ignore: Option<Matcher>,
     pub(super) auth: Option<Matcher>,
@@ -150,14 +155,15 @@ fn compile_models(models: ModelsDefinition, context: &str) -> Result<Models, Str
     })
 }
 
-/// A regex finding a declaration that starts with one of `keywords` (`class Name`, `struct Name`).
+/// A regex finding a declaration that starts with one of `keywords` (`class Name`, `struct Name`),
+/// capturing the name.
 fn class_keywords(keywords: &[String]) -> Option<Regex> {
     if keywords.is_empty() {
         return None;
     }
     let alternatives = keywords.iter().map(|keyword| regex::escape(keyword)).collect::<Vec<_>>().join("|");
     // The keywords are escaped, so the pattern is always a valid regex.
-    Some(Regex::new(&format!(r"\b(?:{alternatives})\s+\w")).expect("escaped keywords form a valid regex"))
+    Some(Regex::new(&format!(r"\b(?:{alternatives})\s+(\w+)")).expect("escaped keywords form a valid regex"))
 }
 
 fn compile_framework(context: &str, key: &str, framework: FrameworkDefinition) -> Result<Framework, String> {
@@ -174,6 +180,8 @@ fn compile_framework(context: &str, key: &str, framework: FrameworkDefinition) -
         prefix: compile(&framework.prefix, "prefix")?,
         prefix_scope: framework.prefix_scope,
         base: compile(&framework.base, "base")?,
+        base_property: framework.base_property,
+        registrations: Registrations::compile(framework.registrations, &format!("{context}.registrations"))?,
         controller_token: framework.controller_token,
         routes: compile(&route_patterns, "routes")?.ok_or_else(|| format!("{context}.routes: empty"))?,
         route_definitions,
@@ -181,7 +189,9 @@ fn compile_framework(context: &str, key: &str, framework: FrameworkDefinition) -
         query: compile(&framework.query, "query")?,
         headers: compile(&framework.headers, "headers")?,
         header_case: framework.header_case,
+        cookies: compile(&framework.cookies, "cookies")?,
         body: compile(&framework.body, "body")?,
+        parts: compile(&framework.parts, "parts")?,
         params: compile(&framework.params, "params")?,
         ignore: compile(&framework.ignore, "ignore")?,
         auth: compile(&framework.auth, "auth")?,

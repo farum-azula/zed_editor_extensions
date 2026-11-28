@@ -36,16 +36,30 @@ impl Language {
         self.class_after(text, lines, line).is_some()
     }
 
-    /// The line of the class declaration that the decorator on `line` belongs to.
+    /// The line of the class declaration that the decorator on `line` belongs to. The arguments
+    /// of a decorator may span lines (`@Retryable(\n  maxRetries: 2,\n)`); those lines are skipped.
     pub(super) fn class_after(&self, text: &str, lines: &LineIndex, line: usize) -> Option<usize> {
         let class_keywords = self.class_keywords.as_ref()?;
         let from = lines.start_of(line).unwrap_or(text.len());
-        let (offset, found) = text[from..]
-            .lines()
-            .enumerate()
-            .skip(1)
-            .find(|(_, candidate)| !candidate.trim().is_empty() && !self.starts_decorated(candidate))?;
+        let mut open = 0;
+        let declaration = text[from..].lines().enumerate().find(|(offset, candidate)| {
+            let in_arguments = open > 0;
+            open += parentheses(candidate);
+            let declares = !candidate.trim().is_empty() && !self.starts_decorated(candidate);
+            *offset > 0 && !in_arguments && declares
+        });
+        // The `?` in a statement of its own: after the multi-line call above, coverage would
+        // count it as a line of its own, one no test reaches.
+        let (offset, found) = declaration?;
         class_keywords.is_match(found).then_some(line + offset)
+    }
+
+    /// The name of the class declared on `line` (`abstract interface class BookService {` →
+    /// `BookService`).
+    pub(super) fn class_name(&self, text: &str, line: usize) -> Option<String> {
+        let declaration = text.lines().nth(line)?;
+        let found = self.class_keywords.as_ref()?.captures(declaration)?;
+        Some(found[1].to_string())
     }
 
     /// The line of the last class declaration above `line` (the class a route belongs to).
@@ -119,4 +133,9 @@ impl Language {
         let found = matcher.hits(text).find_map(|hit| hit.get("type").map(str::to_string));
         found
     }
+}
+
+/// How many more parentheses `line` opens than it closes.
+fn parentheses(line: &str) -> i32 {
+    line.chars().map(|c| i32::from(c == '(') - i32::from(c == ')')).sum()
 }

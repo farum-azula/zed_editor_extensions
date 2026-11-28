@@ -7,6 +7,7 @@
     "string": ["string", "str", "char", "character", "uuid", "guid", "datetime", "date", "localdate", "localdatetime", "offsetdatetime", "zoneddatetime", "instant", "time", "timestamp", "url", "uri", "email", "emailstr"],
     "list": ["list", "vec", "set", "hashset", "array", "iterable", "collection", "sequence", "seq", "slice", "flux", "ienumerable", "icollection"],
     "object": ["map", "hashmap", "dict", "record", "object", "any", "dynamic", "jsonnode", "jsonobject", "value"],
+    "file": ["multipartfile", "filepart", "resource", "file", "uint8list", "xfile", "platformfile", "iformfile", "uploadfile", "blob"],
     "wrappers": ["Optional", "Option", "Mono", "Future", "Promise", "ResponseEntity", "Json", "Query", "Form", "Body", "Valid", "Nullable", "Annotated", "Task", "ActionResult", "web::Json", "web::Query", "web::Form"]
   },
   "auth": ["Authorization", "Bearer", "\"authorization\""],
@@ -37,6 +38,7 @@
           "imports": ["org.springframework"],
           "prefix": ["@RequestMapping(\"{path}\"", "@RequestMapping(value = \"{path}\"", "@RequestMapping(path = \"{path}\"", "@FeignClient(...path = \"{path}\""],
           "base": ["@FeignClient(...url = \"{path}\"", "@FeignClient(...name = \"{name}\"", "@FeignClient(...value = \"{name}\"", "@FeignClient(\"{name}\""],
+          "base_property": "spring.cloud.openfeign.client.config.{name}.url",
           "routes": [
             "@{method}Mapping(\"{path}\"",
             "@{method}Mapping(value = \"{path}\"",
@@ -61,6 +63,69 @@
             {
               "code": "import org.springframework.web.bind.annotation.*;\n@RestController\n@RequestMapping(\"/api/users\")\npublic class C {\n  @GetMapping(\"/{id}\")\n  User get(@PathVariable long id) {}\n  @PostMapping\n  User create() {}\n  @RequestMapping(value = \"/{id}/avatar\", method = RequestMethod.DELETE)\n  void d() {}\n}\nrecord CreateUser(String name) {}",
               "expect": ["GET {{baseUrl}}/api/users/{{id}}", "POST {{baseUrl}}/api/users", "DELETE {{baseUrl}}/api/users/{{id}}/avatar"]
+            },
+            {
+              "code": "import org.springframework.cloud.openfeign.FeignClient;\nimport org.springframework.web.bind.annotation.*;\n@FeignClient(name = \"catalog\", url = \"${catalog.url}\", path = \"/api\")\npublic interface CatalogClient {\n  @GetMapping(\"/books/{isbn}\")\n  Book find(@PathVariable String isbn);\n}\n@FeignClient(\"mail\")\ninterface Mail {\n  @PostMapping(\"/send\")\n  void send(@RequestBody Message message);\n}\n@FeignClient(name = \"github\", url = \"https://api.github.com\")\ninterface GitHub {\n  @GetMapping(\"/repos/{owner}\")\n  Object repos(@PathVariable String owner);\n}",
+              "expect": ["GET {{catalogUrl}}/api/books/{{isbn}}", "POST {{mailUrl}}/send", "GET https://api.github.com/repos/{{owner}}"]
+            }
+          ]
+        },
+        "spring-http-service": {
+          "name": "Spring HTTP service clients (@HttpExchange)",
+          "docs": "https://docs.spring.io/spring-framework/reference/integration/rest-clients.html#rest-http-service-client",
+          "imports": ["org.springframework.web.service"],
+          "prefix": ["@HttpExchange(\"{path}\"", "@HttpExchange(...url = \"{path}\"", "@HttpExchange(...value = \"{path}\"", "@HttpExchange"],
+          "base_property": "spring.http.serviceclient.{name}.base-url",
+          "registrations": [
+            "@ImportHttpServices(...group = \"{name}\"...types = {keys}",
+            "@ImportHttpServices(...group = \"{name}\"...types = {type}.class",
+            "@ImportHttpServices(...types = {keys}...group = \"{name}\"",
+            "@ImportHttpServices(...types = {type}.class...group = \"{name}\"",
+            { "pattern": "@ImportHttpServices(types = {keys})", "name": "default" },
+            { "pattern": "@ImportHttpServices(types = {type}.class)", "name": "default" },
+            { "pattern": "@ImportHttpServices({keys})", "name": "default" },
+            { "pattern": "@ImportHttpServices({type}.class)", "name": "default" }
+          ],
+          "routes": [
+            "@{method}Exchange(\"{path}\"",
+            "@{method}Exchange(...url = \"{path}\"",
+            "@{method}Exchange(...value = \"{path}\"",
+            "@{method}Exchange",
+            "@HttpExchange(...method = \"{method}\"...url = \"{path}\"",
+            "@HttpExchange(...method = \"{method}\"...value = \"{path}\"",
+            "@HttpExchange(...url = \"{path}\"...method = \"{method}\"",
+            "@HttpExchange(...value = \"{path}\"...method = \"{method}\"",
+            "@HttpExchange(...method = \"{method}\"",
+            { "pattern": "@HttpExchange(\"{path}\"", "method": "GET" },
+            { "pattern": "@HttpExchange(...url = \"{path}\"", "method": "GET" },
+            { "pattern": "@HttpExchange(...value = \"{path}\"", "method": "GET" }
+          ],
+          "path_params": ["braces"],
+          "query": [
+            "@RequestParam(\"{name}\"...) {type} {_}",
+            "@RequestParam(...value = \"{name}\"...) {type} {_}",
+            "@RequestParam(...name = \"{name}\"...) {type} {_}",
+            "@RequestParam(...) {type} {name}",
+            "@RequestParam {type} {name}"
+          ],
+          "headers": ["@RequestHeader(\"{name}\"", "@RequestHeader(...value = \"{name}\"", "@RequestHeader(...name = \"{name}\"", "@RequestHeader {type} {name}"],
+          "cookies": ["@CookieValue(\"{name}\"", "@CookieValue(...value = \"{name}\"", "@CookieValue(...name = \"{name}\"", "@CookieValue {type} {name}"],
+          "body": ["@RequestBody @{_} {type} {_}", "@RequestBody {type} {_}"],
+          "parts": [
+            "@RequestPart(\"{name}\"...) {type} {_}",
+            "@RequestPart(...value = \"{name}\"...) {type} {_}",
+            "@RequestPart(...name = \"{name}\"...) {type} {_}",
+            "@RequestPart {type} {name}"
+          ],
+          "auth": ["@ClientRegistrationId"],
+          "examples": [
+            {
+              "code": "import org.springframework.web.service.annotation.*;\n@HttpExchange(\"/books\")\npublic interface BookClient {\n  @GetExchange(\"/{isbn}\")\n  Book find(@PathVariable String isbn);\n  @PostExchange\n  Book create(@RequestBody Book book);\n  @HttpExchange(method = \"DELETE\", url = \"/{isbn}\")\n  void remove(@PathVariable String isbn);\n}\n@Configuration\n@ImportHttpServices(group = \"catalog\", types = {BookClient.class})\nclass Clients {}",
+              "expect": ["GET {{catalogBaseUrl}}/books/{{isbn}}", "POST {{catalogBaseUrl}}/books", "DELETE {{catalogBaseUrl}}/books/{{isbn}}"]
+            },
+            {
+              "code": "import org.springframework.web.service.annotation.GetExchange;\nimport org.springframework.web.service.annotation.HttpExchange;\n@HttpExchange(url = \"https://api.github.com\", accept = \"application/vnd.github+json\")\ninterface GitHub {\n  @GetExchange(url = \"/repos/{owner}/{repo}\")\n  Repo repo(@PathVariable String owner, @PathVariable String repo);\n}\ninterface Stock {\n  @GetExchange(value = \"/stock/{isbn}\")\n  int stock(@PathVariable String isbn);\n}\n@ImportHttpServices(types = Stock.class)\nclass Config {}",
+              "expect": ["GET https://api.github.com/repos/{{owner}}/{{repo}}", "GET {{defaultBaseUrl}}/stock/{{isbn}}"]
             }
           ]
         },
@@ -362,33 +427,46 @@
             { "code": "import 'package:spring_boot_starter_security/spring_boot_starter_security.dart';\n@RestController()\nclass AccountController {\n  @GetMapping('/account')\n  String account(@AuthenticationPrincipal() UserDetails user) => user.username;\n}\n@RestController()\n@RequestMapping('/api')\nclass BookController {\n  @DeleteMapping('/books/{id}')\n  Future<void> remove(@PathVariable() String id) async {}\n}", "expect": ["GET {{baseUrl}}/account", "DELETE {{baseUrl}}/api/books/{{id}}"] }
           ]
         },
-        "spring_boot_starter_feign": {
-          "name": "Feign clients for Dart (spring_boot_starter_feign)",
-          "docs": "https://pub.dev/packages/spring_boot_starter_feign",
-          "imports": ["package:spring_boot_starter_feign/"],
-          "prefix": ["@FeignClient(...path: \"{path}\"", "@FeignClient(...path: r\"{path}\""],
-          "base": ["@FeignClient(...url: r\"{path}\"", "@FeignClient(...url: \"{path}\"", "@FeignClient(\"{name}\""],
+        "spring_boot_starter_restclient": {
+          "name": "HTTP service clients for Dart (@HttpExchange, spring_boot_starter_restclient)",
+          "docs": "https://pub.dev/packages/spring_boot_starter_restclient#http-service-clients",
+          "imports": ["package:spring_"],
+          "prefix": ["@HttpExchange(\"{path}\")", "@HttpExchange.of(...url: \"{path}\"", "@HttpExchange"],
+          "base_property": "spring.http.serviceclient.{name}.base-url",
+          "registrations": [
+            "@ImportHttpServices(...group: \"{name}\"...types: {keys}",
+            "@ImportHttpServices(...types: {keys}...group: \"{name}\"",
+            { "pattern": "@ImportHttpServices(types: {keys})", "name": "default" },
+            { "pattern": "@ImportHttpServices(types: {keys},)", "name": "default" }
+          ],
           "routes": [
-            "@{method}Mapping(\"{path}\")",
-            "@{method}Mapping(r\"{path}\")",
-            "@{method}Mapping.of(...path: \"{path}\"",
-            "@{method}Mapping.of(...path: r\"{path}\"",
-            "@RequestMapping.of(...path: \"{path}\"...method: HttpMethod.{method}",
-            "@{method}Mapping()",
-            "@{method}Mapping.of(",
-            { "pattern": "@RequestMapping(\"{path}\")", "method": "GET" }
+            "@{method}Exchange(\"{path}\")",
+            "@{method}Exchange.of(...url: \"{path}\"",
+            "@{method}Exchange()",
+            "@{method}Exchange.of(",
+            "@HttpExchange.of(...url: \"{path}\"...method: HttpMethod.{method}",
+            "@HttpExchange.of(...method: HttpMethod.{method}...url: \"{path}\"",
+            "@HttpExchange.of(...method: HttpMethod.{method}",
+            { "pattern": "@HttpExchange(\"{path}\")", "method": "GET" },
+            { "pattern": "@HttpExchange.of(...url: \"{path}\"", "method": "GET" },
+            { "pattern": "@HttpExchange()", "method": "GET" }
           ],
           "path_params": ["braces"],
-          "query": [
-            "@RequestParam(\"{name}\") {type} {_}",
-            "@RequestParam.of(...name: \"{name}\"...) {type} {_}",
-            "@RequestParam() {type} {name}",
-            "@RequestParam.of(...) {type} {name}"
-          ],
-          "headers": ["@RequestHeader(\"{name}\")", "@RequestHeader.of(...name: \"{name}\""],
-          "body": ["@RequestBody(...) @{_}() {type} {_}", "@RequestBody(...) {type} {_}"],
+          "query": ["@RequestParam(\"{name}\") {type} {_}", "@RequestParam() {type} {name}"],
+          "headers": ["@RequestHeader(\"{name}\")", "@RequestHeader() {type} {name}"],
+          "cookies": ["@CookieValue(\"{name}\")", "@CookieValue() {type} {name}"],
+          "body": ["@RequestBody() @{_}() {type} {_}", "@RequestBody() {type} {_}"],
+          "parts": ["@RequestPart(\"{name}\") {type} {_}", "@RequestPart() {type} {name}"],
+          "auth": ["@ClientRegistrationId"],
           "examples": [
-            { "code": "import 'package:spring_boot_starter_feign/spring_boot_starter_feign.dart';\n@FeignClient('catalog', url: r'${catalog.url}', path: '/api')\nabstract interface class CatalogClient {\n  @GetMapping('/books/{isbn}')\n  Future<Book> find(@PathVariable() String isbn);\n  @PostMapping('/books')\n  Future<Book> create(@RequestBody() Book book);\n}\n@FeignClient('github', url: 'https://api.github.com')\nabstract interface class GitHub {\n  @GetMapping('/repos/{owner}')\n  Future<Object> repos(@PathVariable() String owner);\n}\n@FeignClient('mail')\nabstract interface class Mail {\n  @PostMapping('/send')\n  Future<void> send(@RequestBody() Object m);\n}", "expect": ["GET {{catalogUrl}}/api/books/{{isbn}}", "POST {{catalogUrl}}/api/books", "GET https://api.github.com/repos/{{owner}}", "POST {{mailUrl}}/send"] }
+            {
+              "code": "import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';\n@HttpExchange('/books')\nabstract interface class BookService {\n  @GetExchange('/{isbn}')\n  Future<Book> find(@PathVariable() String isbn);\n  @PostExchange()\n  Future<Book> create(@RequestBody() Book book);\n  @HttpExchange.of(url: '/{isbn}', method: HttpMethod.head)\n  Future<ResponseEntity<void>> exists(@PathVariable() String isbn);\n  @DeleteExchange.of(url: '/{isbn}')\n  Future<void> remove(@PathVariable() String isbn);\n}\n@SpringBootApplication()\n@ImportHttpServices(group: 'catalog', types: [BookService])\nvoid main(List<String> args) => runApplication(args);",
+              "expect": ["GET {{catalogBaseUrl}}/books/{{isbn}}", "POST {{catalogBaseUrl}}/books", "HEAD {{catalogBaseUrl}}/books/{{isbn}}", "DELETE {{catalogBaseUrl}}/books/{{isbn}}"]
+            },
+            {
+              "code": "import 'package:spring_boot_starter_flutter_security/spring_boot_starter_flutter_security.dart';\n@HttpExchange('/api/books')\n@Retryable(\n  includes: [ResourceAccessException],\n  maxRetries: 2,\n)\nabstract interface class CatalogClient {\n  @GetExchange()\n  Future<PageOfBooks> page({@RequestParam('q') String? query});\n}\n@HttpExchange.of(url: '/deliveries', accept: ['application/json'])\nabstract interface class Deliveries {\n  @PostExchange.of(headers: [r'X-Shop=${neon.shop.name}'])\n  Future<Delivery> order(@RequestBody() DeliveryRequest request);\n}\n@Configuration()\n@ImportHttpServices(types: [Deliveries])\nclass ClientConfig {}",
+              "expect": ["GET {{baseUrl}}/api/books", "POST {{defaultBaseUrl}}/deliveries"]
+            }
           ]
         }
       }

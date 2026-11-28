@@ -50,6 +50,9 @@ pub(super) struct TypesDefinition {
     pub list: Vec<String>,
     #[serde(default)]
     pub object: Vec<String>,
+    /// Uploaded files (`MultipartFile`, `Uint8List`): a part of a multipart body read from a file.
+    #[serde(default)]
+    pub file: Vec<String>,
     #[serde(default)]
     pub wrappers: Vec<String>,
 }
@@ -122,9 +125,17 @@ pub(super) struct FrameworkDefinition {
     pub prefix_scope: Scope,
     /// Where a client's requests go (`@FeignClient(url = "${catalog.url}")`), at class level:
     /// `{path}` is the URL (placeholders resolved from the project's configuration), or
-    /// `{name}` the client name, whose `spring.cloud.openfeign.client.config.<name>.url` is used.
+    /// `{name}` the client name, whose [`base_property`](Self::base_property) is used.
     #[serde(default)]
     pub base: Vec<String>,
+    /// The property holding the URL of the client named `{name}`, by a `base` pattern or a
+    /// registration: `spring.http.serviceclient.{name}.base-url`.
+    #[serde(default)]
+    pub base_property: Option<String>,
+    /// Where client classes are registered under a name, in their file or anywhere in their
+    /// project: `@ImportHttpServices(group: 'catalog', types: [BookService])`.
+    #[serde(default)]
+    pub registrations: Vec<RegistrationEntry>,
     #[serde(default)]
     pub controller_token: Option<String>,
     pub routes: Vec<RouteEntry>,
@@ -137,7 +148,12 @@ pub(super) struct FrameworkDefinition {
     #[serde(default)]
     pub header_case: Option<HeaderCase>,
     #[serde(default)]
+    pub cookies: Vec<String>,
+    #[serde(default)]
     pub body: Vec<String>,
+    /// Parts of a `multipart/form-data` body, capturing `{name}` and its `{type}`.
+    #[serde(default)]
+    pub parts: Vec<String>,
     #[serde(default)]
     pub params: Vec<String>,
     #[serde(default)]
@@ -161,6 +177,32 @@ impl RouteEntry {
         match self {
             RouteEntry::Pattern(pattern) => RouteDefinition { pattern, ..Default::default() },
             RouteEntry::Full(definition) => definition,
+        }
+    }
+}
+
+/// A registration is a bare pattern, which captures the `{name}` it registers under, or a
+/// pattern with the name it stands for when it captures none (`default`).
+#[derive(Deserialize, Clone)]
+#[serde(untagged)]
+pub(super) enum RegistrationEntry {
+    Pattern(String),
+    Named(NamedRegistration),
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub(super) struct NamedRegistration {
+    pub pattern: String,
+    pub name: String,
+}
+
+impl RegistrationEntry {
+    /// The pattern, and the name it registers under when it captures none.
+    pub fn into_parts(self) -> (String, Option<String>) {
+        match self {
+            RegistrationEntry::Pattern(pattern) => (pattern, None),
+            RegistrationEntry::Named(named) => (named.pattern, Some(named.name)),
         }
     }
 }

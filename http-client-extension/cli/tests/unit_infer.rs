@@ -20,6 +20,9 @@ fn sample_values_per_type() {
     assert_eq!(FieldType::String.sample_variable(), "value");
     assert_eq!(FieldType::List.sample_variable(), "value");
     assert_eq!(FieldType::Object(vec![]).sample_variable(), "value");
+    // A file in a JSON body is a string.
+    assert_eq!(FieldType::File.sample_value(), Value::String(String::new()));
+    assert_eq!(FieldType::File.sample_variable(), "value");
 }
 
 #[test]

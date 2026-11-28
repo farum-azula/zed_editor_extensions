@@ -11,6 +11,7 @@ fn renders_a_full_request() {
         headers: vec!["X-Request-Id".into()],
         auth: true,
         body: Some(vec![Field::new("name", FieldType::String)]),
+        ..Default::default()
     };
     let out = render("POST", "{{baseUrl}}/users/{{id}}", "post-users", &spec);
     let expected = "\
@@ -41,6 +42,52 @@ Content-Type: application/json
         render("GET", "{{baseUrl}}/x", "get-x", &RequestSpec::default()),
         "### get-x\n# @name get-x\n# @no-log\nGET {{baseUrl}}/x\nAccept: application/json\n"
     );
+}
+
+#[test]
+fn renders_cookies_and_a_multipart_body() {
+    let meta = FieldType::Object(vec![Field::new("title", FieldType::String)]);
+    let spec = RequestSpec {
+        cookies: vec!["session".into(), "theme-id".into()],
+        parts: vec![
+            Field::new("file", FieldType::File),
+            Field::new("meta", meta),
+            Field::new("copies", FieldType::Integer),
+        ],
+        // A multipart body replaces the JSON one.
+        body: Some(vec![Field::new("ignored", FieldType::String)]),
+        ..Default::default()
+    };
+    let out = render("PUT", "{{baseUrl}}/covers", "put-covers", &spec);
+    let expected = "\
+### put-covers
+# @name put-covers
+# @no-log
+@session = value
+@themeId = value
+PUT {{baseUrl}}/covers
+Accept: application/json
+Cookie: session={{session}}; theme-id={{themeId}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name=\"file\"; filename=\"file\"
+
+< ./file
+--boundary
+Content-Disposition: form-data; name=\"meta\"
+Content-Type: application/json
+
+{
+  \"title\": \"\"
+}
+--boundary
+Content-Disposition: form-data; name=\"copies\"
+
+1
+--boundary--
+";
+    assert_eq!(out, expected);
 }
 
 #[test]

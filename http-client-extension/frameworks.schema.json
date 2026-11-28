@@ -38,7 +38,26 @@
         "docs": { "type": "string", "format": "uri" },
         "imports": { "type": "array", "items": { "type": "string" }, "description": "The framework is active only if the file contains one of these strings. Empty = always." },
         "prefix": { "$ref": "#/definitions/patterns", "description": "Path prefix declarations capturing {path}, e.g. @RequestMapping(\"{path}\")." },
-        "base": { "$ref": "#/definitions/patterns", "description": "Where a client class's requests go, at class level: {path} is the URL (${...} placeholders resolved from the project's application.yml / application.properties, else a {{variable}}), or {name} the client name, whose spring.cloud.openfeign.client.config.<name>.url is used. E.g. @FeignClient(...url = \"{path}\"." },
+        "base": { "$ref": "#/definitions/patterns", "description": "Where a client class's requests go, at class level: {path} is the URL (${...} placeholders resolved from the project's application.yml / application.properties, else a {{variable}}), or {name} the client name, whose base_property is used. E.g. @FeignClient(...url = \"{path}\"." },
+        "base_property": { "type": "string", "description": "The property holding the URL of the client named {name}, by a base pattern or a registration, e.g. spring.http.serviceclient.{name}.base-url. Resolved from the project's configuration, else a {{variable}} named after its last two segments ({{catalogBaseUrl}})." },
+        "registrations": {
+          "type": "array",
+          "description": "Where client classes are registered under a name away from the class, looked up in the class's file, then in the project's other files of the language: {name} the name, {keys} the list of classes ([BookService, AuthorService], {BookService.class}) or {type} a single one. E.g. @ImportHttpServices(...group: \"{name}\"...types: {keys}. Its base_property gives the base URL.",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/pattern" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pattern", "name"],
+                "properties": {
+                  "pattern": { "$ref": "#/definitions/pattern" },
+                  "name": { "type": "string", "description": "The name a pattern without {name} registers under, e.g. default." }
+                }
+              }
+            ]
+          }
+        },
         "prefix_scope": { "enum": ["class", "file"], "description": "class: an annotation right above a class declaration (default). file: the first match in the file." },
         "controller_token": { "type": "string", "description": "Token in the prefix replaced by the controller class name without the Controller suffix, e.g. [controller]." },
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" }, "minItems": 1, "description": "At one position the first matching pattern wins." },
@@ -46,7 +65,9 @@
         "query": { "$ref": "#/definitions/patterns", "description": "Query parameters: capture {name} (+ {type}), {keys}, {var} or a model {type}." },
         "headers": { "$ref": "#/definitions/patterns", "description": "Headers: capture {name} or {keys}." },
         "header_case": { "enum": ["kebab"], "description": "kebab: parameter x_request_id → header X-Request-Id." },
+        "cookies": { "$ref": "#/definitions/patterns", "description": "Cookies: capture {name}; all are sent in one Cookie header." },
         "body": { "$ref": "#/definitions/patterns", "description": "JSON body: capture a model {type}, a {var}, {keys} or single fields {name}." },
+        "parts": { "$ref": "#/definitions/patterns", "description": "Parts of a multipart/form-data body, which then replaces the JSON one: capture {name} and its {type}. A file type (types.file) is read from a file, a model is sent as JSON, anything else as a text field." },
         "params": { "$ref": "#/definitions/patterns", "description": "Handler signature parameters {name}: {type}; models go to the body, scalars to the query (FastAPI-style)." },
         "ignore": { "$ref": "#/definitions/patterns", "description": "Parameters {name} that are neither query nor body (dependencies, request objects)." },
         "auth": { "$ref": "#/definitions/patterns", "description": "Any match adds Authorization: Bearer {{token}}." },
@@ -106,6 +127,7 @@
         "string": { "type": "array", "items": { "type": "string" } },
         "list": { "type": "array", "items": { "type": "string" } },
         "object": { "type": "array", "items": { "type": "string" } },
+        "file": { "type": "array", "items": { "type": "string" }, "description": "Uploaded files (MultipartFile, Uint8List): a multipart part read from a file; \"\" in a JSON body." },
         "wrappers": { "type": "array", "items": { "type": "string" }, "description": "Generic wrappers unwrapped to their first type argument (Optional<T>, Json<T>…)." }
       }
     },

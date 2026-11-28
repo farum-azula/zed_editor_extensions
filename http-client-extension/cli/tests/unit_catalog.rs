@@ -143,6 +143,65 @@ Future f(Dio dio, String token) => dio.post('/login', data: {'email': e, 'passwo
     assert_eq!(names(&s.body.unwrap()), vec!["email", "password"]);
 }
 
+/// HTTP service clients: every parameter by its role, and parts making a multipart body.
+#[test]
+fn infer_dart_http_service_clients() {
+    let dart = r#"import 'package:spring_boot_starter_restclient/spring_boot_starter_restclient.dart';
+@HttpExchange('/books')
+abstract interface class BookService {
+  @PostExchange()
+  @ClientRegistrationId('partner')
+  Future<Book> create(
+    @RequestHeader('X-Request-Id') String requestId,
+    @CookieValue('session') String session,
+    @CookieValue() String theme,
+    @CookieValue('session') String again,
+    @RequestParam() bool notify,
+    @RequestBody() Book book,
+  );
+  @PutExchange.of(url: '/{isbn}/cover', contentType: MediaType.multipartFormData)
+  Future<void> cover(@PathVariable() String isbn, @RequestPart('file') MultipartFile file, @RequestPart() Book meta, @RequestPart() String? note);
+}
+class Book {
+  final String title;
+  final int stock;
+}
+"#;
+    let s = req(dart, "a.dart", 3);
+    assert_eq!(s.headers, vec!["X-Request-Id"]);
+    assert_eq!(s.cookies, vec!["session", "theme"], "each cookie once");
+    assert_eq!(s.query, vec![Field::new("notify", FieldType::Boolean)]);
+    assert_eq!(names(&s.body.unwrap()), vec!["title", "stock"]);
+    assert!(s.auth, "an OAuth2 client registration sends a token");
+
+    let s = req(dart, "a.dart", 13);
+    let book = FieldType::Object(vec![Field::new("title", FieldType::String), Field::new("stock", FieldType::Integer)]);
+    assert_eq!(
+        s.parts,
+        vec![Field::new("file", FieldType::File), Field::new("meta", book), Field::new("note", FieldType::String)]
+    );
+    assert_eq!(s.body, None, "the parts are the body");
+}
+
+#[test]
+fn infer_java_http_service_clients() {
+    let java = r#"import org.springframework.web.service.annotation.*;
+public interface Uploads {
+    @PostExchange(url = "/uploads", contentType = "multipart/form-data")
+    void upload(@RequestPart("file") MultipartFile file, @RequestPart(name = "meta") Meta meta,
+                @RequestHeader(name = "X-Tenant") String tenant, @CookieValue(name = "session") String session,
+                @RequestParam(value = "dry") boolean dry);
+}
+record Meta(String title) {}
+"#;
+    let s = req(java, "Uploads.java", 2);
+    let meta = FieldType::Object(vec![Field::new("title", FieldType::String)]);
+    assert_eq!(s.parts, vec![Field::new("file", FieldType::File), Field::new("meta", meta)]);
+    assert_eq!(s.headers, vec!["X-Tenant"]);
+    assert_eq!(s.cookies, vec!["session"]);
+    assert_eq!(s.query, vec![Field::new("dry", FieldType::Boolean)]);
+}
+
 #[test]
 fn infer_fastapi() {
     let py = r#"from fastapi import FastAPI, Header
